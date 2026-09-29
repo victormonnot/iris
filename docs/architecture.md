@@ -9,7 +9,7 @@ deployment, drone control, tracking, and segmentation are outside this version.
 
 One Python application serves a FastAPI JSON API and a plain HTML/CSS/JavaScript
 interface. SQLite stores metadata; a configurable local data directory stores
-media and artifacts. A subprocess worker executes extraction and inference jobs;
+media and artifacts. A subprocess worker executes extraction, inference, and annotation jobs;
 the same boundary will host training without blocking requests. No Node build
 step, database server, cloud account, or GPU is required for the data workspace.
 
@@ -44,22 +44,45 @@ project classes and records the frozen layers and optimizer configuration.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
 
-The initial proposed taxonomy is `person` and `car`, with written class
-definitions and an explicit mapping from each model's class IDs. It can be
-revised before collecting labels; later changes create a new taxonomy version.
+The initial taxonomy, `iris-objects-v1`, contains `person` and `car`, with written
+class definitions and an explicit COCO mapping (IDs 1 and 3). People include
+riders; cars include passenger SUVs/minivans but exclude buses, trucks and
+motorcycles. Boxes cover visible extents. Definition changes require a new
+taxonomy version.
 An unsupported class is not silently mapped to a superficially similar class.
 
-Assisted annotation will use a configurable local Ollama endpoint, initially
+Assisted annotation uses a configurable local Ollama endpoint, initially
 [Qwen3-VL 4B Instruct](https://ollama.com/library/qwen3-vl:4b-instruct). The
 published quantized artifact is approximately 3.3 GB and requires Ollama 0.12.7
 or newer; model download and runtime provisioning are separate setup steps.
 The [vision API](https://docs.ollama.com/capabilities/vision) accepts image bytes,
 and [structured outputs](https://docs.ollama.com/capabilities/structured-outputs)
-allow schema-constrained suggestions. A detector supplies candidate boxes; the
-multimodal model reviews crops and the selected image for categories, ambiguity,
-or omissions. Its coordinates and judgments remain proposals, not reference
-labels. Manual annotation works without Ollama. No cloud model or remote endpoint
-is selected automatically; external transfer requires explicit user agreement.
+allow schema-constrained suggestions. Saved detector outputs or manually drawn
+labels supply 1–8 candidate boxes. The model reviews their categories and
+ambiguities, with possible omissions recorded as scene notes for a human. It
+never generates coordinates: proposals retain the original candidate geometry.
+Only `person`, `car`, `none`, and `uncertain` are accepted in the model response.
+Manual annotation works without Ollama. The adapter refuses remote endpoints,
+redirects, proxies, cloud models and remote aliases. Model installation is
+explicit; availability checks never send pixels or generate output.
+
+Requests freeze the image hash, candidate coordinates, base annotation revision,
+model digest, instructions and provider configuration before entering the job
+queue. At execution the adapter verifies the local model identity, supplies a
+resized scene and ordered crops, and requires one structured review per
+candidate. Prompt messages, model settings, digest, raw response and failures
+are saved. A failed or cancelled response cannot silently validate labels.
+Cancellation stops the IRIS worker; the Ollama server may finish its current
+generation before releasing memory.
+
+Annotations use immutable full revisions with a compare-and-swap revision number.
+An editor cannot overwrite a newer save. Automatic suggestions live separately
+and require an explicit accept, correct or reject decision. Validation requires
+a reviewer name and no unresolved proposals; it means the whole image was
+reviewed, including missed objects. A later proposal does not alter an older
+validated revision. Re-reviewing an existing box may replace its origin only if
+the box still matches the saved revision that the model examined; earlier
+decisions remain in history. These revisions are not yet dataset releases.
 
 Torchvision's [code license is BSD-3-Clause](https://github.com/pytorch/vision/blob/main/LICENSE),
 but its documentation [separates pretrained-model terms from the code license](https://docs.pytorch.org/vision/stable/models.html#general-information-on-pre-trained-weights).
@@ -100,9 +123,10 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Five testable increments
 
-The data workspace and saved model comparisons (increments 1–2) are implemented.
-Annotation, dataset releases/training, and quality evaluation (increments 3–5)
-remain planned V1 work. The README records setup commands and verification limits.
+The data workspace, saved comparisons and annotation editor/provider integration
+(increments 1–3) are implemented. Dataset releases/training and quality evaluation
+(increments 4–5) remain planned V1 work. Live model verification depends on
+explicit runtime provisioning. The README records setup commands and verification limits.
 
 | Increment | Usable result | Acceptance check |
 | --- | --- | --- |

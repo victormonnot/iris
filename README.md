@@ -4,15 +4,16 @@ A local computer vision workbench for drone imagery. IRIS is being built around
 the full improvement loop: flight data → frame selection → assisted annotation →
 human validation → versioned dataset → fine-tuning → model comparison.
 
-IRIS currently provides **data intake, frame selection, and saved detector
-comparisons**. Annotation, dataset releases, training, and quality evaluation are
-planned parts of V1. See [the architecture and V1 plan](docs/architecture.md).
+IRIS currently provides **data intake, frame selection, saved detector comparisons,
+and human annotation with optional local multimodal assistance**. Dataset releases,
+training, and quality evaluation remain planned parts of V1. See
+[the architecture and V1 plan](docs/architecture.md).
 
 ## Run locally
 
 Requires Linux or WSL, Python 3.12 or 3.13, and [uv](https://docs.astral.sh/uv/).
 No GPU, model weights, API key, drone connection, or external account is needed
-for data intake.
+for data intake or manual annotation.
 
 ```sh
 uv sync --locked
@@ -117,6 +118,68 @@ different internal proposal algorithms. Confidence, count differences, and
 runtime are not quality metrics. Precision, recall, and mAP require a validated
 reference dataset and are not reported by this increment.
 
+## Annotate and review
+
+Open **Annotation** for a selected frame. The initial taxonomy, `iris-objects-v1`,
+contains **person** and **car**; the interface shows their exact definitions.
+Draw boxes, move or resize them, or edit their pixel coordinates. Saved detector
+outputs can be imported as proposals without running inference again.
+
+Accept or reject proposals individually, correct labels and geometry, and inspect
+the whole image for missed objects. **Save draft** records work in progress.
+**Validate frame** requires a reviewer and a decision for every pending proposal;
+an empty validated frame explicitly records that no target objects are visible.
+Every save creates a revision with provenance. Concurrent edits produce a reload
+conflict instead of silently replacing another revision. Editing a validated frame
+requires a fresh human validation.
+
+### Optional local multimodal assistance
+
+Install [Ollama](https://docs.ollama.com/linux) separately to use a local vision
+model. IRIS never installs runtimes or pulls a model automatically. The default
+[Qwen3-VL 4B Instruct model](https://ollama.com/library/qwen3-vl:4b-instruct) is
+approximately 3.3 GB, in addition to Ollama's runtime. Memory requirements depend
+on the model and local hardware; CPU execution may be slow.
+
+For a manually managed server, run this command from the project directory in
+one terminal. It keeps models in the ignored workspace and disables Ollama Cloud:
+
+```sh
+OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 \
+  OLLAMA_MODELS="$PWD/.iris/ollama" ollama serve
+```
+
+If Ollama already runs as a service, configure and restart that service instead
+of starting a second server. See [Ollama's configuration guide](https://docs.ollama.com/faq).
+In another terminal, explicitly download the model:
+
+```sh
+OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen3-vl:4b-instruct
+```
+
+Refresh availability in **Local multimodal review**. Choose the current saved
+labels or a saved detector output containing 1–8 person/car boxes, then request a
+review. Each request processes one selected frame and its candidate crops. The
+frame is resized to at most 1024 pixels on its longest edge, crops to 320 pixels.
+The model can propose a class correction, rejection or uncertainty; it supplies
+no box coordinates. Missing objects and final geometry remain part of human
+review. Its proposals never validate a frame automatically.
+
+IRIS accepts only loopback HTTP endpoints and locally installed vision models.
+It rejects cloud model names and remote aliases, ignores HTTP proxy settings,
+and follows no redirects. Images are sent only when a review is explicitly
+requested. Raw responses, prompts, candidate provenance, model digests and
+generation settings remain in the local workspace. Invalid or incomplete output
+fails the job without publishing proposals. Manual annotation and detector
+proposals remain available when Ollama is absent.
+
+The defaults can be changed when starting IRIS:
+
+```sh
+IRIS_OLLAMA_URL=http://127.0.0.1:11434 \
+  IRIS_OLLAMA_MODEL=qwen3-vl:4b-instruct uv run iris
+```
+
 ## Development and verification
 
 ```sh
@@ -127,10 +190,12 @@ uv run ruff format --check .
 
 Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,
-comparison snapshots, raw outputs, job lifecycle, cancellation, migration, and
-persistence. Detector doubles are confined to tests and are never exposed as
-models in the application. Tests establish software behavior, not detection
-quality on real drone data. No datasets or model weights are bundled.
+comparison snapshots, raw outputs, annotation revisions, human validation,
+multimodal response validation, job lifecycle, cancellation, migration, and
+persistence. Detector and multimodal doubles are confined to tests and are never
+exposed as models in the application. Tests establish software behavior, not
+detection or annotation quality on real drone data. No datasets or model weights
+are bundled.
 
 After explicitly installing the runtime and both checkpoints, opt into the live
 adapter smoke checks on generated images:
@@ -141,6 +206,18 @@ IRIS_TEST_MODEL_DIR=/absolute/path/to/iris-data uv run --extra ml pytest tests/t
 
 Without this variable, those two live checks are skipped. They perform real
 forwards through the models, but synthetic images provide no accuracy benchmark.
+
+After separately provisioning and starting local Ollama, opt into a real
+multimodal protocol check on a generated image:
+
+```sh
+IRIS_TEST_OLLAMA=1 uv run pytest tests/test_assistance_provider.py -k real_ollama
+```
+
+This check uses `IRIS_OLLAMA_URL` and `IRIS_OLLAMA_MODEL` when set. It never
+downloads anything and fails if the configured local provider is unavailable.
+Without `IRIS_TEST_OLLAMA=1`, it is skipped. It verifies the response structure
+and provenance, not semantic accuracy.
 
 The web UI and API are served by FastAPI; metadata lives in SQLite and media
 in local files. The browser uses plain JavaScript without external assets.

@@ -26,24 +26,43 @@
   }
 
   function setWorkspace(name) {
-    const comparing = name === "comparison";
-    $("#intake-workspace").hidden = comparing;
-    $("#comparison-workspace").hidden = !comparing;
-    for (const workspace of ["intake", "comparison"]) {
+    const workspaces = {
+      intake: [
+        "01",
+        "Data intake",
+        "From flight to frames.",
+        "Import source footage, sample frames and select the data worth keeping.",
+      ],
+      comparison: [
+        "02",
+        "Model comparison",
+        "See what your models see.",
+        "Run detectors on a shared selection, inspect their differences and keep a reproducible baseline.",
+      ],
+      annotation: [
+        "03",
+        "Annotation",
+        "Turn observations into labels.",
+        "Review proposals, correct bounding boxes and validate each frame before it becomes training data.",
+      ],
+    };
+    const info = workspaces[name];
+    if (!info) return;
+    for (const workspace of Object.keys(workspaces)) {
+      $(`#${workspace}-workspace`).hidden = workspace !== name;
       const button = $(`#workspace-${workspace}`);
       button.classList.toggle("active", workspace === name);
       button.setAttribute("aria-pressed", String(workspace === name));
     }
     $("#workspace-step").replaceChildren(
-      node("span", "step-marker", comparing ? "02" : "01"),
-      document.createTextNode(comparing ? "Model comparison" : "Data intake"),
+      node("span", "step-marker", info[0]),
+      document.createTextNode(info[1]),
     );
-    $("#workspace-title").textContent = comparing
-      ? "See what your models see."
-      : "From flight to frames.";
-    $("#workspace-description").textContent = comparing
-      ? "Run detectors on a shared selection, inspect their differences and keep a reproducible baseline."
-      : "Import source footage, sample frames and select the data worth keeping.";
+    $("#workspace-title").textContent = info[2];
+    $("#workspace-description").textContent = info[3];
+    window.dispatchEvent(
+      new CustomEvent("iris:workspace", { detail: { name } }),
+    );
   }
 
   function modelName(id) {
@@ -587,6 +606,9 @@
   );
   $("#workspace-comparison").addEventListener("click", () =>
     setWorkspace("comparison"),
+  );
+  $("#workspace-annotation").addEventListener("click", () =>
+    setWorkspace("annotation"),
   );
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);

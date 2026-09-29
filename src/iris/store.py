@@ -66,6 +66,27 @@ CREATE TABLE IF NOT EXISTS predictions (
 );
 CREATE INDEX IF NOT EXISTS comparisons_session ON comparisons(session_id);
 CREATE INDEX IF NOT EXISTS predictions_comparison ON predictions(comparison_id);
+CREATE TABLE IF NOT EXISTS annotation_revisions (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id), revision INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('draft','validated')), taxonomy_id TEXT NOT NULL,
+    frame_sha256 TEXT NOT NULL, boxes TEXT NOT NULL, decisions TEXT NOT NULL,
+    reviewer TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+    UNIQUE(frame_id, revision)
+);
+CREATE TABLE IF NOT EXISTS annotation_suggestions (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
+    job_id TEXT REFERENCES jobs(id), kind TEXT NOT NULL CHECK(kind IN ('detector','multimodal')),
+    label TEXT NOT NULL, box TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS assistance_records (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), config TEXT NOT NULL, candidates TEXT NOT NULL,
+    prompt TEXT NOT NULL DEFAULT '', metadata TEXT NOT NULL DEFAULT '{}', raw_response TEXT,
+    error TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS annotation_revisions_frame ON annotation_revisions(frame_id,revision);
+CREATE INDEX IF NOT EXISTS annotation_suggestions_frame ON annotation_suggestions(frame_id);
+CREATE INDEX IF NOT EXISTS assistance_records_frame ON assistance_records(frame_id);
 """
 
 JSON_FIELDS = {
@@ -80,9 +101,25 @@ JSON_FIELDS = {
     "detections",
     "timing",
     "input_size",
+    "boxes",
+    "decisions",
+    "box",
+    "candidates",
+    "raw_response",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
-TABLES = {"sessions", "assets", "frames", "jobs", "comparisons", "runs", "predictions"}
+TABLES = {
+    "sessions",
+    "assets",
+    "frames",
+    "jobs",
+    "comparisons",
+    "runs",
+    "predictions",
+    "annotation_revisions",
+    "annotation_suggestions",
+    "assistance_records",
+}
 
 
 def _decode(row: sqlite3.Row | None) -> dict | None:
@@ -114,10 +151,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise RuntimeError(f"Unsupported database version: {version}")
-            # Schema 2 is additive: preserve all original media, selections and jobs.
-            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=2;\nCOMMIT;")
+            # Schema 3 is additive: preserve sources, selections and saved comparisons.
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=3;\nCOMMIT;")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

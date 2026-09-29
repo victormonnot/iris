@@ -16,6 +16,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 
 from iris import __version__
+from iris.annotations import (
+    AnnotationConflict,
+    add_detector_suggestions,
+    get_annotation,
+    save_annotation,
+)
+from iris.assistance import request_assistance
+from iris.assistance_provider import provider_status
 from iris.inference import comparison_detail, comparison_summary, create_comparison
 from iris.jobs import JobManager
 from iris.media import import_asset
@@ -66,6 +74,31 @@ class ComparisonInput(BaseModel):
     frame_ids: list[str] = Field(min_length=1, max_length=100)
     model_ids: list[str] = Field(min_length=1, max_length=2)
     device: Literal["cpu", "cuda"] = "cpu"
+
+
+class AnnotationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    expected_revision: int = Field(ge=0)
+    boxes: list[dict] = Field(max_length=500)
+    decisions: dict[str, Literal["accepted", "corrected", "rejected"]]
+    status: Literal["draft", "validated"] = "draft"
+    reviewer: str = Field(default="", max_length=120)
+    notes: str = Field(default="", max_length=4000)
+
+
+class SuggestionsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    expected_revision: int = Field(ge=0)
+    prediction_id: str
+    threshold: float = Field(default=0.5, ge=0, le=1)
+
+
+class AssistanceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    expected_revision: int = Field(ge=0)
+    prediction_id: str | None = None
+    threshold: float = Field(default=0.5, ge=0, le=1)
+    instructions: str = Field(default="", max_length=2000)
 
 
 def public(record: dict) -> dict:
@@ -138,7 +171,8 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "frame_extraction": True,
                 "frame_selection": True,
                 "inference": True,
-                "annotation": False,
+                "annotation": True,
+                "assisted_annotation": True,
                 "training": False,
             },
         }
@@ -232,6 +266,62 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def frame_image(frame_id: str):
         record = require("frames", frame_id)
         return FileResponse(store.artifact_path(record["path"]), media_type="image/png")
+
+    @app.get("/api/annotation-provider")
+    def annotation_provider():
+        return provider_status()
+
+    @app.get("/api/frames/{frame_id}/annotation")
+    def annotation(frame_id: str):
+        require("frames", frame_id)
+        return get_annotation(store, frame_id)
+
+    @app.get("/api/frames/{frame_id}/annotation/revisions/{revision}")
+    def annotation_revision(frame_id: str, revision: int):
+        require("frames", frame_id)
+        revisions = store.list("annotation_revisions", frame_id=frame_id, revision=revision)
+        if not revisions:
+            raise HTTPException(404, "Annotation revision not found")
+        return revisions[0]
+
+    def annotation_action(function, frame_id, payload):
+        require("frames", frame_id)
+        try:
+            return function(**payload.model_dump())
+        except AnnotationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(409, "The source image is missing or unreadable") from exc
+
+    @app.put("/api/frames/{frame_id}/annotation")
+    def write_annotation(frame_id: str, payload: AnnotationInput):
+        return annotation_action(
+            lambda **fields: save_annotation(store, frame_id, **fields), frame_id, payload
+        )
+
+    @app.post("/api/frames/{frame_id}/suggestions")
+    def detector_suggestions(frame_id: str, payload: SuggestionsInput):
+        return annotation_action(
+            lambda **fields: add_detector_suggestions(store, frame_id, **fields), frame_id, payload
+        )
+
+    @app.post("/api/frames/{frame_id}/assist", status_code=202)
+    def assist(frame_id: str, payload: AssistanceInput):
+        return annotation_action(
+            lambda **fields: request_assistance(store, jobs, frame_id, **fields), frame_id, payload
+        )
+
+    @app.get("/api/frames/{frame_id}/assistance")
+    def assistance_history(frame_id: str):
+        require("frames", frame_id)
+        return [
+            {**record, "job": store.get("jobs", record["job_id"])}
+            for record in store.list("assistance_records", frame_id=frame_id)
+        ]
 
     @app.get("/api/assets/{asset_id}/media")
     def asset_media(asset_id: str):

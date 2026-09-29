@@ -38,7 +38,9 @@ async function api(path, options = {}) {
       : typeof detail === "string"
         ? detail
         : `Request failed (${response.status}).`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return response.status === 204 ? null : response.json();
 }
@@ -132,6 +134,13 @@ function renderSessions() {
 }
 
 async function selectSession(id) {
+  if (state.sessionId !== id) {
+    const event = new CustomEvent("iris:before-session", {
+      cancelable: true,
+      detail: { sessionId: id },
+    });
+    if (!window.dispatchEvent(event)) return;
+  }
   state.sessionId = id;
   state.assets = [];
   state.frames = [];
@@ -561,7 +570,7 @@ function renderJobs() {
         "h3",
         "job-name",
         asset?.filename ||
-          `${job.kind === "infer" ? "Model comparison" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
+          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
       ),
       node("span", `job-status ${job.status}`, job.status),
     );

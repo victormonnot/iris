@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
     <script src="/static/comparison.js" defer></script>
+    <script src="/static/annotation.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to workspace</a>
@@ -170,6 +171,15 @@
               aria-controls="comparison-workspace"
             >
               <span>02</span> Model comparison
+            </button>
+            <button
+              id="workspace-annotation"
+              class="workspace-tab"
+              type="button"
+              aria-pressed="false"
+              aria-controls="annotation-workspace"
+            >
+              <span>03</span> Annotation
             </button>
           </nav>
           <div id="intake-workspace">
@@ -472,6 +482,397 @@
               </div>
             </section>
           </section>
+          <section id="annotation-workspace" aria-label="Annotation" hidden>
+            <div id="annotation-empty" class="panel comparison-empty">
+              <strong>Build your ground truth.</strong>
+              <p>
+                Select frames in Data intake to annotate people and cars. You
+                can draw labels manually and review local detector proposals.
+              </p>
+            </div>
+            <p
+              id="annotation-error"
+              class="inline-error"
+              role="alert"
+              hidden
+            ></p>
+            <div
+              id="annotation-conflict"
+              class="notice error"
+              role="alert"
+              hidden
+            >
+              <p>
+                This frame changed since you opened it. Your unsaved edits are
+                still here. Reload the latest revision before saving again.
+              </p>
+              <button id="annotation-reload" type="button" class="text-button">
+                Discard local edits and reload
+              </button>
+            </div>
+            <div id="annotation-editor" hidden>
+              <div class="annotation-topline">
+                <div class="annotation-navigation">
+                  <button
+                    id="annotation-previous"
+                    type="button"
+                    class="button button-secondary"
+                  >
+                    ← Previous</button
+                  ><label class="sr-only" for="annotation-frame"
+                    >Selected frame</label
+                  ><select id="annotation-frame"></select
+                  ><button
+                    id="annotation-next"
+                    type="button"
+                    class="button button-secondary"
+                  >
+                    Next →
+                  </button>
+                </div>
+                <span
+                  id="annotation-status"
+                  class="annotation-status"
+                  role="status"
+                ></span>
+                <button
+                  id="annotation-refresh"
+                  type="button"
+                  class="text-button"
+                >
+                  Reload saved frame
+                </button>
+              </div>
+              <p id="annotation-source" class="muted small"></p>
+              <div class="annotation-layout">
+                <section
+                  class="panel annotation-canvas-panel"
+                  aria-labelledby="annotation-canvas-title"
+                >
+                  <div class="annotation-toolbar">
+                    <h2 id="annotation-canvas-title">Frame labels</h2>
+                    <div>
+                      <button
+                        id="annotation-select-tool"
+                        type="button"
+                        class="filter-button active"
+                        aria-pressed="true"
+                      >
+                        Select / move</button
+                      ><button
+                        id="annotation-draw-tool"
+                        type="button"
+                        class="filter-button"
+                        aria-pressed="false"
+                      >
+                        Draw box
+                      </button>
+                    </div>
+                    <label class="sr-only" for="annotation-class"
+                      >Class for new boxes</label
+                    ><select id="annotation-class">
+                      <option value="person">Person</option>
+                      <option value="car">Car</option>
+                    </select>
+                  </div>
+                  <div class="annotation-canvas-wrap">
+                    <svg
+                      id="annotation-canvas"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 640 480"
+                      aria-label="Frame annotation editor"
+                      role="img"
+                      tabindex="0"
+                    >
+                      <image
+                        id="annotation-image"
+                        x="0"
+                        y="0"
+                        width="640"
+                        height="480"
+                      />
+                      <g id="annotation-proposal-layer"></g>
+                      <g id="annotation-box-layer"></g>
+                      <g id="annotation-drawing-layer"></g>
+                    </svg>
+                  </div>
+                  <p class="annotation-canvas-help field-hint">
+                    Draw a box around each visible person or car. Select a box
+                    to move it or drag its corners. Use the coordinates below
+                    for keyboard editing. Delete removes the selected box;
+                    Escape cancels drawing.
+                  </p>
+                  <div
+                    id="annotation-box-properties"
+                    class="annotation-box-properties"
+                    hidden
+                  >
+                    <div>
+                      <label for="annotation-box-class"
+                        >Selected box class</label
+                      ><select id="annotation-box-class">
+                        <option value="person">Person</option>
+                        <option value="car">Car</option>
+                      </select>
+                    </div>
+                    <div class="annotation-coordinates">
+                      <div>
+                        <label for="annotation-x1">Left</label
+                        ><input
+                          id="annotation-x1"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label for="annotation-y1">Top</label
+                        ><input
+                          id="annotation-y1"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label for="annotation-x2">Right</label
+                        ><input
+                          id="annotation-x2"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label for="annotation-y2">Bottom</label
+                        ><input
+                          id="annotation-y2"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      id="annotation-apply-coordinates"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      Apply coordinates</button
+                    ><button
+                      id="annotation-remove-box"
+                      class="text-button danger-text"
+                      type="button"
+                    >
+                      Remove box
+                    </button>
+                  </div>
+                  <div class="annotation-label-list">
+                    <div class="section-heading">
+                      <h3>Labels in this frame</h3>
+                      <span id="annotation-box-count" class="count">0</span>
+                    </div>
+                    <div id="annotation-boxes"></div>
+                    <button
+                      id="annotation-add-box"
+                      class="text-button"
+                      type="button"
+                    >
+                      + Add box using coordinates
+                    </button>
+                  </div>
+                </section>
+                <aside
+                  class="annotation-review-column"
+                  aria-label="Review and save"
+                >
+                  <section class="panel annotation-save-panel">
+                    <h2>Human review</h2>
+                    <p id="annotation-review-summary" class="small muted"></p>
+                    <label for="annotation-reviewer">Reviewer</label
+                    ><input
+                      id="annotation-reviewer"
+                      maxlength="120"
+                      placeholder="Your name or initials"
+                      autocomplete="off"
+                    /><label for="annotation-notes">Review notes</label
+                    ><textarea
+                      id="annotation-notes"
+                      rows="2"
+                      maxlength="2000"
+                      placeholder="Optional notes about this frame"
+                    ></textarea>
+                    <p id="annotation-save-hint" class="field-hint"></p>
+                    <div class="annotation-save-actions">
+                      <button
+                        id="annotation-save"
+                        type="button"
+                        class="button button-secondary"
+                      >
+                        Save draft</button
+                      ><button
+                        id="annotation-validate"
+                        type="button"
+                        class="button button-primary"
+                      >
+                        Validate frame
+                      </button>
+                    </div>
+                    <p class="field-hint">
+                      Validation confirms every visible in-scope object was
+                      reviewed. An empty validated frame explicitly records no
+                      people or cars.
+                    </p>
+                  </section>
+                  <section class="panel annotation-taxonomy">
+                    <details>
+                      <summary>Label definitions · iris-objects-v1</summary>
+                      <div id="annotation-taxonomy"></div>
+                      <p class="field-hint">
+                        Use tight visible bounds. Do not infer boxes for fully
+                        hidden objects. Small or uncertain objects require a
+                        human decision.
+                      </p>
+                    </details>
+                  </section>
+                </aside>
+              </div>
+              <section
+                class="panel annotation-suggestions-panel"
+                aria-labelledby="annotation-suggestions-title"
+              >
+                <div class="panel-heading">
+                  <div>
+                    <h2 id="annotation-suggestions-title">
+                      Proposals to review
+                    </h2>
+                    <p>
+                      Proposals stay separate from your labels until you accept
+                      them. Every decision needs a saved human review.
+                    </p>
+                  </div>
+                  <label class="annotation-toggle"
+                    ><input
+                      id="annotation-show-proposals"
+                      type="checkbox"
+                      checked
+                    />Show pending boxes</label
+                  >
+                </div>
+                <div class="annotation-suggestions-body">
+                  <div class="annotation-proposal-setup">
+                    <div>
+                      <label for="annotation-prediction"
+                        >Saved detector output</label
+                      ><select id="annotation-prediction">
+                        <option value="">No saved detections</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="annotation-threshold"
+                        >Minimum confidence</label
+                      ><input
+                        id="annotation-threshold"
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value="0.5"
+                      />
+                    </div>
+                    <button
+                      id="annotation-import"
+                      type="button"
+                      class="button button-secondary"
+                    >
+                      Import proposals
+                    </button>
+                  </div>
+                  <p id="annotation-proposal-hint" class="field-hint">
+                    Only people and cars from this frame are imported. Importing
+                    does not validate any labels.
+                  </p>
+                  <div
+                    id="annotation-proposals"
+                    class="annotation-proposals"
+                  ></div>
+                  <details class="annotation-assist" open>
+                    <summary>Local multimodal review</summary>
+                    <div class="annotation-provider-heading">
+                      <p id="annotation-provider-status" class="small muted">
+                        Checking local model availability…
+                      </p>
+                      <button
+                        id="annotation-provider-refresh"
+                        type="button"
+                        class="text-button"
+                      >
+                        Refresh availability
+                      </button>
+                    </div>
+                    <p class="field-hint">
+                      Reviews the selected image and up to eight candidate crops
+                      using local Ollama. It can question a class or flag
+                      uncertainty; it does not find new box coordinates. You
+                      remain responsible for missed objects and final
+                      validation.
+                    </p>
+                    <details
+                      id="annotation-provider-setup"
+                      class="setup-help"
+                      hidden
+                    >
+                      <summary>Set up the local vision model</summary>
+                      <p>
+                        Install Ollama, then run the following command in a
+                        terminal. This downloads a multi-gigabyte model and uses
+                        local memory; IRIS never starts the download.
+                      </p>
+                      <pre>ollama pull qwen3-vl:4b-instruct</pre>
+                      <p>
+                        Start Ollama on its default loopback address, then
+                        refresh availability. Manual annotation and detector
+                        proposals work without it.
+                      </p>
+                    </details>
+                    <label for="annotation-assist-source"
+                      >Candidates to review</label
+                    ><select id="annotation-assist-source">
+                      <option value="annotation">Current saved labels</option>
+                      <option value="prediction">
+                        Selected detector output above
+                      </option></select
+                    ><label for="annotation-instructions"
+                      >Review focus (optional)</label
+                    ><textarea
+                      id="annotation-instructions"
+                      rows="2"
+                      maxlength="1000"
+                      placeholder="e.g. Check cars partly hidden by trees"
+                    ></textarea
+                    ><button
+                      id="annotation-assist"
+                      class="button button-secondary"
+                      type="button"
+                      disabled
+                    >
+                      Request local review
+                    </button>
+                    <p
+                      id="annotation-assist-message"
+                      class="field-hint"
+                      role="status"
+                    ></p>
+                  </details>
+                </div>
+              </section>
+              <details class="panel annotation-history">
+                <summary>Saved revisions and provenance</summary>
+                <p id="annotation-provenance" class="field-hint monospace"></p>
+                <div id="annotation-history"></div>
+              </details>
+            </div>
+          </section>
         </div>
         <section
           id="jobs-section"
@@ -492,7 +893,7 @@
         </section>
         <footer class="page-footer">
           <span>IRIS / Computer vision for flight data</span
-          ><span>Data intake / Model comparison</span>
+          ><span>Data intake / Model comparison / Annotation</span>
         </footer>
       </main>
     </div>

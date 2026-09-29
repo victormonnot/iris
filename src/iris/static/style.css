@@ -2145,3 +2145,456 @@ select:focus-visible {
     font-size: 10px;
   }
 }
+
+/* Annotation workspace */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.annotation-topline,
+.annotation-navigation,
+.annotation-toolbar,
+.annotation-save-actions,
+.annotation-provider-heading,
+.annotation-proposal-heading,
+.annotation-proposal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.annotation-topline {
+  justify-content: space-between;
+  gap: 16px;
+  margin: 22px 0 10px;
+}
+.annotation-navigation {
+  min-width: 0;
+  flex: 1;
+}
+.annotation-navigation select {
+  max-width: 440px;
+  min-width: 100px;
+}
+.annotation-navigation .button {
+  white-space: nowrap;
+}
+.annotation-status {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: white;
+}
+.annotation-status.validated {
+  color: var(--green-dark);
+  background: var(--pale);
+  border-color: #bbd6c5;
+}
+.annotation-status.dirty {
+  color: #81531e;
+  background: #fff7e9;
+  border-color: #e5c89c;
+}
+.annotation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 285px;
+  gap: 18px;
+  margin-top: 16px;
+  align-items: start;
+}
+.annotation-canvas-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+.annotation-toolbar {
+  padding: 14px 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-toolbar h2 {
+  margin-right: auto;
+}
+.annotation-toolbar select {
+  width: 105px;
+}
+.annotation-toolbar .filter-button {
+  padding: 7px 9px;
+}
+.annotation-canvas-wrap {
+  background: #17221f;
+  line-height: 0;
+  overflow: hidden;
+}
+#annotation-canvas {
+  display: block;
+  width: 100%;
+  max-height: 580px;
+  aspect-ratio: auto;
+  min-height: 180px;
+  touch-action: none;
+  user-select: none;
+}
+#annotation-canvas.drawing {
+  cursor: crosshair;
+}
+#annotation-canvas.busy {
+  pointer-events: none;
+  opacity: 0.75;
+}
+.annotation-box rect {
+  fill: #32dd8420;
+  stroke: #54e89a;
+  stroke-width: 2;
+  cursor: move;
+}
+.annotation-box.selected rect {
+  stroke: #ffdd72;
+  fill: #f4cb4620;
+}
+.annotation-box text {
+  fill: white;
+  stroke: #16241d;
+  font-weight: 600;
+  pointer-events: none;
+}
+.annotation-box .annotation-handle {
+  fill: #ffdd72;
+  stroke: #26332d;
+  stroke-width: 1;
+}
+.annotation-handle.nw,
+.annotation-handle.se {
+  cursor: nwse-resize;
+}
+.annotation-handle.ne,
+.annotation-handle.sw {
+  cursor: nesw-resize;
+}
+.annotation-proposal-box {
+  pointer-events: none;
+}
+.annotation-proposal-box rect {
+  fill: none;
+  stroke: #e7ad66;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.annotation-proposal-box text {
+  fill: #f3c48c;
+  stroke: #17221f;
+  pointer-events: none;
+}
+.annotation-canvas-help {
+  padding: 12px 16px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-box-properties {
+  padding: 14px 16px;
+  background: #fffdf5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-box-properties > div:first-child {
+  width: 130px;
+}
+.annotation-coordinates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(55px, 1fr));
+  gap: 7px;
+  width: 100%;
+}
+.annotation-coordinates label {
+  font-size: 11px;
+}
+.annotation-coordinates input {
+  width: 100%;
+}
+.annotation-label-list {
+  padding: 14px 16px;
+}
+.annotation-label-list .section-heading {
+  margin-bottom: 10px;
+}
+.annotation-box-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  text-align: left;
+  color: var(--ink);
+}
+.annotation-box-item.selected {
+  border-color: var(--green);
+  background: var(--pale);
+}
+.annotation-box-item strong {
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.annotation-box-item .small {
+  font-size: 11px;
+}
+.annotation-review-column {
+  display: grid;
+  gap: 14px;
+}
+.annotation-save-panel,
+.annotation-taxonomy {
+  padding: 18px;
+}
+.annotation-save-panel h2 {
+  margin-bottom: 8px;
+}
+.annotation-save-panel label {
+  margin-top: 14px;
+}
+.annotation-save-panel textarea,
+.annotation-assist textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #d4ded5;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+}
+.annotation-save-panel textarea:focus-visible,
+.annotation-assist textarea:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.annotation-save-actions {
+  flex-wrap: wrap;
+  margin: 14px 0 10px;
+}
+.annotation-save-actions .button {
+  flex: 1;
+  white-space: nowrap;
+  padding: 9px 12px;
+}
+.annotation-taxonomy summary,
+.annotation-assist > summary,
+.annotation-history > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+.annotation-taxonomy p {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.annotation-suggestions-panel {
+  margin-top: 20px;
+}
+.annotation-suggestions-body {
+  padding: 18px 22px;
+}
+.annotation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.annotation-toggle input {
+  width: auto;
+}
+.annotation-proposal-setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 155px auto;
+  gap: 14px;
+  align-items: end;
+}
+.annotation-proposals {
+  margin: 18px 0;
+  display: grid;
+  gap: 10px;
+}
+.annotation-proposal {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #c38a42;
+  border-radius: 8px;
+}
+.annotation-proposal.accepted,
+.annotation-proposal.corrected {
+  border-left-color: var(--green);
+}
+.annotation-proposal.rejected {
+  border-left-color: #a3aaa4;
+  background: #fafbf9;
+}
+.annotation-proposal-heading {
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.annotation-proposal-heading > strong {
+  text-transform: capitalize;
+}
+.annotation-proposal-origin {
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.annotation-proposal-heading > .small {
+  color: var(--muted);
+  margin-left: auto;
+  font-size: 11px;
+}
+.annotation-recommendation {
+  margin: 7px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+}
+.annotation-recommendation.reject,
+.annotation-recommendation.uncertain {
+  color: #98601e;
+}
+.annotation-proposal-actions {
+  margin-top: 10px;
+}
+.annotation-proposal-actions .button {
+  padding: 5px 11px;
+  font-size: 12px;
+  min-height: 32px;
+}
+.annotation-proposal-provenance {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.annotation-proposal-provenance summary {
+  cursor: pointer;
+}
+.annotation-proposal-provenance pre,
+.annotation-record-dialog pre {
+  max-height: 420px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  padding: 12px;
+  background: #f5f7f4;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.annotation-assist {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.annotation-provider-heading {
+  justify-content: space-between;
+  margin: 12px 0 7px;
+}
+.annotation-provider-heading .text-button {
+  flex-shrink: 0;
+}
+.annotation-assist label {
+  margin-top: 12px;
+}
+.annotation-assist > .button {
+  margin-top: 12px;
+}
+.annotation-history {
+  margin-top: 18px;
+  padding: 18px 22px;
+}
+.annotation-history > .field-hint {
+  overflow-wrap: anywhere;
+  margin-top: 12px;
+}
+.annotation-history-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  background: transparent;
+  font-size: 12px;
+}
+.annotation-record-dialog {
+  width: min(850px, 90vw);
+  max-height: 85vh;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+.annotation-record-dialog::backdrop {
+  background: #18281a80;
+}
+.annotation-record-dialog > .field-hint {
+  margin-top: 10px;
+}
+.danger-text {
+  color: #a34435;
+}
+@media (max-width: 1200px) {
+  .annotation-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .annotation-review-column {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .annotation-topline {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 760px) {
+  .annotation-navigation {
+    flex-wrap: wrap;
+  }
+  .annotation-navigation select {
+    max-width: none;
+    flex: 1;
+    order: -1;
+    flex-basis: 100%;
+  }
+  .annotation-review-column,
+  .annotation-proposal-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .annotation-suggestions-panel .panel-heading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .annotation-suggestions-body {
+    padding: 15px;
+  }
+  .annotation-provider-heading {
+    align-items: start;
+    flex-wrap: wrap;
+  }
+  .workspace-tabs {
+    overflow-x: auto;
+  }
+  .workspace-tab {
+    flex-shrink: 0;
+  }
+}

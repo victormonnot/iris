@@ -1,4 +1,4 @@
-"""Subprocess entry point for local extraction and inference jobs."""
+"""Subprocess entry point for local media, inference and annotation jobs."""
 
 import ctypes
 import os
@@ -7,6 +7,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from iris.assistance import run_assistance
 from iris.inference import run_comparison
 from iris.media import extract_frames
 from iris.store import Store, now
@@ -61,6 +62,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             )
         elif job["kind"] == "infer":
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
+        elif job["kind"] == "assist":
+            result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         else:
             raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
@@ -80,7 +83,11 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "finished_at": now(),
                 "progress": 1 if status == "succeeded" else current["progress"],
                 "message": (
-                    "Extraction complete" if job["kind"] == "extract" else "Comparison complete"
+                    {
+                        "extract": "Extraction complete",
+                        "infer": "Comparison complete",
+                        "assist": "Annotation proposals ready for human review",
+                    }[job["kind"]]
                 )
                 if status == "succeeded"
                 else "Job stopped; saved artifacts are preserved",
