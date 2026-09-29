@@ -26,6 +26,7 @@ from iris.assistance import request_assistance
 from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
+from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
 from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
 from iris.evaluation import (
     create_evaluation,
@@ -48,6 +49,7 @@ from iris.training import create_training, training_detail
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 2 * 1024**3
+MAX_DATASET_UPLOAD_BYTES = 64 * 1024**2
 
 
 class SessionInput(BaseModel):
@@ -108,6 +110,17 @@ class DatasetInput(BaseModel):
     frame_ids: list[str] = Field(min_length=2, max_length=1000)
     splits: dict[str, Literal["train", "val", "test"]]
     parent_id: str | None = None
+
+
+class DatasetImportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=160)
+    scene_group: str = Field(min_length=1, max_length=160)
+    source_url: str = Field(min_length=1, max_length=2000)
+    license_name: str = Field(min_length=1, max_length=500)
+    attribution: str = Field(min_length=1, max_length=2000)
+    source_split: Literal["train", "val", "test"] | None = None
+    category_mapping: dict[str, Literal["person", "car", "exclude"]]
 
 
 class TrainingInput(BaseModel):
@@ -206,8 +219,15 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             if request.headers.get("sec-fetch-site") == "cross-site":
                 return JSONResponse({"detail": "Cross-site requests are not allowed"}, 403)
         length = request.headers.get("content-length")
-        if length and (not length.isdecimal() or int(length) > MAX_UPLOAD_BYTES + 1024**2):
-            return JSONResponse({"detail": "Upload exceeds the 2 GiB limit"}, 413)
+        dataset_upload = request.method == "POST" and request.url.path == "/api/dataset-imports"
+        limit = MAX_DATASET_UPLOAD_BYTES if dataset_upload else MAX_UPLOAD_BYTES
+        if length and (not length.isdecimal() or int(length) > limit + 1024**2):
+            description = (
+                "Dataset ZIP exceeds the 64 MiB limit"
+                if dataset_upload
+                else ("Upload exceeds the 2 GiB limit")
+            )
+            return JSONResponse({"detail": description}, 413)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -237,6 +257,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "annotation": True,
                 "assisted_annotation": True,
                 "dataset_versions": True,
+                "coco_import": True,
                 "training": True,
                 "evaluation": True,
             },
@@ -255,6 +276,70 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         try:
             return dataset_candidates(store)
         except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/dataset-imports", status_code=201)
+    def preview_coco_import(file: UploadFile):
+        uploads = store.root / "uploads"
+        uploads.mkdir(exist_ok=True)
+        staged = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=uploads, delete=False) as target:
+                staged = Path(target.name)
+                size = 0
+                while chunk := file.file.read(1024**2):
+                    size += len(chunk)
+                    if size > MAX_DATASET_UPLOAD_BYTES:
+                        raise HTTPException(413, "Dataset ZIP exceeds the 64 MiB limit")
+                    target.write(chunk)
+            with import_lock:
+                return preview_import(store, staged, file.filename or "dataset.zip")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        finally:
+            file.file.close()
+            if staged:
+                staged.unlink(missing_ok=True)
+
+    @app.get("/api/dataset-imports")
+    def dataset_imports():
+        return [
+            {
+                key: value
+                for key, value in import_detail(store, row["id"]).items()
+                if key != "images"
+            }
+            for row in store.list("dataset_imports")
+        ]
+
+    @app.get("/api/dataset-imports/{import_id}")
+    def dataset_import(import_id: str):
+        require("dataset_imports", import_id)
+        return import_detail(store, import_id)
+
+    @app.get("/api/dataset-imports/{import_id}/images/{image_id}")
+    def dataset_import_image(import_id: str, image_id: str):
+        require("dataset_imports", import_id)
+        try:
+            return FileResponse(
+                preview_image_path(store, import_id, image_id), media_type="image/png"
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Image is not part of this import") from exc
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/dataset-imports/{import_id}/commit", status_code=201)
+    def confirm_dataset_import(import_id: str, payload: DatasetImportInput):
+        require("dataset_imports", import_id)
+        try:
+            with import_lock:
+                return commit_import(store, import_id, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/datasets")

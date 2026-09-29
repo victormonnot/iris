@@ -187,6 +187,12 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Five testable increments
 
+Annotated external data can enter the same loop through a bounded COCO ZIP
+importer. Preview verifies images and geometry, then explicit class mapping and
+source metadata produce reviewable proposals in a new session. Source split
+reservations apply before review and survive dataset versions. Imported labels
+never bypass human validation. See [the import contract](coco-import.md).
+
 All five increments are implemented on the initial person/car detection scope,
 including quantitative evaluation and explicit reference selection. Live model verification depends on
 explicit runtime provisioning. The README records setup commands and verification limits.

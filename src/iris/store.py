@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS annotation_revisions (
 );
 CREATE TABLE IF NOT EXISTS annotation_suggestions (
     id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
-    job_id TEXT REFERENCES jobs(id), kind TEXT NOT NULL CHECK(kind IN ('detector','multimodal')),
+    job_id TEXT REFERENCES jobs(id),
+    kind TEXT NOT NULL CHECK(kind IN ('detector','multimodal','imported')),
     label TEXT NOT NULL, box TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS assistance_records (
@@ -137,6 +138,26 @@ CREATE TABLE IF NOT EXISTS model_references (
 CREATE INDEX IF NOT EXISTS evaluations_dataset ON evaluations(dataset_id);
 CREATE INDEX IF NOT EXISTS evaluation_predictions_evaluation
     ON evaluation_predictions(evaluation_id);
+CREATE TABLE IF NOT EXISTS dataset_imports (
+    id TEXT PRIMARY KEY, path TEXT NOT NULL, sha256 TEXT NOT NULL,
+    summary TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', result TEXT,
+    created_at TEXT NOT NULL
+);
+"""
+
+IMPORTED_SUGGESTIONS_MIGRATION = """
+CREATE TABLE annotation_suggestions_v7 (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
+    job_id TEXT REFERENCES jobs(id),
+    kind TEXT NOT NULL CHECK(kind IN ('detector','multimodal','imported')),
+    label TEXT NOT NULL, box TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL
+);
+INSERT INTO annotation_suggestions_v7
+    (id,frame_id,job_id,kind,label,box,metadata,created_at)
+SELECT id,frame_id,job_id,kind,label,box,metadata,created_at FROM annotation_suggestions;
+DROP TABLE annotation_suggestions;
+ALTER TABLE annotation_suggestions_v7 RENAME TO annotation_suggestions;
+CREATE INDEX annotation_suggestions_frame ON annotation_suggestions(frame_id);
 """
 
 JSON_FIELDS = {
@@ -181,6 +202,7 @@ TABLES = {
     "evaluation_models",
     "evaluation_predictions",
     "model_references",
+    "dataset_imports",
 }
 
 
@@ -213,10 +235,21 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7):
                 raise RuntimeError(f"Unsupported database version: {version}")
-            # Additive migrations preserve sources, results and annotation revisions.
-            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=6;\nCOMMIT;")
+            old_suggestions = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
+            ).fetchone()
+            # SQLite requires a table rebuild to extend the suggestion kind CHECK.
+            # No tables reference suggestions; revisions retain their IDs in JSON.
+            migration = (
+                IMPORTED_SUGGESTIONS_MIGRATION
+                if old_suggestions and "'imported'" not in old_suggestions[0]
+                else ""
+            )
+            conn.executescript(
+                "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=7;\nCOMMIT;"
+            )
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

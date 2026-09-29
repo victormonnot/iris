@@ -16,7 +16,8 @@ SPLITS = {"train", "val", "test"}
 MAX_FRAMES = 1000
 SPLIT_POLICY = (
     "Assign complete scene groups to train, validation or test. Group assignments and exact "
-    "image pixels retain their split across dataset versions in this workspace."
+    "image pixels retain their split across dataset versions and declared source splits "
+    "of imported datasets in this workspace."
 )
 INDEPENDENCE_WARNING = (
     "Different scene groups are not proof of independent data. Group related flights and "
@@ -87,6 +88,20 @@ def dataset_detail(store: Store, dataset_id: str) -> dict:
 
 def _reservations(store: Store, conn) -> tuple[dict, dict]:
     groups, pixels = {}, {}
+    for raw_row in conn.execute(
+        "SELECT s.scene_group, f.sha256, a.metadata FROM frames f "
+        "JOIN sessions s ON s.id=f.session_id JOIN assets a ON a.id=f.asset_id"
+    ):
+        row = _decode(raw_row)
+        split = row["metadata"].get("dataset_import", {}).get("source_split")
+        if split is None:
+            continue
+        group, digest = row["scene_group"], row["sha256"]
+        if split not in SPLITS:
+            raise ValueError("An imported dataset has an invalid source split")
+        if groups.get(group, split) != split or pixels.get(digest, split) != split:
+            raise ValueError("Imported datasets have conflicting source split assignments")
+        groups[group], pixels[digest] = split, split
     for raw_row in conn.execute("SELECT * FROM dataset_versions ORDER BY created_at,id"):
         manifest = _manifest_from_row(store, _decode(raw_row))
         for frame in manifest["frames"]:
@@ -325,6 +340,7 @@ def create_dataset(
                             "filename": asset["filename"],
                             "kind": asset["kind"],
                             "sha256": asset["sha256"],
+                            "metadata": asset["metadata"],
                             "frame_index": frame["frame_index"],
                             "timestamp_seconds": frame["timestamp_seconds"],
                             "extraction": frame["extraction"],

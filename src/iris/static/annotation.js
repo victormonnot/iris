@@ -42,6 +42,9 @@
     );
   const decisionFor = (proposal) =>
     editor.decisions[proposal.id] || proposal.state || "pending";
+  const proposalOrigin = (proposal) =>
+    proposal.kind === "multimodal" ? "Model review"
+      : proposal.kind === "imported" ? "Imported annotation" : "Detector";
   const assistActive = () =>
     state.jobs.some(
       (job) =>
@@ -453,7 +456,7 @@
         (item) => item.id === box.suggestion_id,
       );
       const origin = proposal
-        ? `${proposal.kind === "multimodal" ? "Model review" : "Detector"} · human ${decisionFor(proposal)}`
+        ? `${proposalOrigin(proposal)} · human ${decisionFor(proposal)}`
         : "Manual label";
       button.append(
         node("strong", "", `${index + 1} · ${box.label}`),
@@ -506,7 +509,9 @@
           "annotation-proposal-origin",
           proposal.kind === "multimodal"
             ? "Multimodal proposal"
-            : "Detector proposal",
+            : proposal.kind === "imported"
+              ? "Imported annotation"
+              : "Detector proposal",
         ),
         node(
           "span",
@@ -1038,6 +1043,17 @@
     const document = editor.document;
     $("#annotation-provenance").textContent =
       `Frame SHA-256: ${document.frame_sha256 || document.frame.sha256} · Taxonomy: ${document.taxonomy.id}`;
+    const imported = sourceFor(document.frame)?.metadata?.dataset_import;
+    const source = $("#annotation-import-provenance");
+    source.replaceChildren();
+    source.hidden = !imported;
+    if (imported) {
+      source.append(
+        node("h3", "", "Imported dataset source"),
+        node("p", "field-hint", "Source annotations are proposals. Review the entire image, including any missing target objects, before validating."),
+        node("pre", "", JSON.stringify(imported, null, 2)),
+      );
+    }
     const list = $("#annotation-history");
     list.replaceChildren();
     if (!document.history?.length)

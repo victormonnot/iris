@@ -115,6 +115,7 @@ def test_snapshot_copies_pixels_labels_negatives_and_complete_provenance(workspa
         "filename": asset["filename"],
         "kind": "image",
         "sha256": asset["sha256"],
+        "metadata": asset["metadata"],
         "frame_index": original["frame_index"],
         "timestamp_seconds": original["timestamp_seconds"],
         "extraction": original["extraction"],

@@ -16,6 +16,7 @@
     <script src="/static/annotation.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
+    <script src="/static/dataset-import.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to workspace</a>
@@ -77,6 +78,12 @@
             <span aria-hidden="true">+</span> Create session
           </button>
         </form>
+        <div class="dataset-import-launch">
+          <button id="dataset-import-open" class="button button-secondary full-width" type="button">
+            Import annotated dataset
+          </button>
+          <p class="field-hint">Preview a COCO archive and review its labels.</p>
+        </div>
         <div class="workspace-location">
           <span class="eyebrow">Storage</span>
           <p id="storage-path">Connecting to local storage…</p>
@@ -978,6 +985,7 @@ ollama pull qwen3-vl:4b-instruct</pre
               <details class="panel annotation-history">
                 <summary>Saved revisions and provenance</summary>
                 <p id="annotation-provenance" class="field-hint monospace"></p>
+                <div id="annotation-import-provenance" hidden></div>
                 <div id="annotation-history"></div>
               </details>
             </div>
@@ -1876,6 +1884,89 @@ ollama pull qwen3-vl:4b-instruct</pre
             >Download original <span aria-hidden="true">↗</span></a
           >
         </div>
+      </div>
+    </dialog>
+    <dialog id="dataset-import-dialog" class="modal dataset-import-modal" aria-labelledby="dataset-import-title">
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">Annotated data intake</div>
+          <h2 id="dataset-import-title">Import a COCO dataset</h2>
+        </div>
+        <button id="dataset-import-close" class="icon-button" type="button" aria-label="Close dataset import">×</button>
+      </div>
+      <p class="muted small">Bring existing bounding boxes into human review. Importing never validates annotations.</p>
+      <form id="dataset-import-upload" class="dataset-import-upload">
+        <label for="dataset-import-file">COCO archive (.zip, up to 64 MiB)</label>
+        <div class="dataset-import-upload-row">
+          <input id="dataset-import-file" type="file" accept=".zip,application/zip" required aria-describedby="dataset-import-format" />
+          <button id="dataset-import-preview-button" class="button button-secondary" type="submit">Preview archive</button>
+        </div>
+        <p id="dataset-import-format" class="field-hint">One COCO JSON file and its images, referenced by local paths. Bounding boxes use x, y, width, height. Crowd or ignored regions are not supported. Nothing is sent outside this computer.</p>
+      </form>
+      <div class="dataset-import-saved">
+        <label for="dataset-import-record">Saved imports and previews</label>
+        <select id="dataset-import-record"><option value="">Choose a saved archive…</option></select>
+      </div>
+      <p id="dataset-import-status" class="field-hint" role="status" aria-live="polite"></p>
+      <p id="dataset-import-error" class="inline-error" role="alert" hidden></p>
+      <div id="dataset-import-detail" hidden>
+        <div class="dataset-import-summary">
+          <h3 id="dataset-import-filename"></h3>
+          <p id="dataset-import-counts" class="small muted"></p>
+        </div>
+        <div id="dataset-import-warnings" class="dataset-import-warnings"></div>
+        <div class="dataset-import-preview-layout">
+          <div>
+            <div class="dataset-import-image-wrap">
+              <img id="dataset-import-image" alt="" />
+              <svg id="dataset-import-boxes" aria-hidden="true"></svg>
+            </div>
+            <div class="dataset-import-navigation">
+              <button id="dataset-import-previous" type="button" class="button button-secondary" aria-label="Previous preview image">←</button>
+              <select id="dataset-import-image-select" aria-label="Preview image"></select>
+              <button id="dataset-import-next" type="button" class="button button-secondary" aria-label="Next preview image">→</button>
+            </div>
+            <p id="dataset-import-image-info" class="field-hint"></p>
+            <label class="checkbox-label" for="dataset-import-show-boxes"><input id="dataset-import-show-boxes" type="checkbox" checked /> Show source boxes</label>
+            <p class="field-hint">Green: person · Blue: car · Gray: excluded or unmapped. Source boxes remain unchanged in this preview.</p>
+          </div>
+          <div class="dataset-import-categories">
+            <h3>Class mapping</h3>
+            <p class="field-hint">Choose a target or explicitly exclude each source category. Original class names remain in provenance.</p>
+            <div id="dataset-import-mapping"></div>
+            <p id="dataset-import-mapping-summary" class="field-hint" aria-live="polite"></p>
+            <details class="dataset-import-definitions">
+              <summary>IRIS class definitions</summary>
+              <p><strong>Person:</strong> a visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.</p>
+              <p><strong>Car:</strong> a passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.</p>
+              <p>Review every image for missing objects, including images with no imported target boxes.</p>
+            </details>
+          </div>
+        </div>
+        <form id="dataset-import-commit-form">
+          <fieldset id="dataset-import-settings" class="dataset-import-settings">
+            <legend>Source and grouping</legend>
+            <div class="form-grid">
+              <div><label for="dataset-import-name">Session name</label><input id="dataset-import-name" required maxlength="160" placeholder="e.g. Aerial pilot · train" /></div>
+              <div><label for="dataset-import-group">Scene group</label><input id="dataset-import-group" required maxlength="160" placeholder="e.g. Aerial pilot · site A" /></div>
+              <div class="dataset-import-wide"><label for="dataset-import-source">Source URL</label><input id="dataset-import-source" type="url" required maxlength="2000" placeholder="https://official-dataset-source.example" /></div>
+              <div><label for="dataset-import-license">License or usage terms</label><input id="dataset-import-license" required maxlength="500" placeholder="Record the source's actual terms" /></div>
+              <div><label for="dataset-import-split">Original dataset split</label><select id="dataset-import-split" aria-describedby="dataset-import-split-hint"><option value="">Not specified · assign when publishing</option><option value="train">Train</option><option value="val">Validation</option><option value="test">Test</option></select><p id="dataset-import-split-hint" class="field-hint" hidden></p></div>
+              <div class="dataset-import-wide"><label for="dataset-import-attribution">Attribution</label><textarea id="dataset-import-attribution" required maxlength="2000" rows="2" placeholder="Dataset name, author or organization, and any required credit"></textarea></div>
+            </div>
+            <p class="field-hint">This archive becomes one session and one scene group. Images from the same scene must share a group across imports. A recorded source split is preserved when publishing a dataset version; do not use test data for training.</p>
+            <label class="checkbox-label" for="dataset-import-confirm"><input id="dataset-import-confirm" type="checkbox" required /> I checked the source, class mapping and exclusions. All images still require human review.</label>
+          </fieldset>
+          <div id="dataset-import-commit-actions" class="modal-actions">
+            <button id="dataset-import-commit" type="submit" class="button button-primary">Import for human review <span aria-hidden="true">→</span></button>
+          </div>
+        </form>
+        <div id="dataset-import-complete" class="dataset-import-complete" hidden>
+          <h3>Imported · human review required</h3>
+          <p id="dataset-import-result" class="small"></p>
+          <button id="dataset-import-review" type="button" class="button button-primary">Open in annotation <span aria-hidden="true">→</span></button>
+        </div>
+        <details class="dataset-import-provenance"><summary>Archive provenance</summary><pre id="dataset-import-provenance"></pre></details>
       </div>
     </dialog>
   </body>

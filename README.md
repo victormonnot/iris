@@ -4,7 +4,7 @@ A local computer vision workbench for drone imagery. IRIS is being built around
 the full improvement loop: flight data → frame selection → assisted annotation →
 human validation → versioned dataset → fine-tuning → model comparison.
 
-IRIS currently provides **data intake, detector comparison, assisted annotation,
+IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions, local detector fine-tuning, held-out evaluation,
 and explicit model reference selection**. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
@@ -61,6 +61,31 @@ browser's own codec support; a video can be extractable without being playable
 in the browser. Timestamps currently derive from frame index and reported FPS;
 they are approximate for variable-frame-rate recordings. There is no telemetry
 alignment or live capture.
+
+## Import an annotated dataset
+
+Use **Import annotated dataset** in the sidebar to upload a ZIP containing one COCO
+bounding-box JSON and its images. Preview the images and boxes, explicitly map
+each source category to `person`, `car`, or `exclude`, and record the source,
+license and attribution. Assign one scene group to the package and preserve its
+original train/validation/test split when known. Related scenes must stay in the
+same group; do not manufacture independent splits from neighboring frames.
+
+Import creates selected frames and reviewable proposals. **External labels are
+not automatically human-validated**, including images with no imported boxes.
+Open **Annotation** to accept, correct or reject the proposals and check missing
+objects, then use the existing dataset/training/evaluation workflow. The archive,
+original classes, coordinates and mapping remain available as provenance.
+Declared source splits reserve both scene groups and exact image pixels, even
+before review, and cannot be reassigned when freezing a dataset.
+
+The initial importer handles small batches: at most 100 images and a 64 MiB ZIP.
+Crowd and ignore annotations are rejected because their evaluation semantics are
+not supported. Segmentations may be preserved as source metadata, but only
+bounding boxes are imported. Previewing and importing use local files and never
+fetch image URLs or transmit images to an annotation provider.
+See [the COCO import format](docs/coco-import.md) for packaging, limits and a
+public aerial-data example.
 
 ## Compare detectors
 
@@ -330,6 +355,7 @@ They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
+COCO archive validation, imported-label review and source split preservation,
 COCO metrics, error matching, fixed test audits, reference history,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
