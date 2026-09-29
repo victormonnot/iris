@@ -23,7 +23,7 @@ def wait_for_job(client, job_id):
     pytest.fail("Bounded CPU fixture job did not complete within 90 seconds")
 
 
-def test_live_training_checkpoint_comparison_and_restart(tmp_path):
+def test_live_training_checkpoint_evaluation_and_restart(tmp_path):
     if os.environ.get("IRIS_TEST_TRAINING") != "1":
         pytest.skip("Set IRIS_TEST_TRAINING=1 to run three real CPU optimizer steps")
     location = os.environ.get("IRIS_TEST_MODEL_DIR")
@@ -94,6 +94,54 @@ def test_live_training_checkpoint_comparison_and_restart(tmp_path):
         assert all(row["label_id"] in {1, 3} for row in prediction["detections"])
         assert all(row["native_label_id"] in {1, 2} for row in prediction["detections"])
 
+        # A real evaluation reads the immutable validation pixels and runs COCO
+        # metrics. Synthetic annotations only verify the pipeline, never quality.
+        evaluated = client.post(
+            "/api/evaluations",
+            json={
+                "name": "Synthetic validation — no accuracy claim",
+                "dataset_id": dataset["id"],
+                "model_ids": [PARENT, checkpoint_id],
+            },
+        )
+        assert evaluated.status_code == 202, evaluated.text
+        evaluation_id = evaluated.json()["id"]
+        wait_for_job(client, evaluated.json()["job"]["id"])
+        evaluation = client.get(f"/api/evaluations/{evaluation_id}").json()
+        assert len(evaluation["predictions"]) == 2
+        for model in evaluation["models"]:
+            summary = model["metrics"]["summary"]
+            assert summary["ground_truth_count"] == 2
+            assert 0 <= summary["map"] <= 1
+            assert model["metadata"]["device"] == "cpu"
+        selected = client.post(
+            "/api/model-references",
+            json={
+                "evaluation_id": evaluation_id,
+                "model_id": checkpoint_id,
+                "reviewer": "Automated fixture only",
+                "notes": "Persistence check, not a recommendation or improvement claim",
+                "expected_previous_id": None,
+            },
+        )
+        assert selected.status_code == 201, selected.text
+        reference = client.get("/api/model-references").json()
+        audit = client.post(
+            "/api/evaluations",
+            json={
+                "name": "Synthetic final test audit",
+                "dataset_id": dataset["id"],
+                "model_ids": [PARENT, checkpoint_id],
+                "split": "test",
+                "validation_evaluation_id": evaluation_id,
+            },
+        )
+        assert audit.status_code == 202, audit.text
+        wait_for_job(client, audit.json()["job"]["id"])
+        audit_id = audit.json()["id"]
+        test_evaluation = client.get(f"/api/evaluations/{audit_id}").json()
+        assert len(test_evaluation["predictions"]) == 2
+
         continued = client.post(
             "/api/trainings",
             json={
@@ -108,11 +156,15 @@ def test_live_training_checkpoint_comparison_and_restart(tmp_path):
         second = client.get(f"/api/trainings/{continued.json()['id']}").json()
         assert second["checkpoint_id"] != checkpoint_id
         assert second["parent_model_id"] == checkpoint_id
+        assert client.get("/api/model-references").json() == reference
 
     with TestClient(create_app(root), base_url=BASE_URL) as reopened:
         assert reopened.get(f"/api/trainings/{training_id}").json() == training
         assert reopened.get(f"/api/comparisons/{comparison_id}").json() == comparison
         assert reopened.get(f"/api/datasets/{dataset['id']}").json() == dataset
+        assert reopened.get(f"/api/evaluations/{evaluation_id}").json() == evaluation
+        assert reopened.get(f"/api/evaluations/{audit_id}").json() == test_evaluation
+        assert reopened.get("/api/model-references").json() == reference
         assert (
             len(
                 [

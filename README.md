@@ -5,8 +5,9 @@ the full improvement loop: flight data → frame selection → assisted annotati
 human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **data intake, detector comparison, assisted annotation,
-human review, dataset versions, and local detector fine-tuning**. Trained checkpoints
-return to the visual comparator. Quality metrics remain the next part of V1. See
+human review, dataset versions, local detector fine-tuning, held-out evaluation,
+and explicit model reference selection**. Trained checkpoints return to the visual
+comparator and can be measured against their parents. See
 [the architecture and V1 plan](docs/architecture.md).
 
 ## Run locally
@@ -116,8 +117,8 @@ Both models use a native score cutoff of 0.001, NMS IoU 0.5, and at most 100
 detections per image. These settings define what can be saved; lowering the UI
 threshold cannot recover outputs below that native cutoff. Models still have
 different internal proposal algorithms. Confidence, count differences, and
-runtime are not quality metrics. Precision, recall, and mAP require a validated
-reference dataset and are not reported by this increment.
+runtime are not quality metrics. Use **Evaluation** with a frozen, validated
+dataset to measure precision, recall and mAP separately from visual comparisons.
 
 ## Annotate and review
 
@@ -273,12 +274,48 @@ This small scope makes a CPU experiment practical; it may be insufficient for
 small distant objects or substantial domain changes.
 
 Loss measures optimization on training examples, **not detection quality**.
-No AP/mAP, precision/recall, validation score or automatic promotion is reported.
-Visual comparisons and measured CPU timings are available; a gain requires a
-separate evaluation on independent, reviewed imagery. Old checkpoints remain
+Use the separate evaluation workflow on independent, reviewed imagery to measure
+gains and regressions. Reference selection is explicit. Old checkpoints remain
 available. Cancellation/failure preserves saved step history and logs, but publishes
 no incomplete checkpoint. Restart marks unfinished jobs interrupted. Launch a new
 run to retry; exact optimizer-state resume is not implemented.
+
+## Evaluate and select a reference
+
+Open **Evaluation**, choose a dataset release and one or two ready models, and
+run them on the release's complete **validation** split. The models use the same
+frozen images and reviewed labels. Choose the confidence and IoU thresholds for
+precision/recall before launching; the default is 0.5 for both. Runs record the
+dataset manifest hash, checkpoint hashes, training ancestry, class mapping,
+metric implementation, thresholds, device and timing protocol.
+
+Results include COCO bbox mAP at IoU 0.50:0.95, AP50, AP75, per-class AP, and
+precision/recall with true/false positives and missed objects at the chosen
+thresholds. AP uses all saved native scores, independently of the precision/recall
+confidence threshold. Missing reference classes have **N/A** AP and are excluded
+from macro averages; undefined precision/recall also display **N/A**. These are
+not perfect scores. Inspect per-image errors, reviewed boxes and predictions,
+plus inference and total processing times. Saved partial predictions remain
+inspectable after cancellation or failure; an incomplete comparison cannot
+support reference selection.
+
+After a complete validation run, select a model as the workspace reference with
+your reviewer name and reason. The choice and its evidence are appended to a
+history; previous references and checkpoints remain available. Nothing selects
+the latest training or the highest score automatically. A new training run does
+not replace the reference.
+
+If the dataset has a **test** split, launch a final audit from the completed
+validation run. The audit reuses the same models, checkpoint hashes, thresholds,
+device and metric protocol. Test results cannot directly promote a reference.
+Repeatedly inspecting test results and then changing models can still bias
+human decisions; preserve the test for final reporting. IRIS rejects local
+training overlap by both scene group and exact image pixels, including ancestor
+checkpoints. This does not establish independence from COCO pretraining data or
+unrecognized related scenes.
+
+See [the evaluation protocol](docs/evaluation.md) for metric definitions,
+filtering limits, handling of absent classes, and verification scope.
 
 ## Development and verification
 
@@ -293,6 +330,7 @@ They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
+COCO metrics, error matching, fixed test audits, reference history,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not
@@ -318,7 +356,8 @@ IRIS_TEST_TRAINING=1 IRIS_TEST_MODEL_DIR=/absolute/path/to/iris-data \
 
 It performs three CPU optimizer steps across two generations, verifies changed
 prediction-head weights and unchanged frozen layers, reloads the checkpoint into
-a comparison with its parent, and checks persistence after restart. All images
+a comparison with its parent, evaluates both on frozen validation and test
+splits, records an explicit reference, and checks persistence after restart. All images
 and review records are generated fixtures, not human-validated flight data. It
 downloads nothing. Without `IRIS_TEST_TRAINING=1`, this test is skipped.
 

@@ -27,7 +27,19 @@ from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
 from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
-from iris.inference import comparison_detail, comparison_summary, create_comparison
+from iris.evaluation import (
+    create_evaluation,
+    evaluation_detail,
+    evaluation_summary,
+    promote_reference,
+    reference_history,
+)
+from iris.inference import (
+    _load_verified_frame,
+    comparison_detail,
+    comparison_summary,
+    create_comparison,
+)
 from iris.jobs import JobManager
 from iris.media import import_asset
 from iris.models import catalog
@@ -106,6 +118,27 @@ class TrainingInput(BaseModel):
     steps: int = Field(default=20, ge=1, le=200)
     learning_rate: float = Field(default=0.001, gt=0, le=0.1)
     seed: int = Field(default=0, ge=0, le=2147483647)
+
+
+class EvaluationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    name: str = Field(min_length=1, max_length=160)
+    dataset_id: str
+    split: Literal["val", "test"] = "val"
+    model_ids: list[str] = Field(min_length=1, max_length=2)
+    confidence_threshold: float = Field(default=0.5, ge=0, le=1)
+    iou_threshold: float = Field(default=0.5, gt=0, le=1)
+    device: Literal["cpu", "cuda"] = "cpu"
+    validation_evaluation_id: str | None = None
+
+
+class ReferenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    evaluation_id: str
+    model_id: str
+    reviewer: str = Field(min_length=1, max_length=120)
+    notes: str = Field(min_length=1, max_length=2000)
+    expected_previous_id: str | None
 
 
 class SuggestionsInput(BaseModel):
@@ -205,6 +238,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "assisted_annotation": True,
                 "dataset_versions": True,
                 "training": True,
+                "evaluation": True,
             },
         }
 
@@ -257,6 +291,24 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @app.get("/api/datasets/{dataset_id}/frames/{frame_id}/image")
+    def dataset_frame_image(dataset_id: str, frame_id: str):
+        require("dataset_versions", dataset_id)
+        try:
+            manifest = load_manifest(store, dataset_id)
+            frame = next((row for row in manifest["frames"] if row["frame_id"] == frame_id), None)
+            if frame is None:
+                raise HTTPException(404, "Frame is not part of this dataset version")
+            with _load_verified_frame(
+                store,
+                {**frame, "id": frame_id, "path": frame["image_path"]},
+                frame["sha256"],
+            ):
+                pass
+            return FileResponse(store.artifact_path(frame["image_path"]), media_type="image/png")
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     @app.get("/api/trainings")
     def trainings():
         return [training_detail(store, row["id"]) for row in store.list("training_runs")]
@@ -275,6 +327,42 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def training(training_id: str):
         require("training_runs", training_id)
         return training_detail(store, training_id)
+
+    @app.get("/api/evaluations")
+    def evaluations():
+        return [evaluation_summary(store, row) for row in store.list("evaluations")]
+
+    @app.post("/api/evaluations", status_code=202)
+    def evaluate(payload: EvaluationInput):
+        require("dataset_versions", payload.dataset_id)
+        try:
+            return create_evaluation(store, jobs, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/evaluations/{evaluation_id}")
+    def evaluation(evaluation_id: str):
+        require("evaluations", evaluation_id)
+        try:
+            return evaluation_detail(store, evaluation_id)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/model-references")
+    def references():
+        return reference_history(store)
+
+    @app.post("/api/model-references", status_code=201)
+    def select_reference(payload: ReferenceInput):
+        require("evaluations", payload.evaluation_id)
+        try:
+            return promote_reference(store, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/sessions/{session_id}/comparisons")
     def comparisons(session_id: str):

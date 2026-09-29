@@ -10,7 +10,7 @@ deployment, drone control, tracking, and segmentation are outside this version.
 One Python application serves a FastAPI JSON API and a plain HTML/CSS/JavaScript
 interface. SQLite stores metadata; a configurable local data directory stores
 media and artifacts. A subprocess worker executes extraction, inference, annotation,
-and training jobs without blocking requests. No Node build
+training and evaluation jobs without blocking requests. No Node build
 step, database server, cloud account, or GPU is required for the data workspace.
 
 Processing code is separate from the API and UI. Detection adapters expose
@@ -127,8 +127,26 @@ Cancelled or failed runs retain their history and logs without registering a
 partial model. Resume from optimizer state is not available. The registry records
 ancestor training groups/hashes and refuses parents that have consumed a new
 dataset's held-out data. This cannot establish independence from the official
-parent's pretraining corpus. Validation-based model selection, quantitative
-evaluation and manual promotion remain the next increment.
+parent's pretraining corpus.
+
+Evaluations are separate from session-based visual comparisons. They consume the
+whole validation or test split of one immutable release, including frames from
+multiple sessions. They freeze checkpoint hashes, ancestry, dataset hash and
+protocol before queueing, and verify them again in the worker. Predictions and
+timings persist per frame; each model receives metrics only after its complete
+split has finished. Publishing the last model's metrics and job success is atomic.
+Cancelled and failed runs preserve completed outputs without presenting a
+partial model as a complete score.
+
+`pycocotools` 2.0.11 implements COCO bbox AP; separate deterministic matching
+provides confidence-specific precision/recall and per-frame errors. Class IDs
+and definitions are explicit, including classes without reference instances.
+The [evaluation protocol](evaluation.md) describes the limits. Test audits refer
+to a successful validation run and cannot change its dataset, models, thresholds,
+device or protocol. Reference decisions require complete validation results,
+a reviewer, a reason and the current reference ID to prevent stale overwrites.
+Decisions append to history; they never delete previous checkpoints or trigger
+automatic training or deployment.
 
 Torchvision's [code license is BSD-3-Clause](https://github.com/pytorch/vision/blob/main/LICENSE),
 but its documentation [separates pretrained-model terms from the code license](https://docs.pytorch.org/vision/stable/models.html#general-information-on-pre-trained-weights).
@@ -169,10 +187,8 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Five testable increments
 
-The data workspace, comparisons, annotation, dataset versions and bounded training
-(increments 1–4) are implemented. Trained checkpoints return to the visual
-comparator. Quantitative quality evaluation and reference promotion (increment 5)
-remain planned V1 work. Live model verification depends on
+All five increments are implemented on the initial person/car detection scope,
+including quantitative evaluation and explicit reference selection. Live model verification depends on
 explicit runtime provisioning. The README records setup commands and verification limits.
 
 | Increment | Usable result | Acceptance check |
@@ -183,7 +199,7 @@ explicit runtime provisioning. The README records setup commands and verificatio
 | 4. Dataset versions and training | Freeze reviewed labels and group-based splits; run bounded Faster R-CNN fine-tuning; register the resulting checkpoint. | Reject leakage and unreviewed labels, preserve old manifests after edits, and complete a real short training job that produces a reloadable checkpoint. |
 | 5. Before/after evaluation | Reuse the comparator for parent and trained checkpoints, compute metrics on a common held-out reference, and inspect regressions. | Reproduce the full chain from a new flight to a checkpoint and evaluation after restart. Report gains or regressions as measured; never require an improvement to declare the loop functional. |
 
-The full demonstration needs authorized recordings, independent scene groups,
+The full demonstration on real flights needs authorized recordings, independent scene groups,
 human-reviewed labels, installed detector weights, a working multimodal runtime,
 and suitable compute. Missing dependencies block the corresponding live
 verification, not manual data handling or fixture tests. Large downloads and

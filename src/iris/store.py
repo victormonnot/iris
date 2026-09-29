@@ -111,6 +111,32 @@ CREATE TABLE IF NOT EXISTS trained_models (
     weight_sha256 TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS training_runs_dataset ON training_runs(dataset_id);
+CREATE TABLE IF NOT EXISTS evaluations (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    dataset_id TEXT NOT NULL REFERENCES dataset_versions(id),
+    split TEXT NOT NULL CHECK(split IN ('val','test')), model_ids TEXT NOT NULL,
+    config TEXT NOT NULL, job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS evaluation_models (
+    id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+    model_id TEXT NOT NULL, metadata TEXT NOT NULL, metrics TEXT,
+    created_at TEXT NOT NULL, UNIQUE(evaluation_id,model_id)
+);
+CREATE TABLE IF NOT EXISTS evaluation_predictions (
+    id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+    evaluation_model_id TEXT NOT NULL REFERENCES evaluation_models(id),
+    frame_id TEXT NOT NULL REFERENCES frames(id), model_id TEXT NOT NULL,
+    detections TEXT NOT NULL, timing TEXT NOT NULL, input_size TEXT NOT NULL,
+    created_at TEXT NOT NULL, UNIQUE(evaluation_model_id,frame_id)
+);
+CREATE TABLE IF NOT EXISTS model_references (
+    id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+    model_id TEXT NOT NULL, reviewer TEXT NOT NULL, notes TEXT NOT NULL,
+    metadata TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS evaluations_dataset ON evaluations(dataset_id);
+CREATE INDEX IF NOT EXISTS evaluation_predictions_evaluation
+    ON evaluation_predictions(evaluation_id);
 """
 
 JSON_FIELDS = {
@@ -133,6 +159,7 @@ JSON_FIELDS = {
     "images",
     "summary",
     "history",
+    "metrics",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = {
@@ -150,6 +177,10 @@ TABLES = {
     "dataset_versions",
     "training_runs",
     "trained_models",
+    "evaluations",
+    "evaluation_models",
+    "evaluation_predictions",
+    "model_references",
 }
 
 
@@ -182,10 +213,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5):
+            if version not in (0, 1, 2, 3, 4, 5, 6):
                 raise RuntimeError(f"Unsupported database version: {version}")
             # Additive migrations preserve sources, results and annotation revisions.
-            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=5;\nCOMMIT;")
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=6;\nCOMMIT;")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

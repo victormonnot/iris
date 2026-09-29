@@ -52,6 +52,12 @@
         "Freeze validated data, train a local detector and bring its checkpoint back into comparison.",
       ],
     };
+    workspaces.evaluation = [
+      "05",
+      "Quality evaluation",
+      "Measure gains and regressions.",
+      "Evaluate frozen labels, inspect detection errors and choose a reference model with evidence.",
+    ];
     const info = workspaces[name];
     if (!info) return;
     for (const workspace of Object.keys(workspaces)) {
@@ -618,6 +624,9 @@
   );
   $("#workspace-training").addEventListener("click", () =>
     setWorkspace("training"),
+  );
+  $("#workspace-evaluation").addEventListener("click", () =>
+    setWorkspace("evaluation"),
   );
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);

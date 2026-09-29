@@ -8,6 +8,7 @@ import traceback
 from pathlib import Path
 
 from iris.assistance import run_assistance
+from iris.evaluation import run_evaluation
 from iris.inference import run_comparison
 from iris.media import extract_frames
 from iris.store import Store, now
@@ -67,6 +68,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         elif job["kind"] == "train":
             result = run_training(store, job["params"]["training_id"], progress, cancelled)
+        elif job["kind"] == "evaluate":
+            result = run_evaluation(store, job["params"]["evaluation_id"], progress, cancelled)
         else:
             raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
@@ -91,6 +94,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "infer": "Comparison complete",
                         "assist": "Annotation proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
+                        "evaluate": "Evaluation complete; metrics and predictions saved",
                     }[job["kind"]]
                 )
                 if status == "succeeded"

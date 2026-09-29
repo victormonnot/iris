@@ -15,6 +15,7 @@
     <script src="/static/comparison.js" defer></script>
     <script src="/static/annotation.js" defer></script>
     <script src="/static/training.js" defer></script>
+    <script src="/static/evaluation.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to workspace</a>
@@ -191,6 +192,15 @@
               aria-controls="training-workspace"
             >
               <span>04</span> Dataset &amp; training
+            </button>
+            <button
+              id="workspace-evaluation"
+              class="workspace-tab"
+              type="button"
+              aria-pressed="false"
+              aria-controls="evaluation-workspace"
+            >
+              <span>05</span> Quality evaluation
             </button>
           </nav>
           <div id="intake-workspace">
@@ -449,8 +459,9 @@
                   ></div>
                   <p class="comparison-caveat">
                     Counts and count differences are inspection signals. No
-                    validated labels are attached, so detection quality is not
-                    measured.
+                    validated labels are attached to this visual comparison. Use
+                    Quality evaluation to measure detection quality against a
+                    frozen dataset.
                   </p>
                   <div class="comparison-navigation">
                     <button
@@ -1285,7 +1296,8 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <p class="training-loss-note">
                     Training loss describes optimization on the training frames.
                     It is not detection accuracy and does not prove improvement.
-                    Quality metrics on held-out frames are not available yet.
+                    Use Quality evaluation to measure detection quality on
+                    held-out frames.
                   </p>
                   <div
                     id="training-loss-history"
@@ -1296,6 +1308,367 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <pre id="training-provenance"></pre>
                   </details>
                 </div>
+              </div>
+            </section>
+          </section>
+          <section
+            id="evaluation-workspace"
+            hidden
+            aria-label="Quality evaluation"
+          >
+            <p class="dataset-scope">
+              Evaluate frozen validation frames across the whole workspace.
+              Human-validated boxes are the reference; the active flight session
+              does not restrict this view.
+            </p>
+            <section
+              class="panel dataset-panel"
+              aria-labelledby="evaluation-create-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="evaluation-create-title">
+                    Measure before you choose
+                  </h2>
+                  <p>
+                    Compare one or two detectors on the same held-out validation
+                    data.
+                  </p>
+                </div>
+                <button
+                  id="evaluation-refresh"
+                  class="button button-secondary"
+                  type="button"
+                >
+                  Refresh
+                </button>
+              </div>
+              <form id="evaluation-form" class="dataset-panel-body">
+                <div class="training-form-grid">
+                  <div>
+                    <label for="evaluation-name">Evaluation name</label
+                    ><input
+                      id="evaluation-name"
+                      maxlength="160"
+                      required
+                      placeholder="e.g. First fine-tune vs parent"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label for="evaluation-dataset"
+                      >Frozen dataset release</label
+                    ><select id="evaluation-dataset" required disabled>
+                      <option value="">Freeze a dataset first</option>
+                    </select>
+                  </div>
+                </div>
+                <p id="evaluation-dataset-context" class="field-hint"></p>
+                <fieldset class="evaluation-model-fieldset">
+                  <legend>Detectors · choose up to two</legend>
+                  <div id="evaluation-models" class="evaluation-models"></div>
+                </fieldset>
+                <div class="training-form-grid evaluation-thresholds">
+                  <div>
+                    <label for="evaluation-confidence"
+                      >Precision / recall confidence threshold</label
+                    ><input
+                      id="evaluation-confidence"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value="0.5"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="evaluation-iou"
+                      >Precision / recall matching IoU</label
+                    ><input
+                      id="evaluation-iou"
+                      type="number"
+                      min="0.01"
+                      max="1"
+                      step="0.01"
+                      value="0.5"
+                      required
+                    />
+                  </div>
+                </div>
+                <p class="field-hint">
+                  These thresholds are saved for error inspection and precision
+                  / recall. AP uses the retained detections across confidence
+                  scores, at IoU 0.50–0.95. Only person and car are evaluated.
+                  Choose thresholds on validation data.
+                </p>
+                <div class="comparison-launch">
+                  <p
+                    id="evaluation-selection"
+                    class="selection-count"
+                    aria-live="polite"
+                  ></p>
+                  <button
+                    id="evaluation-start"
+                    class="button button-primary"
+                    type="submit"
+                    disabled
+                  >
+                    Evaluate on validation →
+                  </button>
+                </div>
+                <p class="field-hint">
+                  Local CPU inference only. No training, model download or API
+                  call. You can cancel in Processing jobs.
+                </p>
+                <p
+                  id="evaluation-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+              </form>
+            </section>
+            <section
+              class="panel dataset-panel"
+              aria-labelledby="evaluation-history-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="evaluation-history-title">Evaluation runs</h2>
+                  <p>
+                    Saved metrics, paired comparisons and the frames behind each
+                    error.
+                  </p>
+                </div>
+                <span id="evaluation-history-count" class="count">0</span>
+              </div>
+              <div class="dataset-panel-body">
+                <label for="evaluation-history">Run history</label
+                ><select id="evaluation-history" disabled>
+                  <option value="">No evaluations yet</option>
+                </select>
+                <p
+                  id="evaluation-history-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+                <p id="evaluation-empty" class="field-hint">
+                  Complete an evaluation to inspect detection quality and record
+                  your choice of reference model.
+                </p>
+                <div id="evaluation-detail" hidden>
+                  <div class="comparison-run-heading">
+                    <div>
+                      <h3 id="evaluation-detail-name"></h3>
+                      <p id="evaluation-detail-context" class="field-hint"></p>
+                    </div>
+                    <span
+                      id="evaluation-detail-status"
+                      class="job-status"
+                    ></span>
+                  </div>
+                  <p
+                    id="evaluation-detail-message"
+                    class="field-hint"
+                    role="status"
+                  ></p>
+                  <p
+                    id="evaluation-detail-error"
+                    class="inline-error"
+                    role="alert"
+                    hidden
+                  ></p>
+                  <p
+                    id="evaluation-completeness"
+                    class="evaluation-completeness"
+                  ></p>
+                  <div id="evaluation-warnings" class="dataset-warnings"></div>
+                  <div
+                    id="evaluation-metrics"
+                    class="evaluation-table-scroll"
+                  ></div>
+                  <p id="evaluation-delta" class="field-hint"></p>
+                  <div
+                    id="evaluation-class-metrics"
+                    class="evaluation-table-scroll"
+                  ></div>
+                  <p class="field-hint">
+                    AP and mAP are shown as percentages. A class without labeled
+                    examples has N/A AP and is excluded from mAP; inspect its
+                    support and false positives. Small or unrepresentative
+                    datasets do not establish flight performance.
+                  </p>
+                  <div class="evaluation-inspection-heading">
+                    <div>
+                      <h3>Inspect errors</h3>
+                      <p
+                        class="field-hint"
+                        id="evaluation-inspection-thresholds"
+                      ></p>
+                    </div>
+                    <label class="checkbox-label" for="evaluation-errors-only"
+                      ><input type="checkbox" id="evaluation-errors-only" />
+                      Frames with errors only</label
+                    >
+                  </div>
+                  <div class="evaluation-frame-navigation">
+                    <label class="sr-only" for="evaluation-frame"
+                      >Frozen frame</label
+                    ><select id="evaluation-frame"></select
+                    ><button
+                      id="evaluation-previous"
+                      class="button button-secondary"
+                      type="button"
+                      aria-label="Previous evaluation frame"
+                    >
+                      ←</button
+                    ><button
+                      id="evaluation-next"
+                      class="button button-secondary"
+                      type="button"
+                      aria-label="Next evaluation frame"
+                    >
+                      →
+                    </button>
+                  </div>
+                  <p id="evaluation-frame-context" class="field-hint"></p>
+                  <p class="evaluation-legend">
+                    <span class="evaluation-legend-gt"
+                      >Dashed blue: human labels</span
+                    ><span class="evaluation-legend-tp"
+                      >Green: matched detection</span
+                    ><span class="evaluation-legend-fp"
+                      >Orange: false positive</span
+                    ><span class="evaluation-legend-fn"
+                      >Red dashed: missed label</span
+                    >
+                  </p>
+                  <div
+                    id="evaluation-canvases"
+                    class="evaluation-canvases"
+                  ></div>
+                  <details class="dataset-provenance">
+                    <summary>Evaluation protocol and provenance</summary>
+                    <pre id="evaluation-provenance"></pre>
+                  </details>
+                  <section
+                    id="evaluation-test-audit"
+                    class="evaluation-action"
+                    hidden
+                    aria-labelledby="evaluation-audit-title"
+                  >
+                    <h3 id="evaluation-audit-title">Final test audit</h3>
+                    <p class="field-hint">
+                      After making your validation choices, evaluate the same
+                      models and thresholds on the reserved test split. Keep
+                      test results for reporting; use validation to select a
+                      reference. The configuration is copied unchanged.
+                    </p>
+                    <label class="checkbox-label" for="evaluation-audit-confirm"
+                      ><input type="checkbox" id="evaluation-audit-confirm" />
+                      My validation choices are fixed for this audit.</label
+                    >
+                    <button
+                      id="evaluation-audit-start"
+                      class="button button-secondary"
+                      type="button"
+                      disabled
+                    >
+                      Run saved configuration on test →
+                    </button>
+                    <p
+                      id="evaluation-audit-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
+                  </section>
+                  <form
+                    id="evaluation-reference-form"
+                    class="evaluation-action"
+                    hidden
+                  >
+                    <h3>Choose a reference model</h3>
+                    <p class="field-hint">
+                      Record a human decision from this completed validation
+                      run. A higher score never promotes a model automatically.
+                      Previous decisions remain in the history.
+                    </p>
+                    <div class="training-form-grid">
+                      <div>
+                        <label for="evaluation-reference-model"
+                          >Evaluated model</label
+                        ><select
+                          id="evaluation-reference-model"
+                          required
+                        ></select>
+                      </div>
+                      <div>
+                        <label for="evaluation-reference-reviewer"
+                          >Reviewer</label
+                        ><input
+                          id="evaluation-reference-reviewer"
+                          required
+                          maxlength="120"
+                          autocomplete="name"
+                        />
+                      </div>
+                    </div>
+                    <label for="evaluation-reference-notes"
+                      >Reason for this choice</label
+                    ><textarea
+                      id="evaluation-reference-notes"
+                      required
+                      maxlength="2000"
+                      rows="2"
+                      placeholder="Describe the quality, errors and tradeoffs behind your choice."
+                    ></textarea>
+                    <button
+                      id="evaluation-reference-save"
+                      class="button button-primary"
+                      type="submit"
+                    >
+                      Save reference decision
+                    </button>
+                    <p
+                      id="evaluation-reference-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
+                  </form>
+                </div>
+              </div>
+            </section>
+            <section
+              class="panel dataset-panel"
+              aria-labelledby="evaluation-reference-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="evaluation-reference-title">Reference model</h2>
+                  <p>
+                    Your recorded choice, with validation evidence and decision
+                    history.
+                  </p>
+                </div>
+              </div>
+              <div class="dataset-panel-body">
+                <div id="evaluation-reference-current">
+                  <p class="field-hint">No reference has been chosen.</p>
+                </div>
+                <p
+                  id="evaluation-reference-history-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+                <details class="dataset-provenance">
+                  <summary>Reference decision history</summary>
+                  <div id="evaluation-reference-history"></div>
+                </details>
               </div>
             </section>
           </section>
@@ -1319,7 +1692,9 @@ ollama pull qwen3-vl:4b-instruct</pre
         </section>
         <footer class="page-footer">
           <span>IRIS / Computer vision for flight data</span
-          ><span>Data intake / Comparison / Annotation / Training</span>
+          ><span
+            >Data intake / Comparison / Annotation / Training / Evaluation</span
+          >
         </footer>
       </main>
     </div>

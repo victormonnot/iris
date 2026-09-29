@@ -2623,7 +2623,8 @@ select:focus-visible {
   margin-top: 14px;
 }
 .annotation-save-panel textarea,
-.annotation-assist textarea {
+.annotation-assist textarea,
+.evaluation-action textarea {
   width: 100%;
   resize: vertical;
   min-height: 58px;
@@ -2635,7 +2636,8 @@ select:focus-visible {
   background: #fff;
 }
 .annotation-save-panel textarea:focus-visible,
-.annotation-assist textarea:focus-visible {
+.annotation-assist textarea:focus-visible,
+.evaluation-action textarea:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
 }
@@ -2926,5 +2928,188 @@ select:focus-visible {
   }
   .workspace-tab {
     flex-shrink: 0;
+  }
+}
+
+/* Frozen-label evaluation and human reference decisions. */
+.evaluation-model-fieldset {
+  padding: 0;
+  margin: 20px 0 0;
+  border: 0;
+  min-width: 0;
+}
+.evaluation-model-fieldset legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.evaluation-models,
+.evaluation-canvases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.evaluation-models .model-card {
+  margin: 0;
+}
+.evaluation-thresholds {
+  margin-top: 20px;
+  max-width: 780px;
+}
+#evaluation-detail {
+  margin-top: 24px;
+}
+.evaluation-completeness {
+  margin: 18px 0;
+  padding: 12px 15px;
+  background: var(--pale);
+  border-radius: 7px;
+  font-size: 12px;
+}
+.evaluation-table-scroll {
+  overflow: auto;
+  margin: 18px 0;
+}
+.evaluation-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.evaluation-table th,
+.evaluation-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.evaluation-table thead th {
+  background: #f5f7f4;
+  font-weight: 600;
+}
+.evaluation-table tbody th {
+  white-space: normal;
+  min-width: 140px;
+  max-width: 250px;
+  font-weight: 500;
+}
+.evaluation-inspection-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 30px;
+}
+.evaluation-frame-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+.evaluation-frame-navigation select {
+  min-width: 0;
+  flex: 1;
+}
+.evaluation-frame-navigation .button {
+  flex-shrink: 0;
+}
+.evaluation-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 11px;
+  margin: 12px 0;
+}
+.evaluation-legend-gt {
+  color: #276090;
+}
+.evaluation-legend-tp {
+  color: #21634b;
+}
+.evaluation-legend-fp {
+  color: #94621a;
+}
+.evaluation-legend-fn {
+  color: #a34242;
+}
+.evaluation-canvases.single-model {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 850px;
+}
+.evaluation-canvases svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.evaluation-frame-errors {
+  padding: 12px 15px;
+  overflow-wrap: anywhere;
+}
+.evaluation-frame-errors p + p {
+  margin-top: 8px;
+}
+.evaluation-action {
+  padding: 22px;
+  background: #f6f8f5;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin-top: 22px;
+}
+.evaluation-action > p,
+.evaluation-action > label,
+.evaluation-action > .button,
+.evaluation-action > .training-form-grid {
+  margin-top: 15px;
+}
+.evaluation-action .checkbox-label {
+  align-items: start;
+}
+.evaluation-action textarea {
+  width: 100%;
+  resize: vertical;
+}
+.evaluation-reference-entry {
+  padding: 8px 0 18px;
+  overflow-wrap: anywhere;
+}
+.evaluation-reference-entry + .evaluation-reference-entry {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.evaluation-reference-entry > p,
+.evaluation-reference-entry > button {
+  margin-top: 8px;
+}
+@media (max-width: 1050px) {
+  .workspace-tabs {
+    overflow-x: auto;
+  }
+  .workspace-tab {
+    flex-shrink: 0;
+  }
+  .evaluation-canvases {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .evaluation-models {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evaluation-inspection-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+  .evaluation-action {
+    padding: 14px;
+  }
+  .evaluation-action .button {
+    white-space: normal;
+    text-align: left;
+  }
+  .evaluation-frame-navigation {
+    flex-wrap: wrap;
+  }
+  .evaluation-frame-navigation select {
+    flex-basis: 100%;
   }
 }

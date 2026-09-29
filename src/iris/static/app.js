@@ -570,7 +570,7 @@ function renderJobs() {
         "h3",
         "job-name",
         asset?.filename ||
-          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : job.kind === "train" ? "Detector training" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
+          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : job.kind === "train" ? "Detector training" : job.kind === "evaluate" ? "Quality evaluation" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
       ),
       node("span", `job-status ${job.status}`, job.status),
     );
