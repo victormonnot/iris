@@ -71,6 +71,53 @@ images still count. An entirely negative split has no AP or recall; its false
 positives remain useful evidence. Class support and prediction counts accompany
 the scores. A small or unbalanced reference cannot support broad quality claims.
 
+## Explore saved errors and paired changes
+
+The error explorer uses completed evaluation results to find examples, without
+running inference or calculating a new set of metrics. Choose all classes,
+person or car, then filter missed objects, false positives or changes between
+the two models. The table opens the same frozen image in the existing side-by-side
+viewer. Class filtering retains the original annotation and prediction indices.
+
+The first model in the saved evaluation is the **baseline**, and the second is
+the **candidate**. These names indicate comparison direction, not training age
+or a recommendation. A single-model evaluation supports error inspection but
+has no paired changes.
+
+| Change | Meaning at the saved confidence and IoU thresholds |
+| --- | --- |
+| New misses | Reference objects matched by the baseline but missed by the candidate. |
+| Recovered objects | Reference objects missed by the baseline but matched by the candidate. |
+| False-positive delta | Candidate false-positive count minus baseline false-positive count. |
+
+Changes in misses compare the exact same frozen reference object indices.
+For example, if the baseline misses person A and the candidate misses person B,
+each model has one miss, but the comparison shows one recovered object and one
+new miss. A wrong-class detection can contribute a missed object in one class
+and a false positive in another. False-positive deltas compare counts; they do
+not establish correspondence between individual predictions from two models.
+
+The class summary covers the **whole saved split**. Table filters and sorting
+only change the examples being browsed; they do not change AP, mAP, the operating
+thresholds or the frozen release. Validated negative images remain in the table,
+including those with false positives. A class with no reference objects keeps
+its false positives and zero object count; the existing AP display stays N/A.
+Matching still follows the saved evaluation protocol, including its tie rules.
+Paired changes are inspection evidence, not proof of an overall quality gain.
+
+`GET /api/evaluations/{evaluation_id}/analysis` provides the same read-only
+analysis under protocol `iris-error-analysis-v1`. It checks completed coverage,
+saved model/frame/protocol identities and the consistency of the recorded error
+indices and counts. Missing or incompatible records make the analysis unavailable
+(HTTP 409); they are never interpreted as empty predictions or perfect detections.
+An unknown evaluation returns 404. The explorer reads saved artifacts, not model
+weights, image pixels or current annotation edits. Image serving separately
+checks frozen pixels when the viewer opens them.
+
+Test-audit errors remain available for reporting. Inspecting them does not move
+images into training or promote a model, and using them to make later choices
+can compromise the test's independence. Use validation for model improvements.
+
 ## Validation, test and model choices
 
 Dataset creation reserves scene groups and exact pixel hashes to one split across
@@ -117,6 +164,12 @@ mapping errors and COCO interpolation. Workflow tests cover immutable inputs,
 training overlap, changed hashes, partial results, fixed test settings and
 reference history. The opt-in CPU test trains a real checkpoint, evaluates it
 against its parent, audits the test split and verifies persistence.
+
+Error-explorer fixtures cover recovered and newly missed objects despite equal
+miss totals, class-specific false positives, negative images, original source
+indices, single-model and incomplete runs, saved-result integrity and reopening
+the workspace. These checks use synthetic labels and predictions; the explorer
+itself never runs a detector.
 
 All generated test images and automated review records are explicitly synthetic.
 They establish software behavior, not aerial detection accuracy. Real validation

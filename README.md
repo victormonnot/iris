@@ -384,6 +384,20 @@ unrecognized related scenes.
 See [the evaluation protocol](docs/evaluation.md) for metric definitions,
 filtering limits, handling of absent classes, and verification scope.
 
+### Find errors and regressions
+
+Open a completed run in **Evaluation** to explore its saved errors. Filter by
+person or car, find missed objects and false positives, and open a row to inspect
+the same frozen image with both models' overlays. With two models, the first is
+the baseline and the second is the candidate: see objects the candidate recovers,
+objects it newly misses, and changes in false-positive counts.
+
+This comparison follows individual reference objects, so an unchanged miss total
+can still reveal both recoveries and regressions. Filters change the examples
+shown, not the saved metrics or thresholds. No inference is rerun. Incomplete or
+inconsistent results are shown as unavailable, and test audits remain for
+reporting rather than model selection.
+
 ## Development and verification
 
 ```sh
@@ -401,6 +415,7 @@ COCO archive validation, imported-label review and source split preservation,
 frozen COCO exports, negative images, checksums and interrupted-download cleanup,
 review progress, saved-prediction disagreement and read-only queue persistence,
 COCO metrics, error matching, fixed test audits, reference history,
+saved error analysis, class filters and paired recovered/newly missed objects,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not

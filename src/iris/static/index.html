@@ -1572,9 +1572,77 @@ ollama pull qwen3-vl:4b-instruct</pre
                     support and false positives. Small or unrepresentative
                     datasets do not establish flight performance.
                   </p>
+                  <section
+                    id="evaluation-analysis"
+                    class="evaluation-analysis"
+                    aria-labelledby="evaluation-analysis-title"
+                  >
+                    <h3 id="evaluation-analysis-title">Explore saved errors</h3>
+                    <p id="evaluation-analysis-context" class="field-hint"></p>
+                    <p id="evaluation-analysis-status" class="field-hint" role="status"></p>
+                    <p
+                      id="evaluation-analysis-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
+                    <div class="evaluation-analysis-controls">
+                      <div>
+                        <label for="evaluation-analysis-class">Class</label>
+                        <select id="evaluation-analysis-class" disabled>
+                          <option value="all">All classes</option>
+                          <option value="person">Person</option>
+                          <option value="car">Car</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="evaluation-analysis-filter">Show frames</label>
+                        <select id="evaluation-analysis-filter" disabled>
+                          <option value="all">All frames</option>
+                          <option value="errors">Any errors</option>
+                          <option value="misses">Missed objects</option>
+                          <option value="fp">False positives</option>
+                          <option value="new_misses" data-paired>New misses</option>
+                          <option value="recovered" data-paired>Recovered labels</option>
+                          <option value="more_fp" data-paired>More false positives</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="evaluation-analysis-sort">Order</label>
+                        <select id="evaluation-analysis-sort" disabled>
+                          <option value="source">Source order</option>
+                          <option value="misses">Most missed objects</option>
+                          <option value="fp">Most false positives</option>
+                          <option value="new_misses" data-paired>Most new misses</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div
+                      id="evaluation-analysis-summary"
+                      class="evaluation-analysis-summary"
+                    ></div>
+                    <p id="evaluation-analysis-count" class="field-hint" role="status"></p>
+                    <div
+                      id="evaluation-analysis-table"
+                      class="evaluation-table-scroll"
+                      tabindex="0"
+                      role="region"
+                      aria-label="Frozen images with saved error counts"
+                    ></div>
+                    <details id="evaluation-analysis-method" hidden>
+                      <summary>How to read these changes</summary>
+                      <p class="field-hint">
+                        A new miss is a labeled object matched by the baseline and missed by the
+                        candidate; a recovered label is the reverse. False-positive changes
+                        compare counts, not individual objects. Miss and false-positive ordering
+                        uses the larger count of either model.
+                      </p>
+                      <div id="evaluation-analysis-warnings"></div>
+                    </details>
+                  </section>
                   <div class="evaluation-inspection-heading">
                     <div>
-                      <h3>Inspect errors</h3>
+                      <h3 id="evaluation-inspection-title" tabindex="-1">Inspect errors</h3>
                       <p
                         class="field-hint"
                         id="evaluation-inspection-thresholds"

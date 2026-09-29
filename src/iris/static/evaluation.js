@@ -18,6 +18,9 @@
     catalogRequest: 0,
     historyRequest: 0,
     detailRequest: 0,
+    analysisRequest: 0,
+    analysisController: null,
+    analysis: null,
     jobStatuses: new Map(),
   };
   const percent = (value) =>
@@ -175,7 +178,13 @@
       select.disabled = !history.length;
       $("#evaluation-history-count").textContent = String(history.length);
       $("#evaluation-empty").hidden = Boolean(history.length);
-      if (!history.length) $("#evaluation-detail").hidden = true;
+      if (!history.length) {
+        ++view.detailRequest;
+        view.detail = null;
+        view.frameId = null;
+        resetAnalysis("No evaluation selected.");
+        $("#evaluation-detail").hidden = true;
+      }
       error("#evaluation-history-error", null);
       if (view.activeId) await loadDetail(view.activeId);
     } catch (failure) {
@@ -185,25 +194,37 @@
   }
   async function loadDetail(id) {
     const request = ++view.detailRequest;
+    resetAnalysis("Loading saved error analysis…");
     try {
       const detail = await api(`/api/evaluations/${safe(id)}`);
       if (request !== view.detailRequest || view.activeId !== id) return;
       error("#evaluation-history-error", null);
-      if (JSON.stringify(detail) === JSON.stringify(view.detail)) return;
+      if (JSON.stringify(detail) === JSON.stringify(view.detail)) {
+        await loadAnalysis(id, request);
+        return;
+      }
       const changed = view.detail?.id !== id;
       view.detail = detail;
       if (changed) {
         view.frameId = null;
         $("#evaluation-errors-only").checked = false;
+        $("#evaluation-analysis-class").value = "all";
+        $("#evaluation-analysis-filter").value = "all";
+        $("#evaluation-analysis-sort").value = "source";
         $("#evaluation-audit-confirm").checked = false;
         $("#evaluation-reference-notes").value = "";
         error("#evaluation-audit-error", null);
         error("#evaluation-reference-error", null);
       }
       renderDetail(changed);
+      await loadAnalysis(id, request);
     } catch (failure) {
-      if (request === view.detailRequest)
+      if (request === view.detailRequest) {
+        resetAnalysis(
+          "Saved error analysis is unavailable. Refresh to try again.",
+        );
         error("#evaluation-history-error", failure);
+      }
     }
   }
   function table(caption, headings, rows) {
@@ -330,7 +351,116 @@
       .find((model) => model.model_id === modelId)
       ?.metrics?.frames?.find((frame) => frame.frame_id === id);
   }
+  function analysisClass() {
+    return view.analysis ? $("#evaluation-analysis-class").value : "all";
+  }
+  function includesClass(label) {
+    return analysisClass() === "all" || label === analysisClass();
+  }
+  function resetAnalysis(message) {
+    ++view.analysisRequest;
+    view.analysisController?.abort();
+    view.analysisController = null;
+    view.analysis = null;
+    $("#evaluation-analysis-status").textContent = message;
+    $("#evaluation-analysis-summary").replaceChildren();
+    $("#evaluation-analysis-table").replaceChildren();
+    $("#evaluation-analysis-context").textContent = "";
+    $("#evaluation-analysis-count").textContent = "";
+    $("#evaluation-analysis-warnings").replaceChildren();
+    $("#evaluation-analysis-method").hidden = true;
+    error("#evaluation-analysis-error", null);
+    for (const selector of ["class", "filter", "sort"])
+      $(`#evaluation-analysis-${selector}`).disabled = true;
+  }
+  async function loadAnalysis(id, detailRequest) {
+    if (!complete()) {
+      resetAnalysis(
+        "Analysis unavailable for an incomplete evaluation. Saved predictions remain inspectable below.",
+      );
+      return;
+    }
+    const request = ++view.analysisRequest;
+    const controller = new AbortController();
+    view.analysisController = controller;
+    const current = () =>
+      request === view.analysisRequest &&
+      detailRequest === view.detailRequest &&
+      id === view.activeId;
+    try {
+      const result = await api(`/api/evaluations/${safe(id)}/analysis`, {
+        signal: controller.signal,
+      });
+      if (!current()) return;
+      view.analysis = result;
+      $("#evaluation-analysis-status").textContent = "";
+      for (const selector of ["class", "filter", "sort"])
+        $(`#evaluation-analysis-${selector}`).disabled = false;
+      const paired = Boolean(result.comparison);
+      for (const option of document.querySelectorAll(
+        "#evaluation-analysis [data-paired]",
+      ))
+        option.disabled = !paired;
+      if (!paired) {
+        if (
+          ["new_misses", "recovered", "more_fp"].includes(
+            $("#evaluation-analysis-filter").value,
+          )
+        )
+          $("#evaluation-analysis-filter").value = "all";
+        if ($("#evaluation-analysis-sort").value === "new_misses")
+          $("#evaluation-analysis-sort").value = "source";
+      }
+      if ($("#evaluation-errors-only").checked)
+        $("#evaluation-analysis-filter").value = "errors";
+      renderAnalysis();
+    } catch (failure) {
+      if (!current()) return;
+      $("#evaluation-analysis-status").textContent =
+        "Saved error analysis is unavailable. No error totals are assumed. Refresh to try again.";
+      error("#evaluation-analysis-error", failure);
+      populateFrames();
+    } finally {
+      if (current()) view.analysisController = null;
+    }
+  }
+  function analysisFrames() {
+    if (!view.analysis) return [];
+    const scope = analysisClass();
+    const filter = $("#evaluation-analysis-filter").value;
+    const order = $("#evaluation-analysis-sort").value;
+    const maximum = (stats, key) =>
+      Math.max(...Object.values(stats.models).map((item) => item[key]));
+    return view.analysis.frames
+      .filter((frame) => {
+        const stats = frame.counts[scope];
+        if (filter === "errors")
+          return maximum(stats, "fn") + maximum(stats, "fp") > 0;
+        if (filter === "misses") return maximum(stats, "fn") > 0;
+        if (filter === "fp") return maximum(stats, "fp") > 0;
+        if (filter === "new_misses") return stats.changes?.new_misses > 0;
+        if (filter === "recovered") return stats.changes?.recovered > 0;
+        if (filter === "more_fp") return stats.changes?.fp_delta > 0;
+        return true;
+      })
+      .sort((left, right) => {
+        const value = (frame) => {
+          const stats = frame.counts[scope];
+          if (order === "misses") return maximum(stats, "fn");
+          if (order === "fp") return maximum(stats, "fp");
+          if (order === "new_misses") return stats.changes?.new_misses || 0;
+          return 0;
+        };
+        return value(right) - value(left) || left.position - right.position;
+      });
+  }
   function availableFrames() {
+    if (view.analysis) {
+      const byId = new Map(frames().map((frame) => [frameId(frame), frame]));
+      return analysisFrames()
+        .map((row) => byId.get(row.frame_id))
+        .filter(Boolean);
+    }
     return frames().filter(
       (frame) =>
         !$("#evaluation-errors-only").checked ||
@@ -339,6 +469,123 @@
           return errors && (errors.fp > 0 || errors.fn > 0);
         }),
     );
+  }
+  function renderAnalysis() {
+    const analysis = view.analysis;
+    if (!analysis) return;
+    const scope = analysisClass();
+    const stats = analysis.summary[scope];
+    const signed = (value) => `${value > 0 ? "+" : ""}${value}`;
+    const names = new Map(
+      analysis.models.map((model) => [model.id, model.name]),
+    );
+    const baseline = analysis.comparison?.baseline_model_id;
+    const candidate = analysis.comparison?.candidate_model_id;
+    const label = (model) =>
+      `${baseline === model.id ? "Baseline: " : candidate === model.id ? "Candidate: " : ""}${model.name}`;
+    $("#evaluation-analysis-context").textContent =
+      `Saved confidence ≥ ${analysis.confidence_threshold} · matching IoU ≥ ${analysis.iou_threshold}. ` +
+      (analysis.comparison
+        ? `Baseline: ${names.get(baseline)} → candidate: ${names.get(candidate)} (saved model order). `
+        : "One model; paired changes are unavailable. ") +
+      (analysis.split === "test"
+        ? "Test audit: reporting only. Use validation for model selection."
+        : "Uses saved matches and predictions; no new inference or AP calculation.");
+    const summary = $("#evaluation-analysis-summary");
+    summary.replaceChildren(
+      node(
+        "strong",
+        "",
+        `Whole ${analysis.split === "test" ? "test" : "validation"} split · ${scope === "all" ? "all classes" : scope} · ${stats.frame_count} frames · ${stats.ground_truth_count} labeled objects`,
+      ),
+    );
+    for (const model of analysis.models) {
+      const totals = stats.models[model.id];
+      summary.append(
+        node(
+          "p",
+          "field-hint",
+          `${label(model)}: ${totals.tp} matched · ${totals.fp} false positives · ${totals.fn} missed · ${totals.error_frames} frames with errors`,
+        ),
+      );
+    }
+    if (stats.changes)
+      summary.append(
+        node(
+          "p",
+          "field-hint",
+          `Candidate changes: ${stats.changes.new_misses} new misses · ${stats.changes.recovered} recovered labels · false-positive count change: ${signed(stats.changes.fp_delta)}`,
+        ),
+      );
+    $("#evaluation-analysis-method").hidden = false;
+    const warnings = $("#evaluation-analysis-warnings");
+    warnings.replaceChildren();
+    for (const warning of analysis.warnings || [])
+      warnings.append(node("p", "field-hint", warning));
+    const rows = analysisFrames();
+    $("#evaluation-analysis-count").textContent =
+      `${rows.length} of ${analysis.frames.length} frames shown. Filters affect this table and image navigation; whole-split totals stay unchanged.`;
+    const headings = [
+      "Frozen image / scene",
+      ...analysis.models.map(
+        (model) =>
+          `${baseline === model.id ? "Baseline" : candidate === model.id ? "Candidate" : "Model"} · TP / FP / FN`,
+      ),
+    ];
+    if (analysis.comparison)
+      headings.push("New misses", "Recovered", "FP change");
+    const result = table("Saved errors by frozen image", headings, []);
+    analysis.models.forEach((model, index) => {
+      result.querySelectorAll("thead th")[index + 1].title =
+        `${label(model)}: matched detections / false positives / missed labeled objects`;
+    });
+    const body = result.querySelector("tbody");
+    for (const frame of rows) {
+      const row = node("tr");
+      row.dataset.frameId = frame.frame_id;
+      const context = node("th");
+      context.scope = "row";
+      const open = node(
+        "button",
+        "text-button",
+        frame.source_filename || frame.frame_id,
+      );
+      open.type = "button";
+      open.addEventListener("click", () => {
+        view.frameId = frame.frame_id;
+        $("#evaluation-frame").value = view.frameId;
+        renderFrame();
+        $("#evaluation-inspection-title").scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        $("#evaluation-inspection-title").focus({ preventScroll: true });
+      });
+      context.append(
+        open,
+        node("span", "field-hint", frame.scene_group || "Scene"),
+      );
+      row.append(context);
+      const counts = frame.counts[scope];
+      for (const model of analysis.models) {
+        const item = counts.models[model.id];
+        row.append(node("td", "", `${item.tp} / ${item.fp} / ${item.fn}`));
+      }
+      if (counts.changes)
+        row.append(
+          node("td", "", String(counts.changes.new_misses)),
+          node("td", "", String(counts.changes.recovered)),
+          node("td", "", signed(counts.changes.fp_delta)),
+        );
+      body.append(row);
+    }
+    const container = $("#evaluation-analysis-table");
+    container.replaceChildren(
+      rows.length
+        ? result
+        : node("p", "field-hint", "No frames match these filters."),
+    );
+    populateFrames();
   }
   function populateFrames() {
     const options = availableFrames();
@@ -411,9 +658,24 @@
     $("#evaluation-next").disabled =
       position < 0 || position >= options.length - 1;
     const frame = options[position];
+    for (const row of document.querySelectorAll(
+      "#evaluation-analysis-table tbody tr",
+    )) {
+      const active = row.dataset.frameId === view.frameId;
+      row.classList.toggle("active", active);
+      if (active)
+        row.querySelector("button").setAttribute("aria-current", "true");
+      else row.querySelector("button").removeAttribute("aria-current");
+    }
+    const labels = (frame?.boxes || []).filter((box) =>
+      includesClass(box.label),
+    );
     $("#evaluation-frame-context").textContent = frame
       ? `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${(frame.boxes || []).length ? `${frame.boxes.length} human-validated boxes` : "Validated negative frame: no labeled objects"}`
       : "No frozen frame matches this filter.";
+    if (frame && analysisClass() !== "all")
+      $("#evaluation-frame-context").textContent =
+        `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${labels.length} ${analysisClass()} human-validated boxes (class filter)`;
     container.classList.toggle(
       "single-model",
       view.detail.model_ids.length === 1,
@@ -432,6 +694,7 @@
         .filter(
           (detection) =>
             ["person", "car"].includes(detection.label) &&
+            includesClass(detection.label) &&
             detection.score >= config().confidence_threshold,
         );
       heading.append(
@@ -445,7 +708,7 @@
       const svg = svgNode("svg", {
         viewBox: `0 0 ${frame.width} ${frame.height}`,
         role: "img",
-        "aria-label": `${modelName(modelId)}, ${shown.length} detections, ${(frame.boxes || []).length} human labels`,
+        "aria-label": `${modelName(modelId)}, ${shown.length} detections, ${labels.length} human labels`,
       });
       svg.append(
         svgNode("image", {
@@ -459,7 +722,8 @@
       );
       const missed = new Set(errors?.false_negatives || []);
       const falsePositives = new Set(errors?.false_positives || []);
-      (frame.boxes || []).forEach((box, index) =>
+      (frame.boxes || []).forEach((box, index) => {
+        if (!includesClass(box.label)) return;
         overlayBox(
           svg,
           box.box,
@@ -468,8 +732,8 @@
           true,
           frame.width,
           frame.height,
-        ),
-      );
+        );
+      });
       for (const detection of shown)
         overlayBox(
           svg,
@@ -486,29 +750,32 @@
         );
       visual.append(svg);
       const context = node("div", "evaluation-frame-errors");
+      const scoped =
+        view.analysis?.frames.find((item) => item.frame_id === view.frameId)
+          ?.counts[analysisClass()].models[modelId] || errors;
       context.append(
         node(
           "p",
           "field-hint",
           errors
-            ? `${errors.tp} matched · ${errors.fp} false positives · ${errors.fn} missed labels`
+            ? `${scoped.tp} matched · ${scoped.fp} false positives · ${scoped.fn} missed labels${analysisClass() === "all" ? "" : ` · ${analysisClass()} only`}`
             : prediction
               ? "Raw predictions available; complete frame error metrics are not available yet."
               : "This model has not processed this frame.",
         ),
       );
-      if (errors && (errors.fp || errors.fn)) {
+      if (errors && (scoped.fp || scoped.fn)) {
         const descriptions = [];
         for (const index of errors.false_positives || []) {
           const detection = prediction?.detections[index];
-          if (detection)
+          if (detection && includesClass(detection.label))
             descriptions.push(
               `FP: ${detection.label} (${percent(detection.score)} confidence)`,
             );
         }
         for (const index of errors.false_negatives || []) {
           const box = frame.boxes?.[index];
-          if (box)
+          if (box && includesClass(box.label))
             descriptions.push(`Missed: ${box.label}, label ${index + 1}`);
         }
         context.append(node("p", "field-hint", descriptions.join(" · ")));
@@ -778,7 +1045,21 @@
     view.frameId = event.target.value;
     renderFrame();
   });
-  $("#evaluation-errors-only").addEventListener("change", populateFrames);
+  $("#evaluation-errors-only").addEventListener("change", () => {
+    if (view.analysis) {
+      $("#evaluation-analysis-filter").value = $("#evaluation-errors-only")
+        .checked
+        ? "errors"
+        : "all";
+      renderAnalysis();
+    } else populateFrames();
+  });
+  for (const selector of ["class", "filter", "sort"])
+    $(`#evaluation-analysis-${selector}`).addEventListener("change", () => {
+      $("#evaluation-errors-only").checked =
+        $("#evaluation-analysis-filter").value === "errors";
+      renderAnalysis();
+    });
   $("#evaluation-audit-confirm").addEventListener("change", () =>
     renderActions(false),
   );

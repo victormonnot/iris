@@ -146,6 +146,13 @@ split has finished. Publishing the last model's metrics and job success is atomi
 Cancelled and failed runs preserve completed outputs without presenting a
 partial model as a complete score.
 
+The error explorer derives per-frame and per-class counts from completed saved
+evaluations. Paired recoveries and new misses use the same frozen reference
+indices; false-positive changes compare counts only. It checks saved record
+identities and error partitions without rerunning detectors, rematching objects
+or recomputing AP. Filters select examples for the existing image viewer and do
+not mutate releases, metrics, reference decisions or test reservations.
+
 `pycocotools` 2.0.11 implements COCO bbox AP; separate deterministic matching
 provides confidence-specific precision/recall and per-frame errors. Class IDs
 and definitions are explicit, including classes without reference instances.

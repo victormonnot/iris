@@ -36,6 +36,7 @@ from iris.evaluation import (
     promote_reference,
     reference_history,
 )
+from iris.evaluation_analysis import analyze_evaluation
 from iris.inference import (
     _load_verified_frame,
     comparison_detail,
@@ -283,6 +284,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "assisted_annotation": True,
                 "dataset_versions": True,
                 "dataset_export": True,
+                "evaluation_analysis": True,
                 "coco_import": True,
                 "training": True,
                 "evaluation": True,
@@ -479,6 +481,14 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/evaluations/{evaluation_id}/analysis")
+    def evaluation_errors(evaluation_id: str):
+        require("evaluations", evaluation_id)
+        try:
+            return analyze_evaluation(store, evaluation_id)
+        except (ValueError, OSError, RuntimeError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/evaluations/{evaluation_id}")

@@ -3169,6 +3169,72 @@ select:focus-visible {
   gap: 16px;
   margin-top: 30px;
 }
+.evaluation-analysis {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.evaluation-analysis > .field-hint {
+  margin-top: 9px;
+}
+.evaluation-analysis-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+.evaluation-analysis-controls select {
+  width: 100%;
+}
+.evaluation-analysis-summary:not(:empty) {
+  border-radius: 7px;
+  padding: 14px;
+  background: var(--pale);
+  margin: 16px 0;
+}
+.evaluation-analysis-summary strong {
+  font-size: 12px;
+}
+.evaluation-analysis-summary .field-hint {
+  margin-top: 7px;
+}
+#evaluation-analysis-table {
+  max-height: 420px;
+}
+#evaluation-analysis-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+#evaluation-analysis-table thead th {
+  white-space: normal;
+}
+#evaluation-analysis-table tbody tr.active {
+  background: var(--pale);
+}
+#evaluation-analysis-table th .field-hint {
+  display: block;
+  margin-top: 5px;
+}
+#evaluation-analysis-table .text-button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#evaluation-analysis-method {
+  font-size: 12px;
+}
+#evaluation-analysis-method summary {
+  color: var(--green);
+  cursor: pointer;
+}
+#evaluation-analysis-method .field-hint {
+  margin-top: 9px;
+}
+@media (max-width: 600px) {
+  .evaluation-analysis-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .evaluation-frame-navigation {
   display: flex;
   align-items: center;
