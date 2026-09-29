@@ -9,14 +9,14 @@ deployment, drone control, tracking, and segmentation are outside this version.
 
 One Python application serves a FastAPI JSON API and a plain HTML/CSS/JavaScript
 interface. SQLite stores metadata; a configurable local data directory stores
-media and artifacts. A subprocess worker executes extraction jobs; the same
-boundary will host inference and training without blocking requests. No Node build step, database
-server, cloud account, or GPU is required to use the data workspace.
+media and artifacts. A subprocess worker executes extraction and inference jobs;
+the same boundary will host training without blocking requests. No Node build
+step, database server, cloud account, or GPU is required for the data workspace.
 
 Processing code is separate from the API and UI. Detection adapters expose
 inference and declare whether training is supported. An annotation-provider
 adapter consumes selected images or crops and returns reviewable suggestions.
-Both will use the same persisted job lifecycle: queued, running, succeeded,
+Processing jobs share a persisted lifecycle: queued, running, succeeded,
 failed, cancelled, or interrupted. Jobs retain configuration, logs, errors, and
 useful partial artifacts; interrupted work is identified on restart, never
 reported as success.
@@ -27,7 +27,7 @@ This is a single-user application, not an authenticated public service.
 
 ## Model and annotation choices
 
-The planned first detector backend is PyTorch/Torchvision, installed separately
+The detector backend is PyTorch/Torchvision, installed separately
 from the lightweight workspace dependencies:
 
 | Model | First capability | Official checkpoint size |
@@ -35,11 +35,11 @@ from the lightweight workspace dependencies:
 | [SSDLite320 MobileNetV3-Large, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.ssdlite320_mobilenet_v3_large.html) | Inference baseline | 13.4 MB |
 | [Faster R-CNN MobileNetV3-Large 320 FPN, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn.html) | Inference and fine-tuning | 74.2 MB |
 
-They share one runtime and label vocabulary. These are inexpensive starting
-points for a small CPU experiment, not validated aerial detectors. Small distant
+They share one optional CPU runtime and label vocabulary. These are starting
+points for a small experiment, not validated aerial detectors. Small distant
 objects may require higher resolution or different models after measurement.
 Torchvision supports a [standard detection fine-tuning workflow](https://docs.pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
-The first training integration replaces the Faster R-CNN prediction head for the
+The planned training integration will replace the Faster R-CNN prediction head for the
 project classes and records the frozen layers and optimizer configuration.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
@@ -100,9 +100,9 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Five testable increments
 
-Only the data-workspace increment is part of the initial implementation. The
-remaining four increments are planned V1 work, not available integrations.
-The README records the current run commands and verification limits.
+The data workspace and saved model comparisons (increments 1–2) are implemented.
+Annotation, dataset releases/training, and quality evaluation (increments 3–5)
+remain planned V1 work. The README records setup commands and verification limits.
 
 | Increment | Usable result | Acceptance check |
 | --- | --- | --- |

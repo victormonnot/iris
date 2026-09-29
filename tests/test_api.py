@@ -403,4 +403,4 @@ def test_same_origin_mutation_succeeds_but_unknown_host_is_rejected(client):
     response = client.get("/api/system")
     assert response.headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
-    assert response.json()["capabilities"]["inference"] is False
+    assert response.json()["capabilities"]["inference"] is True

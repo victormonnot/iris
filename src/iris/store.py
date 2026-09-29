@@ -48,11 +48,41 @@ CREATE INDEX IF NOT EXISTS frames_session ON frames(session_id);
 CREATE INDEX IF NOT EXISTS frames_hash ON frames(sha256);
 CREATE INDEX IF NOT EXISTS assets_session ON assets(session_id);
 CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status);
+CREATE TABLE IF NOT EXISTS comparisons (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), name TEXT NOT NULL,
+    frame_ids TEXT NOT NULL, model_ids TEXT NOT NULL, config TEXT NOT NULL,
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES comparisons(id),
+    model_id TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(comparison_id, model_id)
+);
+CREATE TABLE IF NOT EXISTS predictions (
+    id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES comparisons(id),
+    run_id TEXT NOT NULL REFERENCES runs(id), frame_id TEXT NOT NULL REFERENCES frames(id),
+    model_id TEXT NOT NULL, detections TEXT NOT NULL, timing TEXT NOT NULL,
+    input_size TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(run_id, frame_id)
+);
+CREATE INDEX IF NOT EXISTS comparisons_session ON comparisons(session_id);
+CREATE INDEX IF NOT EXISTS predictions_comparison ON predictions(comparison_id);
 """
 
-JSON_FIELDS = {"metadata", "params", "result", "logs", "extraction"}
+JSON_FIELDS = {
+    "metadata",
+    "params",
+    "result",
+    "logs",
+    "extraction",
+    "frame_ids",
+    "model_ids",
+    "config",
+    "detections",
+    "timing",
+    "input_size",
+}
 BOOL_FIELDS = {"selected", "cancel_requested"}
-TABLES = {"sessions", "assets", "frames", "jobs"}
+TABLES = {"sessions", "assets", "frames", "jobs", "comparisons", "runs", "predictions"}
 
 
 def _decode(row: sqlite3.Row | None) -> dict | None:
@@ -84,10 +114,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise RuntimeError(f"Unsupported database version: {version}")
-            conn.executescript(SCHEMA)
-            conn.execute("PRAGMA user_version=1")
+            # Schema 2 is additive: preserve all original media, selections and jobs.
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=2;\nCOMMIT;")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

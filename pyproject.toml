@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-workbench"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local computer vision workbench for drone imagery"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -16,6 +16,18 @@ dependencies = [
   "numpy>=2,<3",
   "opencv-python-headless>=4.11,<5",
 ]
+
+[project.optional-dependencies]
+ml = ["torch==2.10.0", "torchvision==0.25.0"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", extra = "ml" }]
+torchvision = [{ index = "pytorch-cpu", extra = "ml" }]
 
 [project.scripts]
 iris = "iris.cli:main"

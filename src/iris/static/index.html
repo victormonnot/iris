@@ -8,10 +8,11 @@
       name="description"
       content="IRIS — a local computer vision workbench for flight data."
     />
-    <title>IRIS · Data intake</title>
+    <title>IRIS · Vision workbench</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
+    <script src="/static/comparison.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to workspace</a>
@@ -81,16 +82,16 @@
       <main id="main" tabindex="-1">
         <div class="page-heading">
           <div>
-            <div class="eyebrow">
+            <div class="eyebrow" id="workspace-step">
               <span class="step-marker">01</span> Data intake
             </div>
-            <h1>From flight to frames.</h1>
-            <p class="page-description">
+            <h1 id="workspace-title">From flight to frames.</h1>
+            <p class="page-description" id="workspace-description">
               Import source footage, sample frames and select the data worth
               keeping.
             </p>
           </div>
-          <span class="phase-tag">Local · Data intake</span>
+          <span class="phase-tag">Local · Vision workbench</span>
         </div>
         <div
           id="notice"
@@ -151,76 +152,325 @@
               </div>
             </div>
           </section>
-          <section class="panel sources-panel" aria-labelledby="sources-title">
-            <div class="panel-heading">
-              <div>
-                <h2 id="sources-title">Source files</h2>
-                <p>
-                  Images become frames immediately. Sample video at your own
-                  pace.
-                </p>
+          <nav class="workspace-tabs" aria-label="Session workspace">
+            <button
+              id="workspace-intake"
+              class="workspace-tab active"
+              type="button"
+              aria-pressed="true"
+              aria-controls="intake-workspace"
+            >
+              <span>01</span> Data intake
+            </button>
+            <button
+              id="workspace-comparison"
+              class="workspace-tab"
+              type="button"
+              aria-pressed="false"
+              aria-controls="comparison-workspace"
+            >
+              <span>02</span> Model comparison
+            </button>
+          </nav>
+          <div id="intake-workspace">
+            <section
+              class="panel sources-panel"
+              aria-labelledby="sources-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="sources-title">Source files</h2>
+                  <p>
+                    Images become frames immediately. Sample video at your own
+                    pace.
+                  </p>
+                </div>
+                <label
+                  for="file-input"
+                  class="button button-primary upload-trigger"
+                  ><span aria-hidden="true">↑</span> Import files<input
+                    id="file-input"
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                /></label>
               </div>
-              <label
-                for="file-input"
-                class="button button-primary upload-trigger"
-                ><span aria-hidden="true">↑</span> Import files<input
-                  id="file-input"
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-              /></label>
-            </div>
-            <div
-              id="upload-progress"
-              class="upload-progress"
-              role="status"
-              hidden
-            ></div>
-            <div id="asset-list" class="asset-list"></div>
-          </section>
-          <section class="frames-section" aria-labelledby="frames-title">
-            <div class="frame-section-heading">
-              <div>
-                <h2 id="frames-title">
-                  Frame collection
-                  <span class="count" id="visible-frame-count">0</span>
-                </h2>
-                <p class="muted small">
-                  Select frames to carry forward. Open any frame to inspect its
-                  source.
-                </p>
+              <div
+                id="upload-progress"
+                class="upload-progress"
+                role="status"
+                hidden
+              ></div>
+              <div id="asset-list" class="asset-list"></div>
+            </section>
+            <section class="frames-section" aria-labelledby="frames-title">
+              <div class="frame-section-heading">
+                <div>
+                  <h2 id="frames-title">
+                    Frame collection
+                    <span class="count" id="visible-frame-count">0</span>
+                  </h2>
+                  <p class="muted small">
+                    Select frames to carry forward. Open any frame to inspect
+                    its source.
+                  </p>
+                </div>
+                <div class="filter-group" aria-label="Frame filter">
+                  <button
+                    id="filter-all"
+                    class="filter-button active"
+                    type="button"
+                    aria-pressed="true"
+                  >
+                    All frames</button
+                  ><button
+                    id="filter-selected"
+                    class="filter-button"
+                    type="button"
+                    aria-pressed="false"
+                  >
+                    Selected <span id="filter-selected-count">0</span>
+                  </button>
+                </div>
               </div>
-              <div class="filter-group" aria-label="Frame filter">
-                <button
-                  id="filter-all"
-                  class="filter-button active"
-                  type="button"
-                  aria-pressed="true"
+              <div class="selection-toolbar">
+                <span id="selection-summary" class="small muted"
+                  >No frames selected</span
                 >
-                  All frames</button
-                ><button
-                  id="filter-selected"
-                  class="filter-button"
-                  type="button"
-                  aria-pressed="false"
-                >
-                  Selected <span id="filter-selected-count">0</span>
+                <div>
+                  <button class="text-button" id="select-visible" type="button">
+                    Select visible</button
+                  ><button
+                    class="text-button"
+                    id="clear-selection"
+                    type="button"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+              <div id="frame-grid" class="frame-grid"></div>
+            </section>
+          </div>
+          <section
+            id="comparison-workspace"
+            aria-label="Model comparison"
+            hidden
+          >
+            <section
+              class="panel comparison-setup"
+              aria-labelledby="comparison-setup-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="comparison-setup-title">Run on your selection</h2>
+                  <p>
+                    Compare local detectors on the same frames. Results are
+                    saved with their model configuration.
+                  </p>
+                </div>
+                <button id="refresh-models" class="text-button" type="button">
+                  Refresh models
                 </button>
               </div>
-            </div>
-            <div class="selection-toolbar">
-              <span id="selection-summary" class="small muted"
-                >No frames selected</span
-              >
-              <div>
-                <button class="text-button" id="select-visible" type="button">
-                  Select visible</button
-                ><button class="text-button" id="clear-selection" type="button">
-                  Clear selection
-                </button>
+              <div class="comparison-setup-body">
+                <div id="model-catalog" class="model-catalog">
+                  <p class="muted small">Loading model availability…</p>
+                </div>
+                <p
+                  id="model-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+                <details id="model-setup" class="setup-help" hidden>
+                  <summary>Set up local inference</summary>
+                  <p>
+                    The optional CPU runtime and pretrained weights are
+                    installed separately. These commands download software and
+                    model weights; your flight data stays local. No download
+                    starts from this page.
+                  </p>
+                  <pre id="model-setup-commands"></pre>
+                  <p>
+                    Run these commands from the project directory, then refresh
+                    models. For a custom storage directory, add
+                    <code>--data-dir '/path/to/storage'</code> to the download
+                    command. See the README for installation details and model
+                    licenses.
+                  </p>
+                </details>
+                <form id="comparison-form">
+                  <div class="comparison-form-fields">
+                    <div>
+                      <label for="comparison-name">Run name</label
+                      ><input
+                        id="comparison-name"
+                        maxlength="160"
+                        placeholder="e.g. Baseline · north field"
+                        autocomplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label for="comparison-device">Device</label
+                      ><select id="comparison-device">
+                        <option value="cpu">CPU</option>
+                        <option value="cuda">
+                          CUDA · requires compatible PyTorch
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="comparison-launch">
+                    <div>
+                      <p id="comparison-selection" class="selection-count">
+                        No frames selected
+                      </p>
+                      <p id="comparison-selection-hint" class="field-hint">
+                        Select 1–100 frames in Data intake.
+                      </p>
+                    </div>
+                    <button
+                      id="run-comparison"
+                      class="button button-primary"
+                      type="submit"
+                      disabled
+                    >
+                      Run comparison <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                  <p
+                    id="comparison-error"
+                    class="inline-error"
+                    role="alert"
+                    hidden
+                  ></p>
+                </form>
               </div>
-            </div>
-            <div id="frame-grid" class="frame-grid"></div>
+            </section>
+            <section
+              class="panel comparison-results"
+              aria-labelledby="comparison-results-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="comparison-results-title">Saved comparisons</h2>
+                  <p>
+                    Inspect outputs side by side, including completed frames
+                    from cancelled runs.
+                  </p>
+                </div>
+                <span id="comparison-history-count" class="count">0</span>
+              </div>
+              <div class="comparison-results-body">
+                <label for="comparison-history">Comparison history</label>
+                <select id="comparison-history" disabled>
+                  <option value="">No comparisons yet</option>
+                </select>
+                <p
+                  id="comparison-history-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+                <div id="comparison-empty" class="comparison-empty">
+                  <strong>A shared view of the same flight.</strong>
+                  <p>
+                    Choose your frames and models above to create a comparison.
+                    Saved results can be reopened even when the models are
+                    unavailable.
+                  </p>
+                </div>
+                <div id="comparison-detail" hidden>
+                  <div class="comparison-run-heading">
+                    <div>
+                      <h3 id="comparison-run-name"></h3>
+                      <p id="comparison-run-context" class="muted small"></p>
+                    </div>
+                    <span id="comparison-run-status" class="job-status"></span>
+                  </div>
+                  <p id="comparison-run-message" class="muted small"></p>
+                  <p id="comparison-run-error" class="inline-error" hidden></p>
+                  <div class="comparison-filters">
+                    <div>
+                      <label for="comparison-class">Class</label
+                      ><select id="comparison-class">
+                        <option value="">All classes</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="comparison-confidence"
+                        >Display confidence
+                        <output
+                          id="comparison-confidence-value"
+                          for="comparison-confidence"
+                          >0.50</output
+                        ></label
+                      ><input
+                        id="comparison-confidence"
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.5"
+                      />
+                    </div>
+                  </div>
+                  <p class="field-hint">
+                    Display filters apply to saved detections only. Each model's
+                    native thresholds still apply; changing this slider does not
+                    rerun inference.
+                  </p>
+                  <div
+                    id="comparison-signals"
+                    class="comparison-signals"
+                    aria-live="polite"
+                  ></div>
+                  <p class="comparison-caveat">
+                    Counts and count differences are inspection signals. No
+                    validated labels are attached, so detection quality is not
+                    measured.
+                  </p>
+                  <div class="comparison-navigation">
+                    <button
+                      id="comparison-previous"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      ← Previous</button
+                    ><span
+                      id="comparison-position"
+                      class="small muted"
+                      aria-live="polite"
+                    ></span
+                    ><button
+                      id="comparison-next"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                  <p
+                    id="comparison-frame-source"
+                    class="comparison-frame-source"
+                  ></p>
+                  <div
+                    id="comparison-canvases"
+                    class="comparison-canvases"
+                  ></div>
+                  <details class="run-provenance">
+                    <summary>Run provenance and model settings</summary>
+                    <p class="field-hint">
+                      Configuration recorded when each model ran, including
+                      runtime and checkpoint identity. Timing is per frame, with
+                      one warm-up inference excluded.
+                    </p>
+                    <div id="comparison-provenance"></div>
+                  </details>
+                </div>
+              </div>
+            </section>
           </section>
         </div>
         <section
@@ -231,10 +481,9 @@
         >
           <div class="panel-heading">
             <div>
-              <h2 id="jobs-title">Extraction jobs</h2>
+              <h2 id="jobs-title">Processing jobs</h2>
               <p id="jobs-description">
-                Processing runs locally. You can keep working while frames are
-                extracted.
+                Processing runs locally. You can keep working while jobs run.
               </p>
             </div>
             <span id="jobs-active-count" class="count"></span>
@@ -243,7 +492,7 @@
         </section>
         <footer class="page-footer">
           <span>IRIS / Computer vision for flight data</span
-          ><span>Current stage: data intake and frame selection</span>
+          ><span>Data intake / Model comparison</span>
         </footer>
       </main>
     </div>

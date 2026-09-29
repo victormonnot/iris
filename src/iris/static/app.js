@@ -148,6 +148,7 @@ async function selectSession(id) {
     : "No scene group assigned";
   renderAssets();
   renderFrames();
+  window.dispatchEvent(new Event("iris:session"));
   $("#asset-list").replaceChildren(
     node("p", "empty-assets", "Loading source files…"),
   );
@@ -243,7 +244,7 @@ function renderFrames() {
   $("#selected-total").textContent = selected;
   $("#filter-selected-count").textContent = selected;
   $("#selection-summary").textContent = selected
-    ? `${selected} frame${selected === 1 ? "" : "s"} selected for annotation`
+    ? `${selected} frame${selected === 1 ? "" : "s"} selected for comparison and annotation`
     : "No frames selected";
   for (const filter of ["all", "selected"]) {
     const button = $(`#filter-${filter}`);
@@ -285,6 +286,7 @@ function renderFrames() {
     else $("#filter-selected").focus({ preventScroll: true });
   }
   if (state.inspecting && $("#frame-dialog").open) renderInspectionSelection();
+  window.dispatchEvent(new Event("iris:frames"));
 }
 
 function frameCard(frame) {
@@ -558,7 +560,8 @@ function renderJobs() {
       node(
         "h3",
         "job-name",
-        asset?.filename || `Frame extraction · ${String(job.id).slice(0, 8)}`,
+        asset?.filename ||
+          `${job.kind === "infer" ? "Model comparison" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
       ),
       node("span", `job-status ${job.status}`, job.status),
     );
@@ -570,7 +573,7 @@ function renderJobs() {
       progress.value = Math.max(0, Math.min(1, job.progress || 0));
       progress.setAttribute(
         "aria-label",
-        `Extraction progress for ${asset?.filename || job.id}`,
+        `Processing progress for ${asset?.filename || job.id}`,
       );
       row.append(progress);
     }
@@ -628,6 +631,7 @@ async function refreshJobs() {
   );
   state.jobs = await api("/api/jobs");
   renderJobs();
+  window.dispatchEvent(new Event("iris:jobs"));
   const changed = state.jobs.some(
     (job) => previousStatuses.get(job.id) !== job.status,
   );

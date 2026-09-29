@@ -36,7 +36,7 @@ class JobManager:
         with self.store.connect() as conn:
             conn.execute(
                 "UPDATE jobs SET status='interrupted', finished_at=?, "
-                "message='Server stopped; existing frames are preserved. Start extraction again.' "
+                "message='Server stopped; artifacts preserved. Start a new job to retry.' "
                 "WHERE status IN ('queued','running')",
                 (now(),),
             )
@@ -52,7 +52,11 @@ class JobManager:
     def submit(self, asset_id: str, config: dict) -> dict:
         with self.guard:
             for job in self.store.list("jobs"):
-                if job["status"] in ACTIVE and job["params"]["asset_id"] == asset_id:
+                if (
+                    job["kind"] == "extract"
+                    and job["status"] in ACTIVE
+                    and job["params"]["asset_id"] == asset_id
+                ):
                     raise ValueError("Extraction is already queued or running for this video")
             return self.store.insert(
                 "jobs",
@@ -72,7 +76,7 @@ class JobManager:
                 "UPDATE jobs SET cancel_requested=1, "
                 "status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END, "
                 "finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END, "
-                "message='Cancellation requested; existing frames are preserved' "
+                "message='Cancellation requested; saved artifacts are preserved' "
                 "WHERE id=? AND status IN ('queued','running')",
                 (now(), job_id),
             )
@@ -86,7 +90,7 @@ class JobManager:
             job = queued[0]
             with self.store.connect() as conn:
                 claimed = conn.execute(
-                    "UPDATE jobs SET status='running', started_at=?, message='Starting extraction' "
+                    "UPDATE jobs SET status='running', started_at=?, message='Starting local job' "
                     "WHERE id=? AND status='queued' AND cancel_requested=0",
                     (now(), job["id"]),
                 ).rowcount
@@ -146,7 +150,7 @@ class JobManager:
                     {
                         "status": status,
                         "finished_at": now(),
-                        "message": f"Worker {status}; existing frames are preserved",
+                        "message": f"Worker {status}; saved artifacts are preserved",
                         "error": f"Worker exited with code {process.returncode}"
                         if status == "failed"
                         else None,

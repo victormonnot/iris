@@ -5,6 +5,7 @@ import tempfile
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
@@ -15,8 +16,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 
 from iris import __version__
+from iris.inference import comparison_detail, comparison_summary, create_comparison
 from iris.jobs import JobManager
 from iris.media import import_asset
+from iris.models import catalog
 from iris.store import Store, new_id, now
 
 STATIC = Path(__file__).parent / "static"
@@ -55,6 +58,14 @@ class ExtractionInput(BaseModel):
         if self.end_seconds is not None and self.end_seconds <= self.start_seconds:
             raise ValueError("End time must be greater than start time")
         return self
+
+
+class ComparisonInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=160)
+    frame_ids: list[str] = Field(min_length=1, max_length=100)
+    model_ids: list[str] = Field(min_length=1, max_length=2)
+    device: Literal["cpu", "cuda"] = "cpu"
 
 
 def public(record: dict) -> dict:
@@ -126,7 +137,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "media_import": True,
                 "frame_extraction": True,
                 "frame_selection": True,
-                "inference": False,
+                "inference": True,
                 "annotation": False,
                 "training": False,
             },
@@ -135,6 +146,33 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/sessions")
     def sessions():
         return store.list("sessions")
+
+    @app.get("/api/models")
+    def models():
+        return catalog(store.root)
+
+    @app.get("/api/sessions/{session_id}/comparisons")
+    def comparisons(session_id: str):
+        require("sessions", session_id)
+        return [
+            comparison_summary(store, row)
+            for row in store.list("comparisons", session_id=session_id)
+        ]
+
+    @app.post("/api/sessions/{session_id}/comparisons", status_code=202)
+    def compare(session_id: str, payload: ComparisonInput):
+        require("sessions", session_id)
+        try:
+            return create_comparison(store, jobs, session_id, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/comparisons/{comparison_id}")
+    def comparison(comparison_id: str):
+        require("comparisons", comparison_id)
+        return comparison_detail(store, comparison_id)
 
     @app.post("/api/sessions", status_code=201)
     def create_session(payload: SessionInput):

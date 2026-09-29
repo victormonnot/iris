@@ -1,4 +1,4 @@
-"""Subprocess entry point for bounded media extraction."""
+"""Subprocess entry point for local extraction and inference jobs."""
 
 import ctypes
 import os
@@ -7,6 +7,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from iris.inference import run_comparison
 from iris.media import extract_frames
 from iris.store import Store, now
 
@@ -50,13 +51,18 @@ def run(root: Path, job_id: str, parent_pid: int):
         print(message, flush=True)
 
     try:
-        result = extract_frames(
-            store,
-            job["params"]["asset_id"],
-            {**job["params"]["config"], "job_id": job_id},
-            progress,
-            cancelled,
-        )
+        if job["kind"] == "extract":
+            result = extract_frames(
+                store,
+                job["params"]["asset_id"],
+                {**job["params"]["config"], "job_id": job_id},
+                progress,
+                cancelled,
+            )
+        elif job["kind"] == "infer":
+            result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
+        else:
+            raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
         if current["status"] != "running":
             return
@@ -73,9 +79,11 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "result": result,
                 "finished_at": now(),
                 "progress": 1 if status == "succeeded" else current["progress"],
-                "message": "Extraction complete"
+                "message": (
+                    "Extraction complete" if job["kind"] == "extract" else "Comparison complete"
+                )
                 if status == "succeeded"
-                else "Extraction stopped; existing frames are preserved",
+                else "Job stopped; saved artifacts are preserved",
             },
         )
     except Exception as exc:
@@ -95,7 +103,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "status": status,
                 "error": str(exc),
                 "finished_at": now(),
-                "message": "Extraction failed" if status == "failed" else "Extraction stopped",
+                "message": "Job failed" if status == "failed" else "Job stopped",
             },
         )
 
