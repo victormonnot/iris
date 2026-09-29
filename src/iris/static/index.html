@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="IRIS — a local computer vision workbench for flight data."
+    />
+    <title>IRIS · Data intake</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to workspace</a>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="IRIS home"
+        ><span class="brand-mark" aria-hidden="true"><i></i></span
+        ><span>IRIS</span
+        ><span class="brand-description">Vision workbench</span></a
+      >
+      <div class="workspace-state">
+        <span class="status-dot" aria-hidden="true"></span>Local workspace<span
+          id="version"
+          class="version"
+        ></span>
+      </div>
+    </header>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Flight sessions">
+        <div class="sidebar-heading">
+          <span class="eyebrow">Workspace</span
+          ><span class="local-label">LOCAL</span>
+        </div>
+        <div class="section-heading">
+          <h2>Flight sessions</h2>
+          <span class="count" id="session-count">0</span>
+        </div>
+        <p class="sidebar-description">
+          Keep each flight and its source files together.
+        </p>
+        <div id="session-list" class="session-list">
+          <p class="muted small">Loading sessions…</p>
+        </div>
+        <form id="session-form" class="session-form">
+          <h3>New session</h3>
+          <label for="session-name">Session name</label>
+          <input
+            id="session-name"
+            name="name"
+            required
+            maxlength="160"
+            placeholder="e.g. North field · 001"
+            autocomplete="off"
+          />
+          <label for="scene-group">Scene group</label>
+          <input
+            id="scene-group"
+            name="scene_group"
+            required
+            maxlength="160"
+            placeholder="e.g. North field"
+            autocomplete="off"
+            aria-describedby="scene-group-hint"
+          />
+          <p id="scene-group-hint" class="field-hint">
+            Group flights from the same scene for future dataset splits.
+          </p>
+          <button class="button button-secondary full-width" type="submit">
+            <span aria-hidden="true">+</span> Create session
+          </button>
+        </form>
+        <div class="workspace-location">
+          <span class="eyebrow">Storage</span>
+          <p id="storage-path">Connecting to local storage…</p>
+          <span class="small muted">Original files are preserved.</span>
+        </div>
+      </aside>
+      <main id="main" tabindex="-1">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">
+              <span class="step-marker">01</span> Data intake
+            </div>
+            <h1>From flight to frames.</h1>
+            <p class="page-description">
+              Import source footage, sample frames and select the data worth
+              keeping.
+            </p>
+          </div>
+          <span class="phase-tag">Local · Data intake</span>
+        </div>
+        <div
+          id="notice"
+          class="notice"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
+        <section
+          id="welcome"
+          class="welcome panel"
+          aria-labelledby="welcome-title"
+          hidden
+        >
+          <div class="empty-scope" aria-hidden="true"><span></span></div>
+          <div class="eyebrow">Your first flight starts here</div>
+          <h2 id="welcome-title">Build a useful collection.</h2>
+          <p>
+            Create a flight session, then add images or video from your machine.
+            Nothing is uploaded to an external service.
+          </p>
+          <button
+            class="button button-primary"
+            id="start-session"
+            type="button"
+          >
+            Create your first session <span aria-hidden="true">↗</span>
+          </button>
+          <div class="workflow">
+            <div>
+              <span>01</span><strong>Import</strong>
+              <p>Keep source footage intact.</p>
+            </div>
+            <div>
+              <span>02</span><strong>Sample</strong>
+              <p>Extract frames with provenance.</p>
+            </div>
+            <div>
+              <span>03</span><strong>Select</strong>
+              <p>Choose frames for annotation.</p>
+            </div>
+          </div>
+        </section>
+        <div id="session-workspace" hidden>
+          <section class="session-summary" aria-label="Current session">
+            <div>
+              <div class="eyebrow">Active flight session</div>
+              <h2 id="active-session-name"></h2>
+              <p id="active-session-group" class="muted small"></p>
+            </div>
+            <div class="session-stats">
+              <div>
+                <strong id="asset-total">0</strong><span>source files</span>
+              </div>
+              <div><strong id="frame-total">0</strong><span>frames</span></div>
+              <div class="selected-stat">
+                <strong id="selected-total">0</strong><span>selected</span>
+              </div>
+            </div>
+          </section>
+          <section class="panel sources-panel" aria-labelledby="sources-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="sources-title">Source files</h2>
+                <p>
+                  Images become frames immediately. Sample video at your own
+                  pace.
+                </p>
+              </div>
+              <label
+                for="file-input"
+                class="button button-primary upload-trigger"
+                ><span aria-hidden="true">↑</span> Import files<input
+                  id="file-input"
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+              /></label>
+            </div>
+            <div
+              id="upload-progress"
+              class="upload-progress"
+              role="status"
+              hidden
+            ></div>
+            <div id="asset-list" class="asset-list"></div>
+          </section>
+          <section class="frames-section" aria-labelledby="frames-title">
+            <div class="frame-section-heading">
+              <div>
+                <h2 id="frames-title">
+                  Frame collection
+                  <span class="count" id="visible-frame-count">0</span>
+                </h2>
+                <p class="muted small">
+                  Select frames to carry forward. Open any frame to inspect its
+                  source.
+                </p>
+              </div>
+              <div class="filter-group" aria-label="Frame filter">
+                <button
+                  id="filter-all"
+                  class="filter-button active"
+                  type="button"
+                  aria-pressed="true"
+                >
+                  All frames</button
+                ><button
+                  id="filter-selected"
+                  class="filter-button"
+                  type="button"
+                  aria-pressed="false"
+                >
+                  Selected <span id="filter-selected-count">0</span>
+                </button>
+              </div>
+            </div>
+            <div class="selection-toolbar">
+              <span id="selection-summary" class="small muted"
+                >No frames selected</span
+              >
+              <div>
+                <button class="text-button" id="select-visible" type="button">
+                  Select visible</button
+                ><button class="text-button" id="clear-selection" type="button">
+                  Clear selection
+                </button>
+              </div>
+            </div>
+            <div id="frame-grid" class="frame-grid"></div>
+          </section>
+        </div>
+        <section
+          id="jobs-section"
+          class="panel jobs-panel"
+          aria-labelledby="jobs-title"
+          hidden
+        >
+          <div class="panel-heading">
+            <div>
+              <h2 id="jobs-title">Extraction jobs</h2>
+              <p id="jobs-description">
+                Processing runs locally. You can keep working while frames are
+                extracted.
+              </p>
+            </div>
+            <span id="jobs-active-count" class="count"></span>
+          </div>
+          <div id="job-list"></div>
+        </section>
+        <footer class="page-footer">
+          <span>IRIS / Computer vision for flight data</span
+          ><span>Current stage: data intake and frame selection</span>
+        </footer>
+      </main>
+    </div>
+    <dialog
+      id="extract-dialog"
+      class="modal extract-modal"
+      aria-labelledby="extract-title"
+    >
+      <form id="extract-form">
+        <div class="modal-heading">
+          <div>
+            <div class="eyebrow">Video sampling</div>
+            <h2 id="extract-title">Extract frames</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-close="extract-dialog"
+            aria-label="Close extraction settings"
+          >
+            ×
+          </button>
+        </div>
+        <p id="extract-source" class="source-filename"></p>
+        <p class="muted small">
+          Sample at fixed time intervals. Every frame keeps a link to the
+          original video and its estimated timestamp.
+        </p>
+        <div class="form-grid">
+          <div>
+            <label for="extract-interval">Interval (seconds)</label
+            ><input
+              id="extract-interval"
+              type="number"
+              min="0.05"
+              max="86400"
+              step="any"
+              value="2"
+              required
+            />
+          </div>
+          <div>
+            <label for="extract-limit">Maximum frames</label
+            ><input
+              id="extract-limit"
+              type="number"
+              min="1"
+              max="500"
+              step="1"
+              value="100"
+              required
+            />
+          </div>
+          <div>
+            <label for="extract-start">Start at (seconds)</label
+            ><input
+              id="extract-start"
+              type="number"
+              min="0"
+              step="any"
+              value="0"
+              required
+            />
+          </div>
+          <div>
+            <label for="extract-end">End at (seconds)</label
+            ><input
+              id="extract-end"
+              type="number"
+              min="0"
+              step="any"
+              placeholder="End of video"
+            />
+          </div>
+        </div>
+        <label class="checkbox-label" for="extract-dedup"
+          ><input id="extract-dedup" type="checkbox" /> Skip visually similar
+          frames</label
+        >
+        <div id="dedup-settings" hidden>
+          <label for="extract-hamming">Similarity threshold</label
+          ><input
+            id="extract-hamming"
+            type="number"
+            min="0"
+            max="16"
+            step="1"
+            value="4"
+          />
+          <p class="field-hint">
+            Perceptual hash distance. A higher value skips more frames. Exact
+            duplicates are always deduplicated.
+          </p>
+        </div>
+        <p id="extract-error" class="inline-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button
+            class="button button-secondary"
+            type="button"
+            data-close="extract-dialog"
+          >
+            Cancel</button
+          ><button class="button button-primary" type="submit">
+            Start extraction <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      id="frame-dialog"
+      class="modal frame-modal"
+      aria-labelledby="inspect-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">Frame inspection</div>
+          <h2 id="inspect-title">Source provenance</h2>
+        </div>
+        <button
+          class="icon-button"
+          type="button"
+          data-close="frame-dialog"
+          aria-label="Close frame inspection"
+        >
+          ×
+        </button>
+      </div>
+      <div class="inspector-layout">
+        <div class="inspector-visual">
+          <img id="inspect-image" alt="" />
+          <div class="inspector-navigation">
+            <button
+              class="button button-secondary"
+              id="previous-frame"
+              type="button"
+              aria-label="Previous frame"
+            >
+              ← Previous</button
+            ><span id="inspect-position" class="small muted"></span
+            ><button
+              class="button button-secondary"
+              id="next-frame"
+              type="button"
+              aria-label="Next frame"
+            >
+              Next →
+            </button>
+          </div>
+          <p class="keyboard-hint">
+            ← → browse frames · S to select · Esc to close
+          </p>
+        </div>
+        <div class="inspector-details">
+          <button
+            id="inspect-select"
+            class="button button-primary full-width"
+            type="button"
+            aria-pressed="false"
+          >
+            Select frame
+          </button>
+          <dl id="inspect-metadata" class="metadata-list"></dl>
+          <div id="video-preview" hidden>
+            <h3>Original video</h3>
+            <video id="source-video" controls preload="metadata"></video
+            ><button
+              id="seek-source"
+              class="button button-secondary full-width"
+              type="button"
+            >
+              Seek to estimated timestamp
+            </button>
+            <p id="video-error" class="field-hint" hidden>
+              This video cannot be played in this browser. Download the original
+              to inspect it locally.
+            </p>
+          </div>
+          <a id="download-source" class="text-button source-download" download
+            >Download original <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </div>
+    </dialog>
+  </body>
+</html>

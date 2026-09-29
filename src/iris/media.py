@@ -1,0 +1,384 @@
+"""Local media ingestion and bounded, repeatable video frame extraction."""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import shutil
+import sqlite3
+import warnings
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import cv2
+from PIL import Image, ImageOps, UnidentifiedImageError
+
+from iris.store import new_id, now
+
+if TYPE_CHECKING:
+    from iris.store import Store
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _pixel_hash(image: Image.Image) -> str:
+    digest = hashlib.sha256(f"RGB:{image.width}:{image.height}:".encode())
+    digest.update(image.tobytes())
+    return digest.hexdigest()
+
+
+def _perceptual_hash(image: Image.Image) -> str:
+    """64-bit difference hash; optional near-duplicate filtering uses Hamming distance."""
+    values = image.convert("L").resize((9, 8), Image.Resampling.LANCZOS).tobytes()
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | int(values[row * 9 + col] > values[row * 9 + col + 1])
+    return f"{bits:016x}"
+
+
+def _image_source(path: Path) -> tuple[Image.Image, dict] | None:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(path) as original:
+                if getattr(original, "n_frames", 1) != 1:
+                    raise ValueError("Animated images are unsupported; import a video instead.")
+                metadata = {
+                    "format": original.format,
+                    "original_width": original.width,
+                    "original_height": original.height,
+                    "exif_orientation": original.getexif().get(274, 1),
+                }
+                image = ImageOps.exif_transpose(original).convert("RGB")
+                image.load()
+                metadata.update(width=image.width, height=image.height)
+                return image, metadata
+    except UnidentifiedImageError:
+        return None
+    except (OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("Invalid, truncated, or oversized image.") from exc
+
+
+def _video_media_type(path: Path) -> str:
+    # OpenCV delegates to FFmpeg, which also understands playlists and URLs.
+    # Only pass known binary video containers to that decoder, never arbitrary
+    # text that could trigger network reads of a remote playlist entry.
+    with path.open("rb") as source:
+        header = source.read(4096)
+    if header[:4] == b"RIFF" and header[8:12] == b"AVI ":
+        return "video/x-msvideo"
+    if header[4:8] == b"ftyp":
+        return "video/quicktime" if header[8:12] == b"qt  " else "video/mp4"
+    if header[:4] == b"\x1a\x45\xdf\xa3":
+        # Read the EBML DocType element's variable-length size, including legal
+        # nonminimal encodings, instead of trusting the file extension.
+        position = header.find(b"\x42\x82", 4)
+        if position >= 0 and position + 2 < len(header):
+            first_byte = header[position + 2]
+            if first_byte:
+                size_bytes = 9 - first_byte.bit_length()
+                start = position + 2
+                raw_size = header[start : start + size_bytes]
+                length = int.from_bytes(raw_size, "big") & ((1 << (7 * size_bytes)) - 1)
+                start += size_bytes
+                doctype = header[start : start + length]
+                if doctype == b"webm":
+                    return "video/webm"
+                if doctype == b"matroska":
+                    return "video/x-matroska"
+    raise ValueError("Unsupported video container; use AVI, MP4/MOV/M4V, or MKV/WebM.")
+
+
+def _video_metadata(path: Path) -> dict:
+    media_type = _video_media_type(path)
+    capture = cv2.VideoCapture(str(path))
+    try:
+        if not capture.isOpened():
+            raise ValueError("The file is not a readable image or video.")
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        frame_count_value = float(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        ok, first_frame = capture.read()
+        if (
+            not ok
+            or first_frame is None
+            or not math.isfinite(fps)
+            or fps <= 0
+            or not math.isfinite(frame_count_value)
+            or frame_count_value < 1
+        ):
+            raise ValueError("Unreadable video or unavailable timing metadata.")
+        frame_count = int(frame_count_value)
+        height, width = first_frame.shape[:2]
+        return {
+            "media_type": media_type,
+            "fps": fps,
+            "frame_count": frame_count,
+            "duration_seconds": frame_count / fps,
+            "width": width,
+            "height": height,
+            "timestamp_basis": "frame_index / nominal_fps",
+        }
+    finally:
+        capture.release()
+
+
+def _frame_record(
+    store: Store,
+    asset: dict,
+    image: Image.Image,
+    *,
+    frame_index: int | None = None,
+    timestamp_seconds: float | None = None,
+    extraction: dict | None = None,
+) -> dict:
+    frame_id = new_id()
+    relative_path = Path("frames") / f"{frame_id}.png"
+    path = store.root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    try:
+        image.save(temporary, format="PNG")
+        temporary.replace(path)
+        return store.insert(
+            "frames",
+            {
+                "id": frame_id,
+                "session_id": asset["session_id"],
+                "asset_id": asset["id"],
+                "frame_index": frame_index,
+                "timestamp_seconds": timestamp_seconds,
+                "width": image.width,
+                "height": image.height,
+                "sha256": _pixel_hash(image),
+                "perceptual_hash": _perceptual_hash(image),
+                "path": relative_path.as_posix(),
+                "selected": False,
+                "extraction": extraction or {},
+                "created_at": now(),
+            },
+        )
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
+        raise
+
+
+def import_asset(store: Store, session_id: str, source: Path, filename: str) -> dict:
+    """Preserve an original locally and create an EXIF-normalized frame for still images.
+
+    Byte-identical imports are idempotent within a session. Distinct flights retain
+    their own provenance, even when their source files contain identical pixels.
+    """
+    if store.get("sessions", session_id) is None:
+        raise ValueError("Session not found.")
+    source = Path(source)
+    if not source.is_file() or source.stat().st_size == 0:
+        raise ValueError("The source file is missing or empty.")
+    safe_filename = str(filename).replace("\\", "/").rsplit("/", 1)[-1]
+    if not safe_filename or safe_filename in {".", ".."} or "\x00" in safe_filename:
+        raise ValueError("Invalid filename.")
+    source_hash = _file_hash(source)
+    for existing in store.list("assets", session_id=session_id):
+        if existing["sha256"] == source_hash:
+            return existing
+
+    decoded = _image_source(source)
+    image, metadata = decoded if decoded else (None, _video_metadata(source))
+    kind = "image" if image is not None else "video"
+    asset_id = new_id()
+    extension = Path(safe_filename).suffix.lower()
+    if not extension or len(extension) > 10 or not extension[1:].isalnum():
+        extension = ".media"
+    relative_path = Path("assets") / f"{asset_id}{extension}"
+    path = store.root / relative_path
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    inserted = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, temporary)
+        temporary.replace(path)
+        asset = store.insert(
+            "assets",
+            {
+                "id": asset_id,
+                "session_id": session_id,
+                "filename": safe_filename,
+                "kind": kind,
+                "sha256": source_hash,
+                "size_bytes": source.stat().st_size,
+                "path": relative_path.as_posix(),
+                "metadata": metadata,
+                "created_at": now(),
+            },
+        )
+        inserted = True
+        if image is not None:
+            _frame_record(store, asset, image, extraction={"method": "image_import"})
+        return asset
+    except BaseException as exc:
+        if inserted:
+            with store.connect() as connection:
+                connection.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
+        temporary.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
+        # Concurrent HTTP uploads may both pass the initial lookup. The unique
+        # session/hash constraint makes one win; remove this copy and reuse it.
+        if not inserted and isinstance(exc, sqlite3.IntegrityError):
+            for existing in store.list("assets", session_id=session_id):
+                if existing["sha256"] == source_hash:
+                    return existing
+        raise
+    finally:
+        if image is not None:
+            image.close()
+
+
+def _finite_number(config: dict, key: str, default: float) -> float:
+    value = config.get(key, default)
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError
+        return value
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a finite number.") from exc
+
+
+def extract_frames(
+    store: Store,
+    asset_id: str,
+    config: dict,
+    progress: Callable[[float, str], None],
+    cancelled: Callable[[], bool],
+) -> dict:
+    """Sample a bounded set of video positions; keep completed work on cancellation.
+
+    The limit applies to sampled positions, including existing/duplicate frames.
+    Timestamps use the video's nominal FPS and are approximate for variable-FPS
+    sources. Exact and optional perceptual deduplication stay within this asset.
+    """
+    asset = store.get("assets", asset_id)
+    if asset is None or asset["kind"] != "video":
+        raise ValueError("Extraction requires an imported video.")
+    interval = _finite_number(config, "interval_seconds", 1.0)
+    start = _finite_number(config, "start_seconds", 0.0)
+    if interval <= 0 or start < 0:
+        raise ValueError("The interval must be positive and the start must be nonnegative.")
+    max_frames = config.get("max_frames", 100)
+    if (
+        isinstance(max_frames, bool)
+        or not isinstance(max_frames, int)
+        or not 1 <= max_frames <= 500
+    ):
+        raise ValueError("max_frames must be an integer between 1 and 500.")
+    dedup = config.get("dedup_hamming")
+    if dedup is not None and (
+        isinstance(dedup, bool) or not isinstance(dedup, int) or not 0 <= dedup <= 16
+    ):
+        raise ValueError("dedup_hamming must be null or an integer between 0 and 16.")
+    metadata = asset["metadata"]
+    fps = float(metadata["fps"])
+    total_frames = int(metadata["frame_count"])
+    duration = float(metadata["duration_seconds"])
+    end = (
+        duration
+        if config.get("end_seconds") is None
+        else _finite_number(config, "end_seconds", duration)
+    )
+    if end <= start or start >= duration:
+        raise ValueError("The time range must overlap a nonempty portion of the video.")
+    end = min(end, duration)
+    # Bound iteration before constructing a list: tiny intervals must not allocate
+    # an unbounded array or sample the same decoded frame repeatedly.
+    interval = max(interval, 1.0 / fps)
+    targets = []
+    for index in range(max_frames):
+        seconds = start + index * interval
+        if seconds >= end:
+            break
+        frame_index = int(math.floor(seconds * fps + 1e-7))
+        if frame_index < total_frames and (not targets or frame_index != targets[-1]):
+            targets.append(frame_index)
+
+    existing = store.list("frames", asset_id=asset_id)
+    existing_indices = {frame["frame_index"] for frame in existing}
+    exact_hashes = {frame["sha256"] for frame in existing}
+    perceptual_hashes = [
+        int(frame["perceptual_hash"], 16) for frame in existing if frame["perceptual_hash"]
+    ]
+    result = {
+        "asset_id": asset_id,
+        "sampled": 0,
+        "created": 0,
+        "skipped_existing": 0,
+        "skipped_exact": 0,
+        "skipped_similar": 0,
+        "frame_ids": [],
+        "cancelled": False,
+        "timestamp_basis": "frame_index / nominal_fps",
+    }
+    if cancelled():
+        result["cancelled"] = True
+        return result
+    source = store.root / asset["path"]
+    if not source.is_file():
+        raise ValueError("The original video is missing or unreadable.")
+    _video_media_type(source)
+    capture = cv2.VideoCapture(str(source))
+    try:
+        if not capture.isOpened():
+            raise ValueError("The original video is missing or unreadable.")
+        for position, frame_index in enumerate(targets):
+            if cancelled():
+                result["cancelled"] = True
+                break
+            result["sampled"] += 1
+            if frame_index in existing_indices:
+                result["skipped_existing"] += 1
+            else:
+                if not capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index):
+                    raise ValueError(f"Cannot seek to video frame {frame_index}.")
+                ok, pixels = capture.read()
+                if not ok or pixels is None:
+                    raise ValueError(f"Cannot decode video frame {frame_index}.")
+                image = Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB))
+                try:
+                    pixel_hash = _pixel_hash(image)
+                    perceptual_hash = int(_perceptual_hash(image), 16)
+                    if pixel_hash in exact_hashes:
+                        result["skipped_exact"] += 1
+                    elif dedup is not None and any(
+                        (perceptual_hash ^ previous).bit_count() <= dedup
+                        for previous in perceptual_hashes
+                    ):
+                        result["skipped_similar"] += 1
+                    else:
+                        record = _frame_record(
+                            store,
+                            asset,
+                            image,
+                            frame_index=frame_index,
+                            timestamp_seconds=frame_index / fps,
+                            extraction=dict(config),
+                        )
+                        exact_hashes.add(pixel_hash)
+                        perceptual_hashes.append(perceptual_hash)
+                        existing_indices.add(frame_index)
+                        result["frame_ids"].append(record["id"])
+                        result["created"] += 1
+                finally:
+                    image.close()
+            progress((position + 1) / len(targets), f"{result['created']} frames extracted")
+        return result
+    finally:
+        capture.release()
