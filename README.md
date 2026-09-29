@@ -4,9 +4,9 @@ A local computer vision workbench for drone imagery. IRIS is being built around
 the full improvement loop: flight data → frame selection → assisted annotation →
 human validation → versioned dataset → fine-tuning → model comparison.
 
-IRIS currently provides **data intake, frame selection, saved detector comparisons,
-and human annotation with optional local multimodal assistance**. Dataset releases,
-training, and quality evaluation remain planned parts of V1. See
+IRIS currently provides **data intake, detector comparison, assisted annotation,
+human review, dataset versions, and local detector fine-tuning**. Trained checkpoints
+return to the visual comparator. Quality metrics remain the next part of V1. See
 [the architecture and V1 plan](docs/architecture.md).
 
 ## Run locally
@@ -51,7 +51,7 @@ and extracted PNGs. Back up the whole data directory while the server is stopped
 Exact duplicate frames are skipped during extraction. Optional perceptual
 deduplication is only a heuristic: inspect the retained frames before relying
 on a selection. Identical images across sessions remain visible as duplicate
-warnings; this is not yet a dataset split validator.
+warnings; dataset freezing separately rejects identical pixels crossing splits.
 
 Supported video containers are AVI, MP4/M4V, modern MOV, MKV, and WebM, subject
 to OpenCV's bundled codecs. Playlists, MPEG containers, and older MOV files
@@ -91,7 +91,8 @@ uv run --extra ml iris --data-dir /path/to/private/iris-data
    runtime; the optional `ml` installation intentionally contains CPU wheels.
 3. Inspect the same frame side by side. Changing the displayed confidence or
    class filters saved predictions; it does not rerun the models. Raw saved
-   outputs include all returned COCO categories, before UI filtering.
+   outputs include all returned categories, before UI filtering. Trained person/car
+   models retain their native IDs and an explicit mapping to COCO IDs 1 and 3.
 4. Reopen the comparison from its history after a restart. It retains its frame
    selection, frame hashes, checkpoint hashes, model configuration, runtime,
    device, and timing protocol. Subsequent selection changes do not change it.
@@ -229,6 +230,56 @@ response and usage remain traceable. The hosted model ID does not provide an
 immutable weight digest; local Ollama requests retain their actual model digest.
 API keys are read only by the server/worker and are never returned to the UI.
 
+## Freeze a dataset and fine-tune
+
+**Dataset & training** works across all flight sessions. It requires no API key.
+
+1. Select frames and validate their annotations, including empty negative images.
+   Drafts, unselected frames, and images with unresolved proposals are excluded.
+2. Refresh dataset candidates and assign scene groups to **Train**, **Validation**,
+   or **Test**. At least two distinct groups are required for train and validation;
+   test is optional, and its absence is reported. Related flights belong in the
+   same group. Never distribute neighboring frames randomly across splits.
+3. Name and freeze the version, optionally linking a previous release as its parent.
+   IRIS copies normalized PNGs and records image hashes, full annotation revisions,
+   reviewers, source footage, timestamps, taxonomy, and splits in a checksummed
+   manifest. Download the manifest or inspect it in the interface. Later label
+   edits and selection changes leave that version intact.
+4. Choose this dataset and a ready **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
+   either the official checkpoint or a previous IRIS checkpoint. Start a bounded
+   CPU run: 20 optimizer steps by default, configurable from 1 to 200, batch size
+   one, with a recorded learning rate and seed. Runtime depends on the CPU and
+   images; these limits bound steps, not wall-clock time. No weights are downloaded.
+5. Follow progress, individual loss components and logs. A completed run registers
+   its checkpoint and SHA-256, parent, dataset version and settings. Use it in
+   **Model comparison** alongside its parent on the same held-out frames.
+
+Scene-group assignments and exact pixel hashes retain their split across all
+versions in a workspace. Crossing these reservations is rejected, including when
+an image is imported again under another session name. Duplicate pixels within
+one release are also rejected. Perceptual-hash warnings help review similar
+images; they do not establish independence. There is currently no operation to
+retire or reassign a reserved test group. A new version contains a full snapshot;
+linking a parent does not automatically add its images. A version holds at most
+1,000 images and makes its own image copies, so allow additional disk space.
+
+The first training engine adapts only the final classification and box regression
+layers. It initializes background/person/car from the parent, freezes feature
+extraction and proposal layers, and uses SGD on the frozen **train** split only.
+Validation and test images are not opened by the training worker. Negative
+training images are supported, but at least one positive annotation is required.
+With fewer steps than training images, only part of the training set is visited.
+This small scope makes a CPU experiment practical; it may be insufficient for
+small distant objects or substantial domain changes.
+
+Loss measures optimization on training examples, **not detection quality**.
+No AP/mAP, precision/recall, validation score or automatic promotion is reported.
+Visual comparisons and measured CPU timings are available; a gain requires a
+separate evaluation on independent, reviewed imagery. Old checkpoints remain
+available. Cancellation/failure preserves saved step history and logs, but publishes
+no incomplete checkpoint. Restart marks unfinished jobs interrupted. Launch a new
+run to retry; exact optimizer-state resume is not implemented.
+
 ## Development and verification
 
 ```sh
@@ -241,7 +292,8 @@ Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
-budget checks, job lifecycle, cancellation, migration, and
+budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
+job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not
 detection or annotation quality on real drone data. No datasets or model weights
@@ -256,6 +308,19 @@ IRIS_TEST_MODEL_DIR=/absolute/path/to/iris-data uv run --extra ml pytest tests/t
 
 Without this variable, those two live checks are skipped. They perform real
 forwards through the models, but synthetic images provide no accuracy benchmark.
+
+To explicitly run the real training/worker check using already installed weights:
+
+```sh
+IRIS_TEST_TRAINING=1 IRIS_TEST_MODEL_DIR=/absolute/path/to/iris-data \
+  uv run --extra ml pytest tests/test_training_live.py
+```
+
+It performs three CPU optimizer steps across two generations, verifies changed
+prediction-head weights and unchanged frozen layers, reloads the checkpoint into
+a comparison with its parent, and checks persistence after restart. All images
+and review records are generated fixtures, not human-validated flight data. It
+downloads nothing. Without `IRIS_TEST_TRAINING=1`, this test is skipped.
 
 After separately provisioning and starting local Ollama, opt into a real
 multimodal protocol check on a generated image:

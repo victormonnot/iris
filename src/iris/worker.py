@@ -1,4 +1,4 @@
-"""Subprocess entry point for local media, inference and annotation jobs."""
+"""Subprocess entry point for local media, model and annotation jobs."""
 
 import ctypes
 import os
@@ -11,6 +11,7 @@ from iris.assistance import run_assistance
 from iris.inference import run_comparison
 from iris.media import extract_frames
 from iris.store import Store, now
+from iris.training import run_training
 
 
 def run(root: Path, job_id: str, parent_pid: int):
@@ -64,6 +65,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
+        elif job["kind"] == "train":
+            result = run_training(store, job["params"]["training_id"], progress, cancelled)
         else:
             raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
@@ -87,6 +90,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "extract": "Extraction complete",
                         "infer": "Comparison complete",
                         "assist": "Annotation proposals ready for human review",
+                        "train": "Training complete; checkpoint available in the comparator",
                     }[job["kind"]]
                 )
                 if status == "succeeded"

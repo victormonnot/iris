@@ -92,6 +92,25 @@ CREATE TABLE IF NOT EXISTS assistance_previews (
     candidates TEXT NOT NULL, images TEXT NOT NULL, created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL, job_id TEXT UNIQUE REFERENCES jobs(id)
 );
+CREATE TABLE IF NOT EXISTS dataset_versions (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    parent_id TEXT REFERENCES dataset_versions(id), path TEXT NOT NULL,
+    manifest_sha256 TEXT NOT NULL, summary TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_runs (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    dataset_id TEXT NOT NULL REFERENCES dataset_versions(id), parent_model_id TEXT NOT NULL,
+    config TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}',
+    history TEXT NOT NULL DEFAULT '[]', checkpoint_id TEXT,
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trained_models (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    training_id TEXT NOT NULL UNIQUE REFERENCES training_runs(id),
+    parent_model_id TEXT NOT NULL, architecture TEXT NOT NULL, path TEXT NOT NULL,
+    weight_sha256 TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS training_runs_dataset ON training_runs(dataset_id);
 """
 
 JSON_FIELDS = {
@@ -112,6 +131,8 @@ JSON_FIELDS = {
     "candidates",
     "raw_response",
     "images",
+    "summary",
+    "history",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = {
@@ -126,6 +147,9 @@ TABLES = {
     "annotation_suggestions",
     "assistance_records",
     "assistance_previews",
+    "dataset_versions",
+    "training_runs",
+    "trained_models",
 }
 
 
@@ -158,10 +182,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4):
+            if version not in (0, 1, 2, 3, 4, 5):
                 raise RuntimeError(f"Unsupported database version: {version}")
             # Additive migrations preserve sources, results and annotation revisions.
-            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=4;\nCOMMIT;")
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=5;\nCOMMIT;")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

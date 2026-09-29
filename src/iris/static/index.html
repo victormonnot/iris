@@ -14,6 +14,7 @@
     <script src="/static/app.js" defer></script>
     <script src="/static/comparison.js" defer></script>
     <script src="/static/annotation.js" defer></script>
+    <script src="/static/training.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to workspace</a>
@@ -68,7 +69,8 @@
             aria-describedby="scene-group-hint"
           />
           <p id="scene-group-hint" class="field-hint">
-            Group flights from the same scene for future dataset splits.
+            Group flights from the same scene so they stay together in dataset
+            splits.
           </p>
           <button class="button button-secondary full-width" type="submit">
             <span aria-hidden="true">+</span> Create session
@@ -112,7 +114,7 @@
           <h2 id="welcome-title">Build a useful collection.</h2>
           <p>
             Create a flight session, then add images or video from your machine.
-            Nothing is uploaded to an external service.
+            Imported files stay on this computer.
           </p>
           <button
             class="button button-primary"
@@ -180,6 +182,15 @@
               aria-controls="annotation-workspace"
             >
               <span>03</span> Annotation
+            </button>
+            <button
+              id="workspace-training"
+              class="workspace-tab"
+              type="button"
+              aria-pressed="false"
+              aria-controls="training-workspace"
+            >
+              <span>04</span> Dataset &amp; training
             </button>
           </nav>
           <div id="intake-workspace">
@@ -801,8 +812,12 @@
                     <div class="annotation-provider-controls">
                       <label for="annotation-execution">Execution</label>
                       <select id="annotation-execution">
-                        <option value="local">Local · images stay on this computer</option>
-                        <option value="api">API · send images to a provider</option>
+                        <option value="local">
+                          Local · images stay on this computer
+                        </option>
+                        <option value="api">
+                          API · send images to a provider
+                        </option>
                       </select>
                       <label for="annotation-provider">Provider</label>
                       <select id="annotation-provider" disabled></select>
@@ -839,7 +854,9 @@
                         terminal. This downloads a multi-gigabyte model and uses
                         local memory; IRIS never starts the download.
                       </p>
-                      <pre id="annotation-local-command">ollama pull qwen3-vl:4b-instruct</pre>
+                      <pre id="annotation-local-command">
+ollama pull qwen3-vl:4b-instruct</pre
+                      >
                       <p>
                         Start Ollama on its default loopback address, then
                         refresh availability. Manual annotation and detector
@@ -854,8 +871,8 @@
                     </p>
                     <p id="annotation-api-notice" class="field-hint" hidden>
                       Preview the exact outbound images and the cost limit
-                      before approving an API request. Preparing a preview
-                      stays local.
+                      before approving an API request. Preparing a preview stays
+                      local.
                     </p>
                     <label for="annotation-assist-source"
                       >Candidates to review</label
@@ -886,22 +903,57 @@
                       aria-labelledby="annotation-api-preview-title"
                       hidden
                     >
-                      <h4 id="annotation-api-preview-title">Review this API request</h4>
+                      <h4 id="annotation-api-preview-title">
+                        Review this API request
+                      </h4>
                       <p id="annotation-api-destination" class="small"></p>
                       <p id="annotation-api-data-notice" class="small"></p>
-                      <p id="annotation-api-preview-details" class="field-hint"></p>
-                      <div id="annotation-api-images" class="annotation-api-images"></div>
+                      <p
+                        id="annotation-api-preview-details"
+                        class="field-hint"
+                      ></p>
+                      <div
+                        id="annotation-api-images"
+                        class="annotation-api-images"
+                      ></div>
                       <p id="annotation-api-cost" class="small"></p>
                       <p id="annotation-api-cost-basis" class="field-hint"></p>
-                      <a id="annotation-api-pricing" class="small" target="_blank" rel="noopener noreferrer" hidden>Provider pricing</a>
-                      <p id="annotation-api-expiry" class="field-hint" role="status"></p>
-                      <label class="annotation-api-consent" for="annotation-api-consent">
+                      <a
+                        id="annotation-api-pricing"
+                        class="small"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        hidden
+                        >Provider pricing</a
+                      >
+                      <p
+                        id="annotation-api-expiry"
+                        class="field-hint"
+                        role="status"
+                      ></p>
+                      <label
+                        class="annotation-api-consent"
+                        for="annotation-api-consent"
+                      >
                         <input id="annotation-api-consent" type="checkbox" />
                         <span id="annotation-api-consent-label"></span>
                       </label>
                       <div class="annotation-api-actions">
-                        <button id="annotation-api-confirm" class="button button-primary" type="button" disabled>Send images and request review</button>
-                        <button id="annotation-api-cancel" class="text-button" type="button">Discard preview</button>
+                        <button
+                          id="annotation-api-confirm"
+                          class="button button-primary"
+                          type="button"
+                          disabled
+                        >
+                          Send images and request review
+                        </button>
+                        <button
+                          id="annotation-api-cancel"
+                          class="text-button"
+                          type="button"
+                        >
+                          Discard preview
+                        </button>
                       </div>
                     </section>
                     <p
@@ -918,6 +970,334 @@
                 <div id="annotation-history"></div>
               </details>
             </div>
+          </section>
+          <section
+            id="training-workspace"
+            aria-label="Dataset and training"
+            hidden
+          >
+            <p class="dataset-scope">
+              Workspace-wide: build releases from validated, selected frames
+              across all flight sessions. Flights in the same scene group stay
+              together in every release.
+            </p>
+            <section
+              class="panel dataset-panel"
+              aria-labelledby="dataset-create-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="dataset-create-title">Freeze a dataset release</h2>
+                  <p>
+                    Save image pixels, reviewed labels and their provenance in
+                    an immutable version.
+                  </p>
+                </div>
+                <button id="dataset-refresh" type="button" class="text-button">
+                  Refresh candidates
+                </button>
+              </div>
+              <form id="dataset-form" class="dataset-panel-body">
+                <div class="training-form-grid">
+                  <div>
+                    <label for="dataset-name">Release name</label>
+                    <input
+                      id="dataset-name"
+                      required
+                      maxlength="160"
+                      placeholder="e.g. Field collection · v1"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label for="dataset-parent"
+                      >Previous version (optional)</label
+                    >
+                    <select id="dataset-parent">
+                      <option value="">First / independent release</option>
+                    </select>
+                  </div>
+                </div>
+                <p
+                  id="dataset-candidate-status"
+                  class="field-hint"
+                  role="status"
+                >
+                  Open this tab to load validated frames.
+                </p>
+                <div id="dataset-groups" class="dataset-groups"></div>
+                <p class="field-hint">
+                  Train updates model weights; validation is reserved for model
+                  selection; test is optional and stays held out. Assign at
+                  least one group to train and another to validation. Once used,
+                  a group's split is reserved across releases. Put nearby scenes
+                  and similar flights in the same group to avoid leakage.
+                </p>
+                <div id="dataset-warnings" class="dataset-warnings"></div>
+                <div class="comparison-launch">
+                  <p
+                    id="dataset-selection-summary"
+                    class="selection-count"
+                    aria-live="polite"
+                  >
+                    No groups included
+                  </p>
+                  <button
+                    id="dataset-create"
+                    type="submit"
+                    class="button button-primary"
+                    disabled
+                  >
+                    Freeze release <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+                <p
+                  id="dataset-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+              </form>
+            </section>
+            <div class="training-columns">
+              <section
+                class="panel dataset-panel"
+                aria-labelledby="dataset-history-title"
+              >
+                <div class="panel-heading">
+                  <div>
+                    <h2 id="dataset-history-title">Dataset releases</h2>
+                    <p>
+                      Saved versions remain unchanged as annotations evolve.
+                    </p>
+                  </div>
+                  <span id="dataset-history-count" class="count">0</span>
+                </div>
+                <div class="dataset-panel-body">
+                  <label for="dataset-history">Release history</label>
+                  <select id="dataset-history" disabled>
+                    <option value="">No releases yet</option>
+                  </select>
+                  <p
+                    id="dataset-history-error"
+                    class="inline-error"
+                    role="alert"
+                    hidden
+                  ></p>
+                  <p id="dataset-history-empty" class="field-hint">
+                    Validate frames in Annotation, then freeze your first
+                    release above.
+                  </p>
+                  <div id="dataset-detail" hidden>
+                    <h3 id="dataset-detail-name"></h3>
+                    <p id="dataset-detail-context" class="field-hint"></p>
+                    <div
+                      id="dataset-detail-counts"
+                      class="dataset-counts"
+                    ></div>
+                    <p id="dataset-detail-classes" class="field-hint"></p>
+                    <div
+                      id="dataset-detail-warnings"
+                      class="dataset-warnings"
+                    ></div>
+                    <a
+                      id="dataset-manifest-download"
+                      class="text-button"
+                      download
+                      >Download manifest</a
+                    >
+                    <details class="dataset-provenance">
+                      <summary>Frozen frame revisions and provenance</summary>
+                      <pre id="dataset-manifest"></pre>
+                    </details>
+                  </div>
+                </div>
+              </section>
+              <section
+                class="panel dataset-panel"
+                aria-labelledby="training-create-title"
+              >
+                <div class="panel-heading">
+                  <div>
+                    <h2 id="training-create-title">Train a local detector</h2>
+                    <p>
+                      Fine-tune a Faster R-CNN detection head on a frozen
+                      release.
+                    </p>
+                  </div>
+                  <span class="local-label">CPU</span>
+                </div>
+                <form id="training-form" class="dataset-panel-body">
+                  <label for="training-name">Training name</label>
+                  <input
+                    id="training-name"
+                    required
+                    maxlength="160"
+                    placeholder="e.g. People and cars · first pass"
+                    autocomplete="off"
+                  />
+                  <label for="training-dataset">Dataset release</label>
+                  <select id="training-dataset" required disabled>
+                    <option value="">Freeze a dataset first</option>
+                  </select>
+                  <label for="training-parent">Starting checkpoint</label>
+                  <select id="training-parent" required disabled>
+                    <option value="">Checking local models…</option>
+                  </select>
+                  <p
+                    id="training-model-status"
+                    class="field-hint"
+                    role="status"
+                  ></p>
+                  <div class="training-settings">
+                    <div>
+                      <label for="training-steps">Optimizer steps</label
+                      ><input
+                        id="training-steps"
+                        type="number"
+                        min="1"
+                        max="200"
+                        step="1"
+                        value="20"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label for="training-rate">Learning rate</label
+                      ><input
+                        id="training-rate"
+                        type="number"
+                        min="0.000001"
+                        max="0.1"
+                        step="any"
+                        value="0.001"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label for="training-seed">Seed</label
+                      ><input
+                        id="training-seed"
+                        type="number"
+                        min="0"
+                        max="2147483647"
+                        step="1"
+                        value="0"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <p class="field-hint">
+                    Batch size 1 · person / car · frozen feature extractor. Only
+                    training frames update the model. Validation and test frames
+                    are preserved for evaluation.
+                  </p>
+                  <p class="field-hint">
+                    Starting a run uses local CPU and disk space. The step limit
+                    bounds the run; you can cancel it in Processing jobs. No
+                    model download or API call starts here.
+                  </p>
+                  <button
+                    id="training-start"
+                    type="submit"
+                    class="button button-primary"
+                    disabled
+                  >
+                    Start CPU training <span aria-hidden="true">→</span>
+                  </button>
+                  <p
+                    id="training-error"
+                    class="inline-error"
+                    role="alert"
+                    hidden
+                  ></p>
+                </form>
+              </section>
+            </div>
+            <section
+              class="panel dataset-panel"
+              aria-labelledby="training-history-title"
+            >
+              <div class="panel-heading">
+                <div>
+                  <h2 id="training-history-title">Training runs</h2>
+                  <p>
+                    Inspect optimization progress and compare each completed
+                    checkpoint.
+                  </p>
+                </div>
+                <span id="training-history-count" class="count">0</span>
+              </div>
+              <div class="dataset-panel-body">
+                <label for="training-history">Run history</label>
+                <select id="training-history" disabled>
+                  <option value="">No training runs yet</option>
+                </select>
+                <p
+                  id="training-history-error"
+                  class="inline-error"
+                  role="alert"
+                  hidden
+                ></p>
+                <p id="training-history-empty" class="field-hint">
+                  Start a bounded CPU run once a dataset release and local model
+                  are ready.
+                </p>
+                <div id="training-detail" hidden>
+                  <div class="comparison-run-heading">
+                    <div>
+                      <h3 id="training-detail-name"></h3>
+                      <p id="training-detail-context" class="field-hint"></p>
+                    </div>
+                    <span id="training-detail-status" class="job-status"></span>
+                  </div>
+                  <p
+                    id="training-detail-message"
+                    class="small muted"
+                    role="status"
+                  ></p>
+                  <p
+                    id="training-detail-error"
+                    class="inline-error"
+                    role="alert"
+                    hidden
+                  ></p>
+                  <div
+                    id="training-checkpoint"
+                    class="training-checkpoint"
+                    hidden
+                  >
+                    <div>
+                      <strong>Checkpoint ready for comparison</strong>
+                      <p
+                        id="training-checkpoint-id"
+                        class="field-hint monospace"
+                      ></p>
+                    </div>
+                    <button
+                      id="training-compare"
+                      type="button"
+                      class="button button-secondary"
+                    >
+                      Open model comparison →
+                    </button>
+                  </div>
+                  <p class="training-loss-note">
+                    Training loss describes optimization on the training frames.
+                    It is not detection accuracy and does not prove improvement.
+                    Quality metrics on held-out frames are not available yet.
+                  </p>
+                  <div
+                    id="training-loss-history"
+                    class="training-loss-history"
+                  ></div>
+                  <details class="dataset-provenance">
+                    <summary>Training configuration and provenance</summary>
+                    <pre id="training-provenance"></pre>
+                  </details>
+                </div>
+              </div>
+            </section>
           </section>
         </div>
         <section
@@ -939,7 +1319,7 @@
         </section>
         <footer class="page-footer">
           <span>IRIS / Computer vision for flight data</span
-          ><span>Data intake / Model comparison / Annotation</span>
+          ><span>Data intake / Comparison / Annotation / Training</span>
         </footer>
       </main>
     </div>

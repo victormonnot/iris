@@ -9,8 +9,8 @@ deployment, drone control, tracking, and segmentation are outside this version.
 
 One Python application serves a FastAPI JSON API and a plain HTML/CSS/JavaScript
 interface. SQLite stores metadata; a configurable local data directory stores
-media and artifacts. A subprocess worker executes extraction, inference, and annotation jobs;
-the same boundary will host training without blocking requests. No Node build
+media and artifacts. A subprocess worker executes extraction, inference, annotation,
+and training jobs without blocking requests. No Node build
 step, database server, cloud account, or GPU is required for the data workspace.
 
 Processing code is separate from the API and UI. Detection adapters expose
@@ -39,8 +39,13 @@ They share one optional CPU runtime and label vocabulary. These are starting
 points for a small experiment, not validated aerial detectors. Small distant
 objects may require higher resolution or different models after measurement.
 Torchvision supports a [standard detection fine-tuning workflow](https://docs.pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
-The planned training integration will replace the Faster R-CNN prediction head for the
+The training integration replaces the Faster R-CNN prediction head for the
 project classes and records the frozen layers and optimizer configuration.
+It copies the parent's background/person/car rows, optimizes only the final
+classifier and box regressor, and preserves the feature extractor and proposal
+network. Trained descendants can become parents of subsequent runs. Native
+labels 1/2 map explicitly to COCO IDs 1/3 for saved comparisons and annotation
+proposals; raw native IDs remain recorded.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
 
@@ -101,7 +106,29 @@ a reviewer name and no unresolved proposals; it means the whole image was
 reviewed, including missed objects. A later proposal does not alter an older
 validated revision. Re-reviewing an existing box may replace its origin only if
 the box still matches the saved revision that the model examined; earlier
-decisions remain in history. These revisions are not yet dataset releases.
+decisions remain in history. Dataset releases freeze a specific validated revision
+and require all current suggestions to be resolved.
+
+Dataset publication holds a SQLite write transaction while copying verified
+images to a staging directory. The completed directory is renamed before its
+manifest hash and summary become visible in SQLite. Failures remove unpublished
+artifacts. Releases copy their PNGs, full annotation revisions and source metadata;
+later source edits cannot change their training inputs. Existing manifests reserve
+scene groups and exact pixel hashes to one split across versions. A checksummed
+manifest and image hashes are rechecked before consumption. These hashes detect
+artifact changes; they do not replace backups of the complete workspace.
+
+Training snapshots the dataset and parent checkpoint hashes before queueing and
+checks them again in the worker. CPU SGD runs for a bounded number of steps with
+batch size one and a recorded seed; only train images are read. Loss components
+and visited frame IDs are persisted each step. Completed state dictionaries are
+published atomically with the model registry entry and loaded with `weights_only`.
+Cancelled or failed runs retain their history and logs without registering a
+partial model. Resume from optimizer state is not available. The registry records
+ancestor training groups/hashes and refuses parents that have consumed a new
+dataset's held-out data. This cannot establish independence from the official
+parent's pretraining corpus. Validation-based model selection, quantitative
+evaluation and manual promotion remain the next increment.
 
 Torchvision's [code license is BSD-3-Clause](https://github.com/pytorch/vision/blob/main/LICENSE),
 but its documentation [separates pretrained-model terms from the code license](https://docs.pytorch.org/vision/stable/models.html#general-information-on-pre-trained-weights).
@@ -142,9 +169,10 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Five testable increments
 
-The data workspace, saved comparisons and annotation editor/provider integration
-(increments 1–3) are implemented. Dataset releases/training and quality evaluation
-(increments 4–5) remain planned V1 work. Live model verification depends on
+The data workspace, comparisons, annotation, dataset versions and bounded training
+(increments 1–4) are implemented. Trained checkpoints return to the visual
+comparator. Quantitative quality evaluation and reference promotion (increment 5)
+remain planned V1 work. Live model verification depends on
 explicit runtime provisioning. The README records setup commands and verification limits.
 
 | Increment | Usable result | Acceptance check |

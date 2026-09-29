@@ -24,7 +24,7 @@ PROTOCOL = {
     ),
     "postprocess_ms": "Transfer detections to CPU and convert them to JSON values",
     "total_ms": "Decode and detector call; excludes loading weights, warmup and database writes",
-    "quality_metrics": "Unavailable: no human-validated reference labels in this increment",
+    "quality_metrics": "Not computed: this comparison reports predictions and timings only",
 }
 
 
@@ -56,7 +56,7 @@ def create_comparison(
             raise ValueError("Every frame must belong to this flight session")
         frames.append(frame)
     for model_id in model_ids:
-        get_spec(model_id)
+        get_spec(model_id, store.root)
     available = {model["id"]: model for model in catalog(store.root)}
     for model_id in model_ids:
         model = available.get(model_id)
@@ -70,6 +70,11 @@ def create_comparison(
         "taxonomy": "coco-2017-v1",
         "class_mapping": {"person": 1, "car": 3},
         "frame_hashes": {frame["id"]: frame["sha256"] for frame in frames},
+        "model_hashes": {
+            model_id: available[model_id]["weight_sha256"]
+            for model_id in model_ids
+            if available[model_id].get("weight_sha256")
+        },
         "protocol": PROTOCOL,
     }
     # Publish the frozen input selection and its queue entry together. A worker
@@ -193,9 +198,15 @@ def run_comparison(
         if cancelled():
             result["cancelled"] = True
             break
-        progress(result["predictions_created"] / total, f"Loading {get_spec(model_id)['name']}")
+        progress(
+            result["predictions_created"] / total,
+            f"Loading {get_spec(model_id, store.root)['name']}",
+        )
         detector = factory(store.root, model_id, device=config["device"])
         try:
+            expected_hash = config.get("model_hashes", {}).get(model_id)
+            if expected_hash and detector.metadata.get("weight_sha256") != expected_hash:
+                raise ValueError("Checkpoint changed since this comparison was created")
             run = store.insert(
                 "runs",
                 {

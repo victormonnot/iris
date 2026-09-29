@@ -1,4 +1,4 @@
-"""Optional, offline Torchvision detectors and explicit checkpoint provisioning.
+"""Offline official and locally trained detectors with explicit weight provisioning.
 
 The catalog never imports the ML runtime or performs a network request. Only
 ``download_model`` accesses the network, after a caller explicitly requests it.
@@ -13,6 +13,7 @@ import math
 import os
 import platform
 import re
+import sqlite3
 import tempfile
 import time
 from collections.abc import Callable
@@ -155,9 +156,56 @@ TIMING_PROTOCOL = {
 }
 
 
-def get_spec(model_id: str) -> dict:
+TRAINING_ARCHITECTURE = "fasterrcnn_mobilenet_v3_large_320_fpn"
+IRIS_NATIVE_TO_COCO = {0: 0, 1: 1, 2: 3}
+
+
+def _trained_rows(root: Path) -> list[dict]:
+    database = root / "iris.sqlite3"
+    if not database.exists():
+        return []
+    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.row_factory = sqlite3.Row
+        if not connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='trained_models'"
+        ).fetchone():
+            return []
+        rows = connection.execute("SELECT * FROM trained_models ORDER BY created_at,id").fetchall()
+    return [{**dict(row), "metadata": json.loads(row["metadata"])} for row in rows]
+
+
+def _trained_spec(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "architecture": row["architecture"],
+        "origin": "trained",
+        "checkpoint_path": row["path"],
+        "weight_filename": Path(row["path"]).name,
+        "weight_sha256": row["weight_sha256"],
+        "weights_name": "IRIS fine-tuned",
+        "weight_url": None,
+        "license_url": get_spec(TRAINING_ARCHITECTURE)["license_url"],
+        "task": "object_detection",
+        "inference": True,
+        "training": row["architecture"] == TRAINING_ARCHITECTURE,
+        "classes": [{"id": 1, "name": "person"}, {"id": 3, "name": "car"}],
+        "taxonomy_id": "iris-objects-v1",
+        "native_to_coco": dict(IRIS_NATIVE_TO_COCO),
+        "training_id": row["training_id"],
+        "parent_model_id": row["parent_model_id"],
+        "provenance": row["metadata"],
+        "created_at": row["created_at"],
+    }
+
+
+def get_spec(model_id: str, root: Path | None = None) -> dict:
     """Return independent catalog metadata without importing Torchvision."""
     if model_id not in _SPECS:
+        if root is not None:
+            for row in _trained_rows(root.resolve()):
+                if row["id"] == model_id:
+                    return _trained_spec(row)
         raise ValueError(f"Unknown detector: {model_id}")
     spec = deepcopy(_SPECS[model_id])
     spec.update(
@@ -176,7 +224,8 @@ def get_spec(model_id: str) -> dict:
         ],
         task="object_detection",
         inference=True,
-        training=False,
+        training=spec["architecture"] == TRAINING_ARCHITECTURE,
+        origin="official",
     )
     return spec
 
@@ -206,30 +255,43 @@ def _cached_digest(path: str, signature: tuple) -> str:
 
 def _verified_digest(path: Path, spec: dict) -> str:
     stat = path.stat()
-    if stat.st_size != spec["download_bytes"]:
+    trained = spec.get("origin") == "trained"
+    if not trained and stat.st_size != spec["download_bytes"]:
         raise ValueError("Checkpoint size does not match the official artifact.")
     signature = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
     digest = _cached_digest(str(path.resolve()), signature)
-    if not digest.startswith(spec["expected_hash_prefix"]):
+    if trained and digest != spec["weight_sha256"]:
+        raise ValueError("Checkpoint SHA-256 does not match its training record.")
+    if not trained and not digest.startswith(spec["expected_hash_prefix"]):
         raise ValueError("Checkpoint SHA-256 does not match the official hash prefix.")
     return digest
+
+
+def checkpoint_path(root: Path, spec: dict) -> Path:
+    if spec.get("origin") != "trained":
+        return root / "models" / spec["weight_filename"]
+    path = (root / spec["checkpoint_path"]).resolve()
+    if not path.is_relative_to(root.resolve()):
+        raise ValueError("Trained checkpoint path escapes the workspace")
+    return path
 
 
 def catalog(root: Path) -> list[dict]:
     """Report dependency/file readiness; actual runtime loading happens in the worker."""
     runtime_problem = _runtime_problem()
     result = []
-    for model_id in _SPECS:
-        item = get_spec(model_id)
-        path = root / "models" / item["weight_filename"]
+    items = [get_spec(model_id) for model_id in _SPECS]
+    items.extend(_trained_spec(row) for row in _trained_rows(root.resolve()))
+    for item in items:
         item.update(status="ready", reason=None, runtime_load_verified=False)
-        if not path.exists():
-            item.update(status="missing_weights", reason="Official checkpoint is not installed.")
-        else:
-            try:
+        try:
+            path = checkpoint_path(root, item)
+            if not path.exists():
+                item.update(status="missing_weights", reason="Checkpoint is not installed.")
+            else:
                 item["weight_sha256"] = _verified_digest(path, item)
-            except (OSError, ValueError) as exc:
-                item.update(status="invalid_weights", reason=str(exc))
+        except (OSError, ValueError) as exc:
+            item.update(status="invalid_weights", reason=str(exc))
         if runtime_problem and item["status"] != "invalid_weights":
             item.update(status="missing_runtime", reason=runtime_problem)
         item["runtime_versions_required"] = dict(RUNTIME_VERSIONS)
@@ -341,7 +403,9 @@ def _restore_frozen_batchnorm(module, torch, torchvision) -> None:
             _restore_frozen_batchnorm(child, torch, torchvision)
 
 
-def _serialize_predictions(output: dict, size: tuple[int, int]) -> list[dict]:
+def _serialize_predictions(
+    output: dict, size: tuple[int, int], native_to_coco: dict | None = None
+) -> list[dict]:
     """Preserve model outputs, including classes outside the current project taxonomy."""
     boxes = output["boxes"].detach().cpu().tolist()
     labels = output["labels"].detach().cpu().tolist()
@@ -351,6 +415,11 @@ def _serialize_predictions(output: dict, size: tuple[int, int]) -> list[dict]:
     width, height = size
     detections = []
     for box, label_id, score in zip(boxes, labels, scores, strict=True):
+        native_id = label_id
+        if native_to_coco is not None:
+            if type(label_id) is not int or label_id not in native_to_coco:
+                raise ValueError("Detector returned an unknown native class ID.")
+            label_id = native_to_coco[label_id]
         if (
             len(box) != 4
             or not all(math.isfinite(value) for value in [*box, score])
@@ -364,6 +433,8 @@ def _serialize_predictions(output: dict, size: tuple[int, int]) -> list[dict]:
         detections.append(
             {"box": box, "label_id": label_id, "label": COCO_CATEGORIES[label_id], "score": score}
         )
+        if native_to_coco is not None:
+            detections[-1]["native_label_id"] = native_id
     return detections
 
 
@@ -378,16 +449,17 @@ def _cpu_name() -> str:
 
 
 class TorchvisionDetector:
-    """Load a verified local official checkpoint, with no implicit download path."""
+    """Load a verified official or trained checkpoint, without implicit downloads."""
 
     def __init__(self, root: Path, model_id: str, device: str = "cpu"):
-        self.spec = get_spec(model_id)
+        self.spec = get_spec(model_id, root)
+        self.native_to_coco = self.spec.get("native_to_coco")
         if not re.fullmatch(r"cpu|cuda(?::\d+)?", device):
             raise ValueError("Device must be cpu, cuda, or cuda:<index>.")
         problem = _runtime_problem()
         if problem:
             raise RuntimeError(problem)
-        path = root / "models" / self.spec["weight_filename"]
+        path = checkpoint_path(root, self.spec)
         digest = _verified_digest(path, self.spec)
         try:
             import torch
@@ -405,14 +477,16 @@ class TorchvisionDetector:
             if self.device.index is None:
                 self.device = torch.device("cuda", torch.cuda.current_device())
         torch.set_num_threads(min(4, os.cpu_count() or 1))
-        builder = getattr(torchvision.models.detection, model_id)
-        options = {"weights": None, "weights_backbone": None, "num_classes": 91}
-        if model_id.startswith("ssdlite"):
+        architecture = self.spec["architecture"]
+        builder = getattr(torchvision.models.detection, architecture)
+        num_classes = 3 if self.native_to_coco else 91
+        options = {"weights": None, "weights_backbone": None, "num_classes": num_classes}
+        if architecture.startswith("ssdlite"):
             options.update(score_thresh=0.001, nms_thresh=0.5, detections_per_img=100)
         else:
             options.update(box_score_thresh=0.001, box_nms_thresh=0.5, box_detections_per_img=100)
         model = builder(**options)
-        if model_id.startswith("fasterrcnn"):
+        if architecture.startswith("fasterrcnn"):
             _restore_frozen_batchnorm(model.backbone, torch, torchvision)
         model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=True)
         self.model = model.eval().to(self.device)
@@ -449,7 +523,7 @@ class TorchvisionDetector:
             "threads": torch.get_num_threads(),
             "interop_threads": torch.get_num_interop_threads(),
             "precision": "float32",
-            "head_class_slots": len(COCO_CATEGORIES),
+            "head_class_slots": num_classes,
             "input_transform": {
                 "color": "RGB",
                 "tensor_range": [0, 1],
@@ -465,6 +539,14 @@ class TorchvisionDetector:
             "timing_protocol": deepcopy(TIMING_PROTOCOL),
             "coordinates": "xyxy pixels, original oriented image, exclusive right/bottom edge",
         }
+        if self.native_to_coco:
+            self.metadata.update(
+                native_to_coco=self.native_to_coco,
+                taxonomy_id="iris-objects-v1",
+                training_id=self.spec["training_id"],
+                parent_model_id=self.spec["parent_model_id"],
+                training_provenance=self.spec["provenance"],
+            )
 
     def _synchronize(self) -> None:
         if self.device.type == "cuda":
@@ -487,7 +569,9 @@ class TorchvisionDetector:
             output = self.model([tensor])[0]
         self._synchronize()
         inferred = time.perf_counter()
-        detections = _serialize_predictions(output, oriented.size)
+        detections = _serialize_predictions(
+            output, oriented.size, getattr(self, "native_to_coco", None)
+        )
         self._synchronize()
         finished = time.perf_counter()
         return {

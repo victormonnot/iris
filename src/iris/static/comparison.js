@@ -45,6 +45,12 @@
         "Turn observations into labels.",
         "Review proposals, correct bounding boxes and validate each frame before it becomes training data.",
       ],
+      training: [
+        "04",
+        "Dataset & training",
+        "Build on what you have learned.",
+        "Freeze validated data, train a local detector and bring its checkpoint back into comparison.",
+      ],
     };
     const info = workspaces[name];
     if (!info) return;
@@ -610,6 +616,9 @@
   $("#workspace-annotation").addEventListener("click", () =>
     setWorkspace("annotation"),
   );
+  $("#workspace-training").addEventListener("click", () =>
+    setWorkspace("training"),
+  );
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);
   $("#comparison-history").addEventListener("change", (event) => {
@@ -682,6 +691,14 @@
   window.addEventListener("iris:frames", updateLaunch);
   window.addEventListener("iris:jobs", () => {
     if (state.sessionId) refreshHistory();
+  });
+  window.addEventListener("iris:models", async (event) => {
+    if (event.detail?.model_ids) {
+      comparison.choicesTouched = true;
+      comparison.chosenModels = new Set(event.detail.model_ids.slice(0, 2));
+    }
+    await refreshModels();
+    if (event.detail?.openComparison) setWorkspace("comparison");
   });
   refreshModels();
   sessionChanged();

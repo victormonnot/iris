@@ -26,11 +26,13 @@ from iris.assistance import request_assistance
 from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
+from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
 from iris.inference import comparison_detail, comparison_summary, create_comparison
 from iris.jobs import JobManager
 from iris.media import import_asset
 from iris.models import catalog
 from iris.store import Store, new_id, now
+from iris.training import create_training, training_detail
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 2 * 1024**3
@@ -86,6 +88,24 @@ class AnnotationInput(BaseModel):
     status: Literal["draft", "validated"] = "draft"
     reviewer: str = Field(default="", max_length=120)
     notes: str = Field(default="", max_length=4000)
+
+
+class DatasetInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=160)
+    frame_ids: list[str] = Field(min_length=2, max_length=1000)
+    splits: dict[str, Literal["train", "val", "test"]]
+    parent_id: str | None = None
+
+
+class TrainingInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    name: str = Field(min_length=1, max_length=160)
+    dataset_id: str
+    parent_model_id: str
+    steps: int = Field(default=20, ge=1, le=200)
+    learning_rate: float = Field(default=0.001, gt=0, le=0.1)
+    seed: int = Field(default=0, ge=0, le=2147483647)
 
 
 class SuggestionsInput(BaseModel):
@@ -183,7 +203,8 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "inference": True,
                 "annotation": True,
                 "assisted_annotation": True,
-                "training": False,
+                "dataset_versions": True,
+                "training": True,
             },
         }
 
@@ -194,6 +215,66 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/models")
     def models():
         return catalog(store.root)
+
+    @app.get("/api/dataset-candidates")
+    def candidates():
+        try:
+            return dataset_candidates(store)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/datasets")
+    def datasets():
+        return [public(row) for row in store.list("dataset_versions")]
+
+    @app.post("/api/datasets", status_code=201)
+    def freeze_dataset(payload: DatasetInput):
+        try:
+            return public(create_dataset(store, **payload.model_dump()))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/datasets/{dataset_id}")
+    def dataset(dataset_id: str):
+        require("dataset_versions", dataset_id)
+        try:
+            return public(dataset_detail(store, dataset_id))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/datasets/{dataset_id}/manifest")
+    def dataset_manifest(dataset_id: str):
+        row = require("dataset_versions", dataset_id)
+        try:
+            load_manifest(store, dataset_id)
+            return FileResponse(
+                store.artifact_path(row["path"]),
+                media_type="application/json",
+                filename=f"iris-dataset-{dataset_id}.json",
+            )
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/trainings")
+    def trainings():
+        return [training_detail(store, row["id"]) for row in store.list("training_runs")]
+
+    @app.post("/api/trainings", status_code=202)
+    def train(payload: TrainingInput):
+        require("dataset_versions", payload.dataset_id)
+        try:
+            return create_training(store, jobs, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/trainings/{training_id}")
+    def training(training_id: str):
+        require("training_runs", training_id)
+        return training_detail(store, training_id)
 
     @app.get("/api/sessions/{session_id}/comparisons")
     def comparisons(session_id: str):

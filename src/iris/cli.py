@@ -31,7 +31,11 @@ def main():
         else:
             if args.all and args.model_ids:
                 parser.error("Choose --all or explicit model IDs, not both")
-            model_ids = [model["id"] for model in catalog(root)] if args.all else args.model_ids
+            model_ids = (
+                [model["id"] for model in catalog(root) if model.get("origin") != "trained"]
+                if args.all
+                else args.model_ids
+            )
             if not model_ids:
                 parser.error("Specify model IDs or --all")
             try:
