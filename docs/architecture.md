@@ -62,9 +62,28 @@ labels supply 1–8 candidate boxes. The model reviews their categories and
 ambiguities, with possible omissions recorded as scene notes for a human. It
 never generates coordinates: proposals retain the original candidate geometry.
 Only `person`, `car`, `none`, and `uncertain` are accepted in the model response.
-Manual annotation works without Ollama. The adapter refuses remote endpoints,
+Manual annotation works without Ollama. The local adapter refuses remote endpoints,
 redirects, proxies, cloud models and remote aliases. Model installation is
 explicit; availability checks never send pixels or generate output.
+
+The provider selector also offers Qwen3-VL 32B and 235B-A22B Instruct through
+Alibaba Cloud Model Studio. Hosted configuration is checked offline. The
+Frankfurt endpoint is workspace-specific and these models use Global deployment
+scope. API access requires a server-side key and an explicit preview/confirmation
+for each request; selecting the provider alone never transmits images.
+
+An external preview freezes the review configuration, candidate geometry, exact
+encoded scene/crop files and their hashes, and dated pricing assumptions. It
+expires after 30 minutes. Confirmation rechecks revision, pixels, selection,
+provider and cost ceiling, then consumes the preview atomically with job creation.
+The worker verifies the approved snapshot and bytes again before transmission.
+There are no automatic paid retries, external fallbacks or background API probes.
+
+Hosted models support JSON Object mode; the same strict local output validator
+is used for both providers. Hosted provenance records provider model IDs and
+reported usage rather than claiming access to immutable weights. Cost bounds
+use the documented maximum input and capped output at recorded list prices;
+they exclude taxes and subsequent provider price changes.
 
 Requests freeze the image hash, candidate coordinates, base annotation revision,
 model digest, instructions and provider configuration before entering the job

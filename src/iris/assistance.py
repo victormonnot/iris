@@ -1,11 +1,14 @@
-"""Explicit, bounded local multimodal review, separate from human annotations."""
+"""Bounded local or explicitly approved API review, separate from human annotations."""
 
 import json
 import math
+import os
 from collections.abc import Callable
 
+from iris import remote_provider
 from iris.annotations import TAXONOMY, AnnotationConflict, _coordinates, require_revision
-from iris.assistance_provider import OllamaReviewer, provider_status
+from iris.assistance_previews import confirmed_preview, read_images
+from iris.assistance_provider import OllamaReviewer, ProviderConfig, provider_status
 from iris.inference import _load_verified_frame
 from iris.store import Store, new_id, now
 
@@ -73,16 +76,17 @@ def _candidates(
     ]
 
 
-def request_assistance(
+def _prepare(
     store: Store,
-    jobs,
     frame_id: str,
     *,
     expected_revision: int,
     prediction_id: str | None = None,
     threshold: float = 0.5,
     instructions: str = "",
-) -> dict:
+    provider: str = "ollama",
+    model: str | None = None,
+) -> tuple[dict, list, dict]:
     annotation = require_revision(store, frame_id, expected_revision)
     frame = store.get("frames", frame_id)
     if (
@@ -100,11 +104,34 @@ def request_assistance(
         )
     with _load_verified_frame(store, frame, frame["sha256"]):
         pass
-    status = provider_status()
+    if provider == "ollama":
+        status = (
+            provider_status()
+            if model is None
+            else provider_status(
+                {
+                    "endpoint": ProviderConfig.from_env().endpoint,
+                    "model": model,
+                }
+            )
+        )
+    elif provider == "alibaba":
+        status = remote_provider.provider_status(
+            {
+                "endpoint": os.environ.get("IRIS_DASHSCOPE_BASE_URL", ""),
+                "model": model,
+            }
+        )
+    else:
+        raise ValueError("Unknown annotation provider")
     if status["status"] != "ready":
-        raise RuntimeError(status.get("reason") or "The local annotation provider is unavailable")
+        raise RuntimeError(status.get("reason") or "The annotation provider is unavailable")
     config = {
-        "provider": {"endpoint": status["endpoint"], "model": status["model"]},
+        "provider": {
+            "provider": provider,
+            "endpoint": status["endpoint"],
+            "model": status["model"],
+        },
         "model_digest": status.get("model_digest"),
         "frame_sha256": frame["sha256"],
         "base_revision": expected_revision,
@@ -114,6 +141,50 @@ def request_assistance(
         "threshold": threshold,
         "max_candidates": MAX_CANDIDATES,
     }
+    if provider == "alibaba":
+        config["estimated_cost"] = remote_provider.conservative_estimate(config["provider"])
+    return frame, candidates, config
+
+
+def request_assistance(
+    store: Store,
+    jobs,
+    frame_id: str,
+    *,
+    expected_revision: int,
+    prediction_id: str | None = None,
+    threshold: float = 0.5,
+    instructions: str = "",
+    provider: str = "ollama",
+    model: str | None = None,
+    preview_id: str | None = None,
+    allow_external: bool = False,
+    max_cost_usd: float | None = None,
+) -> dict:
+    if provider != "alibaba" and (preview_id or allow_external or max_cost_usd is not None):
+        raise ValueError("External approval fields are only valid for API reviews")
+    frame, candidates, config = _prepare(
+        store,
+        frame_id,
+        expected_revision=expected_revision,
+        prediction_id=prediction_id,
+        threshold=threshold,
+        instructions=instructions,
+        provider=provider,
+        model=model,
+    )
+    preview = None
+    if provider == "alibaba":
+        preview = confirmed_preview(
+            store, frame_id, config, candidates, preview_id, allow_external, max_cost_usd
+        )
+        config["consent"] = {
+            "preview_id": preview_id,
+            "allow_external": True,
+            "max_cost_usd": max_cost_usd,
+            "approved_at": now(),
+            "image_hashes": [item["sha256"] for item in preview["images"]],
+        }
     job_id, record_id, created_at = new_id(), new_id(), now()
     with jobs.guard, store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -139,7 +210,9 @@ def request_assistance(
                 "assist",
                 "queued",
                 json.dumps({"frame_id": frame_id, "assistance_id": record_id}),
-                "Waiting for explicit local multimodal review",
+                "Waiting for approved API review"
+                if preview
+                else "Waiting for local multimodal review",
                 created_at,
             ),
         )
@@ -148,6 +221,14 @@ def request_assistance(
             "VALUES (?,?,?,?,?,?)",
             (record_id, frame_id, job_id, json.dumps(config), json.dumps(candidates), created_at),
         )
+        if preview:
+            used = conn.execute(
+                "UPDATE assistance_previews SET job_id=? WHERE id=? AND job_id IS NULL "
+                "AND expires_at>?",
+                (job_id, preview_id, now()),
+            ).rowcount
+            if used != 1:
+                raise ValueError("Preview already used or expired; create a new preview")
     return store.get("jobs", job_id)
 
 
@@ -175,8 +256,33 @@ def run_assistance(
     frame = store.get("frames", record["frame_id"])
     config = record["config"]
     try:
-        factory = reviewer_factory or OllamaReviewer
-        reviewer = factory(config=config["provider"])
+        external = config["provider"].get("provider", "ollama") == "alibaba"
+        if external:
+            consent = config.get("consent", {})
+            preview = store.get("assistance_previews", consent.get("preview_id", ""))
+            if (
+                consent.get("allow_external") is not True
+                or preview is None
+                or preview["job_id"] != record["job_id"]
+                or preview["frame_id"] != record["frame_id"]
+                or preview["candidates"] != record["candidates"]
+                or preview["config"] != {k: v for k, v in config.items() if k != "consent"}
+                or consent.get("image_hashes") != [i["sha256"] for i in preview["images"]]
+            ):
+                raise ValueError("External review does not match an approved preview")
+            cost = remote_provider.conservative_estimate(config["provider"])
+            if (
+                cost != config["estimated_cost"]
+                or cost["upper_bound_usd"] > consent["max_cost_usd"]
+            ):
+                raise ValueError("API pricing changed or exceeds the approved budget")
+            factory = reviewer_factory or remote_provider.AlibabaReviewer
+            reviewer = factory(
+                config=config["provider"], expected_images=read_images(store, preview)
+            )
+        else:
+            factory = reviewer_factory or OllamaReviewer
+            reviewer = factory(config=config["provider"])
         if (
             config.get("model_digest")
             and reviewer.metadata.get("model_digest") != config["model_digest"]
@@ -187,7 +293,11 @@ def run_assistance(
             if cancelled():
                 result["cancelled"] = True
                 return result
-            progress(0.1, f"Reviewing {len(record['candidates'])} candidates with local Ollama")
+            progress(
+                0.1,
+                f"Reviewing {len(record['candidates'])} candidates with "
+                f"{config['provider'].get('provider', 'ollama')}",
+            )
             reviewed = reviewer.review(
                 image,
                 [

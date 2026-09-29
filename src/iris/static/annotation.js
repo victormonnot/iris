@@ -17,6 +17,12 @@
     tool: "select",
     drag: null,
     provider: null,
+    catalog: null,
+    catalogLoading: false,
+    catalogRequest: 0,
+    preview: null,
+    previewGeneration: 0,
+    previewTimer: null,
     jobStatuses: new Map(),
     remoteUpdate: false,
     refreshAfterRequest: false,
@@ -72,6 +78,7 @@
   }
 
   function changed() {
+    invalidatePreview();
     editor.dirty = true;
     updateStatus();
   }
@@ -132,7 +139,8 @@
       blocked ||
       editor.dirty ||
       assistActive() ||
-      editor.provider?.status !== "ready" ||
+      editor.catalogLoading ||
+      !providerReady() ||
       ($("#annotation-assist-source").value === "prediction" &&
         !$("#annotation-prediction").value);
     $("#annotation-proposal-hint").textContent = editor.dirty
@@ -166,11 +174,29 @@
       "#annotation-box-class",
       "#annotation-reviewer",
       "#annotation-notes",
+      "#annotation-assist-source",
+      "#annotation-instructions",
+      "#annotation-threshold",
     ]) {
       $(selector).disabled = blocked;
     }
+    $("#annotation-prediction").disabled =
+      blocked || !$("#annotation-prediction").value;
+    for (const selector of [
+      "#annotation-execution",
+      "#annotation-provider",
+      "#annotation-model",
+      "#annotation-provider-refresh",
+    ]) {
+      $(selector).disabled = blocked || editor.catalogLoading;
+    }
+    $("#annotation-assist").textContent =
+      editor.provider && !editor.provider.local
+        ? "Preview API request"
+        : "Request local review";
+    updatePreviewStatus();
     $("#annotation-assist-message").textContent = assistActive()
-      ? "Local review is running. Follow progress or cancel in Processing jobs."
+      ? "Model review is running. Follow progress or cancel in Processing jobs."
       : editor.remoteUpdate
         ? "New results are waiting; your unsaved edits have been preserved."
         : "Model proposals always require your decision. They never validate a frame.";
@@ -213,6 +239,7 @@
 
   async function loadFrame(id) {
     if (!id) return;
+    invalidatePreview();
     const request = ++editor.request;
     editor.frameId = id;
     editor.loading = true;
@@ -246,6 +273,7 @@
   }
 
   function applyDocument(document) {
+    invalidatePreview();
     editor.document = document;
     editor.boxes = clone(document.boxes || []);
     editor.decisions = clone(document.decisions || {});
@@ -723,29 +751,265 @@
     }
   }
 
+  function providerReady() {
+    if (!editor.provider) return false;
+    return editor.provider.local
+      ? editor.provider.status === "ready"
+      : ["configured", "ready"].includes(editor.provider.status);
+  }
+
+  function invalidatePreview() {
+    editor.previewGeneration++;
+    editor.preview = null;
+    clearTimeout(editor.previewTimer);
+    editor.previewTimer = null;
+    $("#annotation-api-preview").hidden = true;
+    $("#annotation-api-consent").checked = false;
+    $("#annotation-api-images").replaceChildren();
+  }
+
+  function selectedProvider() {
+    return editor.catalog?.providers.find(
+      (provider) => provider.id === $("#annotation-provider").value,
+    );
+  }
+
+  function renderProviderChoices(preferredProvider, preferredModel) {
+    const local = $("#annotation-execution").value === "local";
+    const providers = (editor.catalog?.providers || []).filter(
+      (provider) => provider.local === local,
+    );
+    const selector = $("#annotation-provider");
+    selector.replaceChildren();
+    for (const provider of providers)
+      selector.append(new Option(provider.name, provider.id));
+    if (providers.some((provider) => provider.id === preferredProvider))
+      selector.value = preferredProvider;
+    renderModelChoices(preferredModel);
+  }
+
+  function renderModelChoices(preferredModel) {
+    const provider = selectedProvider();
+    const selector = $("#annotation-model");
+    selector.replaceChildren();
+    for (const model of provider?.models || [])
+      selector.append(new Option(model.label || model.id, model.id));
+    if (provider?.models.some((model) => model.id === preferredModel))
+      selector.value = preferredModel;
+    renderProviderStatus();
+  }
+
+  function renderProviderStatus() {
+    const provider = selectedProvider();
+    const model = provider?.models.find(
+      (entry) => entry.id === $("#annotation-model").value,
+    );
+    editor.provider = model
+      ? { ...provider, ...model, id: provider.id, model: model.id }
+      : null;
+    const selected = editor.provider;
+    const remote = $("#annotation-execution").value === "api";
+    const ready = providerReady();
+    $("#annotation-provider-status").textContent = !selected
+      ? "No models available for this execution mode."
+      : ready
+        ? `${remote ? "API key configured · connection not tested" : "Ready"} · ${model.label || model.id}${selected.endpoint ? ` · ${selected.endpoint}` : ""}`
+        : `Unavailable · ${selected.reason || selected.status || "Model not configured"}. Manual annotation remains available.`;
+    $("#annotation-provider-setup").hidden = remote || ready;
+    $("#annotation-api-setup").hidden = !remote || ready;
+    $("#annotation-api-notice").hidden = !remote;
+    $("#annotation-local-command").textContent =
+      `ollama pull ${remote ? "qwen3-vl:4b-instruct" : model?.id || "qwen3-vl:4b-instruct"}`;
+    $("#annotation-assist").textContent = remote
+      ? "Preview API request"
+      : "Request local review";
+    updateStatus();
+  }
+
   async function refreshProvider() {
+    if (editor.busy) return;
+    const request = ++editor.catalogRequest;
+    const previousProvider = $("#annotation-provider").value;
+    const previousModel = $("#annotation-model").value;
+    invalidatePreview();
+    editor.catalogLoading = true;
     $("#annotation-provider-refresh").disabled = true;
+    updateStatus();
     try {
-      editor.provider = await api("/api/annotation-provider");
-      $("#annotation-provider-status").textContent =
-        editor.provider.status === "ready"
-          ? `Ready · ${editor.provider.model} · ${editor.provider.endpoint}`
-          : `Unavailable · ${editor.provider.reason || editor.provider.status}. Manual annotation remains available.`;
-      $("#annotation-provider-setup").hidden =
-        editor.provider.status === "ready";
+      const catalog = await api("/api/annotation-providers");
+      if (request !== editor.catalogRequest) return;
+      editor.catalog = catalog;
+      if (!previousProvider) {
+        const initial = catalog.providers.find(
+          (provider) => provider.id === catalog.default_provider,
+        );
+        $("#annotation-execution").value = initial?.local === false ? "api" : "local";
+      }
+      renderProviderChoices(
+        previousProvider || catalog.default_provider,
+        previousModel || catalog.default_model,
+      );
     } catch (failure) {
+      if (request !== editor.catalogRequest) return;
       editor.provider = null;
       $("#annotation-provider-status").textContent =
         `Unavailable · ${failure.message}`;
-      $("#annotation-provider-setup").hidden = false;
     } finally {
-      $("#annotation-provider-refresh").disabled = false;
-      updateStatus();
+      if (request === editor.catalogRequest) {
+        editor.catalogLoading = false;
+        $("#annotation-provider-refresh").disabled = false;
+        $("#annotation-provider").disabled = !editor.catalog;
+        $("#annotation-model").disabled = !editor.catalog;
+        updateStatus();
+      }
     }
   }
 
+  function assistancePayload() {
+    return {
+      expected_revision: editor.document.revision,
+      prediction_id:
+        $("#annotation-assist-source").value === "prediction"
+          ? $("#annotation-prediction").value
+          : null,
+      threshold: threshold(),
+      instructions: $("#annotation-instructions").value.trim(),
+      provider: $("#annotation-provider").value,
+      model: $("#annotation-model").value,
+    };
+  }
+
+  function formatCost(value, currency = "USD") {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 10,
+    }).format(value);
+  }
+
+  function updatePreviewStatus() {
+    const preview = editor.preview;
+    if (!preview) return;
+    const expired = Date.now() >= Date.parse(preview.expires_at);
+    const images = [...$("#annotation-api-images").querySelectorAll("img")];
+    const imagesReady = images.length > 0 && images.every(
+      (image) => image.complete && image.naturalWidth > 0,
+    );
+    $("#annotation-api-expiry").textContent = expired
+      ? "This preview has expired. Prepare a new preview before sending."
+      : !imagesReady
+        ? "Waiting for all preview images to load. If an image fails to load, discard this preview and try again."
+        : `Approval expires at ${new Date(preview.expires_at).toLocaleTimeString()}. Changing any review settings discards this preview.`;
+    $("#annotation-api-confirm").disabled =
+      editor.busy || editor.dirty || expired || !imagesReady ||
+      !$("#annotation-api-consent").checked || assistActive();
+    $("#annotation-api-consent").disabled = editor.busy || expired;
+    $("#annotation-api-cancel").disabled = editor.busy;
+  }
+
+  function renderPreview(preview, payload, frameId) {
+    const amount = preview.cost?.upper_bound_usd;
+    if (
+      !preview.id || preview.frame_id !== frameId ||
+      preview.provider !== payload.provider || preview.model !== payload.model ||
+      typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 ||
+      (preview.cost.currency && preview.cost.currency !== "USD") ||
+      !Number.isFinite(Date.parse(preview.expires_at)) ||
+      !preview.images?.length
+    ) throw new Error("The API preview is incomplete. No images were sent.");
+    editor.preview = { ...preview, payload: clone(payload), frameId };
+    $("#annotation-api-preview").hidden = false;
+    $("#annotation-api-consent").checked = false;
+    $("#annotation-api-destination").textContent =
+      `${selectedProvider()?.name || preview.provider} · ${preview.model} · ${preview.endpoint}`;
+    $("#annotation-api-data-notice").textContent =
+      `${preview.deployment_scope ? `Deployment scope: ${preview.deployment_scope}. ` : ""}${preview.data_notice || "Your images and review focus will leave this computer and be processed by the selected provider."}`;
+    $("#annotation-api-preview-details").textContent =
+      `${preview.images.length} outbound images · ${preview.candidate_count} candidate${preview.candidate_count === 1 ? "" : "s"}. These exact images and your review focus will be sent only after approval.`;
+    const gallery = $("#annotation-api-images");
+    gallery.replaceChildren();
+    for (const [index, item] of preview.images.entries()) {
+      const source = new URL(item.url, window.location.href);
+      if (source.origin !== window.location.origin)
+        throw new Error("The preview image must be stored by IRIS. No images were sent.");
+      const figure = node("figure");
+      const image = node("img");
+      image.alt = item.label || (item.kind === "frame" ? "Full frame sent to the provider" : `Candidate crop ${index}`);
+      image.addEventListener("load", updatePreviewStatus);
+      image.addEventListener("error", updatePreviewStatus);
+      image.src = source.href;
+      figure.append(image, node("figcaption", "field-hint", image.alt));
+      gallery.append(figure);
+    }
+    const cost = formatCost(amount, preview.cost.currency || "USD");
+    $("#annotation-api-cost").textContent =
+      `Maximum approved charge: ${cost}. ${preview.cost.estimate_label || "Conservative estimate for this single request."}`;
+    $("#annotation-api-cost-basis").textContent = preview.cost.basis || "";
+    const pricing = $("#annotation-api-pricing");
+    pricing.hidden = true;
+    if (preview.cost.pricing_source) {
+      try {
+        const link = new URL(preview.cost.pricing_source);
+        if (link.protocol === "https:") {
+          pricing.href = link.href;
+          pricing.hidden = false;
+        }
+      } catch { /* Pricing is optional; the amount is required. */ }
+    }
+    $("#annotation-api-consent-label").textContent =
+      `I approve sending these images to ${selectedProvider()?.name || preview.provider} and a charge of up to ${cost} for this review.`;
+    clearTimeout(editor.previewTimer);
+    editor.previewTimer = setTimeout(
+      updatePreviewStatus,
+      Math.max(0, Math.min(Date.parse(preview.expires_at) - Date.now() + 20, 2147483647)),
+    );
+    updatePreviewStatus();
+    $("#annotation-api-preview").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   async function requestAssistance() {
-    if (editor.dirty || editor.busy) return;
+    if (editor.dirty || editor.busy || !providerReady()) return;
+    invalidatePreview();
+    const generation = editor.previewGeneration;
+    const frameId = editor.frameId;
+    const remote = !editor.provider.local;
+    editor.busy = true;
+    updateStatus();
+    error(null);
+    try {
+      const payload = assistancePayload();
+      const result = await api(url(remote ? "assist/preview" : "assist"), {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (generation !== editor.previewGeneration || frameId !== editor.frameId) return;
+      if (remote) {
+        renderPreview(result, payload, frameId);
+      } else {
+        notify("Local multimodal review queued. Your labels remain subject to human validation.");
+        await refreshJobs();
+      }
+    } catch (failure) {
+      invalidatePreview();
+      reportFailure(failure);
+    } finally {
+      finishRequest();
+    }
+  }
+
+  async function confirmApiReview() {
+    const preview = editor.preview;
+    updatePreviewStatus();
+    if (!preview || $("#annotation-api-confirm").disabled) return;
+    if (
+      preview.frameId !== editor.frameId ||
+      JSON.stringify(preview.payload) !== JSON.stringify(assistancePayload())
+    ) {
+      invalidatePreview();
+      error("The review settings changed. Prepare a new preview before sending.");
+      return;
+    }
     editor.busy = true;
     updateStatus();
     error(null);
@@ -753,20 +1017,17 @@
       await api(url("assist"), {
         method: "POST",
         body: JSON.stringify({
-          expected_revision: editor.document.revision,
-          prediction_id:
-            $("#annotation-assist-source").value === "prediction"
-              ? $("#annotation-prediction").value
-              : null,
-          threshold: threshold(),
-          instructions: $("#annotation-instructions").value.trim(),
+          ...preview.payload,
+          preview_id: preview.id,
+          allow_external: true,
+          max_cost_usd: preview.cost.upper_bound_usd,
         }),
       });
-      notify(
-        "Local multimodal review queued. Your labels remain subject to human validation.",
-      );
+      invalidatePreview();
+      notify("API review queued with your approved images and cost limit. Your labels remain subject to human validation.");
       await refreshJobs();
     } catch (failure) {
+      invalidatePreview();
       reportFailure(failure);
     } finally {
       finishRequest();
@@ -861,6 +1122,7 @@
       return;
     const point = canvasPoint(event);
     if (!point) return;
+    invalidatePreview();
     event.preventDefault();
     const canvas = $("#annotation-canvas");
     canvas.focus({ preventScroll: true });
@@ -1051,8 +1313,32 @@
   $("#annotation-reviewer").addEventListener("input", changed);
   $("#annotation-notes").addEventListener("input", changed);
   $("#annotation-show-proposals").addEventListener("change", paintCanvas);
-  $("#annotation-prediction").addEventListener("change", updateStatus);
-  $("#annotation-assist-source").addEventListener("change", updateStatus);
+  for (const selector of [
+    "#annotation-prediction",
+    "#annotation-assist-source",
+    "#annotation-threshold",
+    "#annotation-instructions",
+  ]) {
+    $(selector).addEventListener("input", () => {
+      invalidatePreview();
+      updateStatus();
+    });
+  }
+  $("#annotation-execution").addEventListener("change", () => {
+    invalidatePreview();
+    renderProviderChoices();
+  });
+  $("#annotation-provider").addEventListener("change", () => {
+    invalidatePreview();
+    renderModelChoices();
+  });
+  $("#annotation-model").addEventListener("change", () => {
+    invalidatePreview();
+    renderProviderStatus();
+  });
+  $("#annotation-api-consent").addEventListener("change", updatePreviewStatus);
+  $("#annotation-api-confirm").addEventListener("click", confirmApiReview);
+  $("#annotation-api-cancel").addEventListener("click", invalidatePreview);
   $("#annotation-import").addEventListener("click", importProposals);
   $("#annotation-assist").addEventListener("click", requestAssistance);
   $("#annotation-provider-refresh").addEventListener("click", refreshProvider);
@@ -1119,6 +1405,7 @@
   });
   window.addEventListener("iris:session", () => {
     if (editor.sessionId === state.sessionId) return;
+    invalidatePreview();
     editor.sessionId = state.sessionId;
     editor.frameId = null;
     editor.document = null;

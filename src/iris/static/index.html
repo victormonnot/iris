@@ -797,10 +797,21 @@
                     class="annotation-proposals"
                   ></div>
                   <details class="annotation-assist" open>
-                    <summary>Local multimodal review</summary>
+                    <summary>Multimodal review</summary>
+                    <div class="annotation-provider-controls">
+                      <label for="annotation-execution">Execution</label>
+                      <select id="annotation-execution">
+                        <option value="local">Local · images stay on this computer</option>
+                        <option value="api">API · send images to a provider</option>
+                      </select>
+                      <label for="annotation-provider">Provider</label>
+                      <select id="annotation-provider" disabled></select>
+                      <label for="annotation-model">Model</label>
+                      <select id="annotation-model" disabled></select>
+                    </div>
                     <div class="annotation-provider-heading">
                       <p id="annotation-provider-status" class="small muted">
-                        Checking local model availability…
+                        Checking model availability…
                       </p>
                       <button
                         id="annotation-provider-refresh"
@@ -812,7 +823,7 @@
                     </div>
                     <p class="field-hint">
                       Reviews the selected image and up to eight candidate crops
-                      using local Ollama. It can question a class or flag
+                      with the chosen model. It can question a class or flag
                       uncertainty; it does not find new box coordinates. You
                       remain responsible for missed objects and final
                       validation.
@@ -828,13 +839,24 @@
                         terminal. This downloads a multi-gigabyte model and uses
                         local memory; IRIS never starts the download.
                       </p>
-                      <pre>ollama pull qwen3-vl:4b-instruct</pre>
+                      <pre id="annotation-local-command">ollama pull qwen3-vl:4b-instruct</pre>
                       <p>
                         Start Ollama on its default loopback address, then
                         refresh availability. Manual annotation and detector
                         proposals work without it.
                       </p>
                     </details>
+                    <p id="annotation-api-setup" class="field-hint" hidden>
+                      Set <code>IRIS_DASHSCOPE_API_KEY</code> and your workspace
+                      URL in <code>IRIS_DASHSCOPE_BASE_URL</code> in the server
+                      environment, restart IRIS, then refresh availability. API
+                      keys are never entered in this browser.
+                    </p>
+                    <p id="annotation-api-notice" class="field-hint" hidden>
+                      Preview the exact outbound images and the cost limit
+                      before approving an API request. Preparing a preview
+                      stays local.
+                    </p>
                     <label for="annotation-assist-source"
                       >Candidates to review</label
                     ><select id="annotation-assist-source">
@@ -858,6 +880,30 @@
                     >
                       Request local review
                     </button>
+                    <section
+                      id="annotation-api-preview"
+                      class="annotation-api-preview"
+                      aria-labelledby="annotation-api-preview-title"
+                      hidden
+                    >
+                      <h4 id="annotation-api-preview-title">Review this API request</h4>
+                      <p id="annotation-api-destination" class="small"></p>
+                      <p id="annotation-api-data-notice" class="small"></p>
+                      <p id="annotation-api-preview-details" class="field-hint"></p>
+                      <div id="annotation-api-images" class="annotation-api-images"></div>
+                      <p id="annotation-api-cost" class="small"></p>
+                      <p id="annotation-api-cost-basis" class="field-hint"></p>
+                      <a id="annotation-api-pricing" class="small" target="_blank" rel="noopener noreferrer" hidden>Provider pricing</a>
+                      <p id="annotation-api-expiry" class="field-hint" role="status"></p>
+                      <label class="annotation-api-consent" for="annotation-api-consent">
+                        <input id="annotation-api-consent" type="checkbox" />
+                        <span id="annotation-api-consent-label"></span>
+                      </label>
+                      <div class="annotation-api-actions">
+                        <button id="annotation-api-confirm" class="button button-primary" type="button" disabled>Send images and request review</button>
+                        <button id="annotation-api-cancel" class="text-button" type="button">Discard preview</button>
+                      </div>
+                    </section>
                     <p
                       id="annotation-assist-message"
                       class="field-hint"

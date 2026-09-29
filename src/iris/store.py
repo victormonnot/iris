@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS assistance_records (
 CREATE INDEX IF NOT EXISTS annotation_revisions_frame ON annotation_revisions(frame_id,revision);
 CREATE INDEX IF NOT EXISTS annotation_suggestions_frame ON annotation_suggestions(frame_id);
 CREATE INDEX IF NOT EXISTS assistance_records_frame ON assistance_records(frame_id);
+CREATE TABLE IF NOT EXISTS assistance_previews (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id), config TEXT NOT NULL,
+    candidates TEXT NOT NULL, images TEXT NOT NULL, created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL, job_id TEXT UNIQUE REFERENCES jobs(id)
+);
 """
 
 JSON_FIELDS = {
@@ -106,6 +111,7 @@ JSON_FIELDS = {
     "box",
     "candidates",
     "raw_response",
+    "images",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = {
@@ -119,6 +125,7 @@ TABLES = {
     "annotation_revisions",
     "annotation_suggestions",
     "assistance_records",
+    "assistance_previews",
 }
 
 
@@ -151,10 +158,10 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise RuntimeError(f"Unsupported database version: {version}")
-            # Schema 3 is additive: preserve sources, selections and saved comparisons.
-            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=3;\nCOMMIT;")
+            # Additive migrations preserve sources, results and annotation revisions.
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=4;\nCOMMIT;")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

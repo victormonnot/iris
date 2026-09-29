@@ -23,6 +23,8 @@ from iris.annotations import (
     save_annotation,
 )
 from iris.assistance import request_assistance
+from iris.assistance_catalog import catalog as annotation_catalog
+from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
 from iris.inference import comparison_detail, comparison_summary, create_comparison
 from iris.jobs import JobManager
@@ -93,12 +95,20 @@ class SuggestionsInput(BaseModel):
     threshold: float = Field(default=0.5, ge=0, le=1)
 
 
-class AssistanceInput(BaseModel):
+class AssistancePreviewInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     expected_revision: int = Field(ge=0)
     prediction_id: str | None = None
     threshold: float = Field(default=0.5, ge=0, le=1)
     instructions: str = Field(default="", max_length=2000)
+    provider: Literal["ollama", "alibaba"] = "ollama"
+    model: str | None = Field(default=None, max_length=160)
+
+
+class AssistanceInput(AssistancePreviewInput):
+    preview_id: str | None = Field(default=None, max_length=64)
+    allow_external: bool = False
+    max_cost_usd: float | None = Field(default=None, ge=0, le=100)
 
 
 def public(record: dict) -> dict:
@@ -271,6 +281,10 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def annotation_provider():
         return provider_status()
 
+    @app.get("/api/annotation-providers")
+    def annotation_providers():
+        return annotation_catalog()
+
     @app.get("/api/frames/{frame_id}/annotation")
     def annotation(frame_id: str):
         require("frames", frame_id)
@@ -314,6 +328,25 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         return annotation_action(
             lambda **fields: request_assistance(store, jobs, frame_id, **fields), frame_id, payload
         )
+
+    @app.post("/api/frames/{frame_id}/assist/preview", status_code=201)
+    def assist_preview(frame_id: str, payload: AssistancePreviewInput):
+        return annotation_action(
+            lambda **fields: preview_assistance(store, frame_id, **fields), frame_id, payload
+        )
+
+    @app.get("/api/assist-previews/{preview_id}/images/{index}")
+    def preview_image(preview_id: str, index: int):
+        from fastapi.responses import Response
+
+        preview = require("assistance_previews", preview_id)
+        if not 0 <= index < len(preview["images"]):
+            raise HTTPException(404, "Preview image not found")
+        try:
+            content = read_images(store, preview)[index]
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, "Preview image changed or is unreadable") from exc
+        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/frames/{frame_id}/assistance")
     def assistance_history(frame_id: str):

@@ -38,7 +38,7 @@ and extracted PNGs. Back up the whole data directory while the server is stopped
    These groups will be used to separate training, validation, and test data.
 2. Import images or videos. Each upload is limited to 2 GiB. Sources are kept
    with a SHA-256 checksum; importing an identical file into the same session
-   is idempotent. No data leaves this machine.
+   is idempotent. Import and extraction stay on this machine.
 3. For a video, choose a time interval, sampling step, and maximum frame count
    (up to 500 per extraction). Extraction runs in a separate process.
 4. Browse frames, inspect their source and timestamp, and select useful images.
@@ -133,7 +133,7 @@ Every save creates a revision with provenance. Concurrent edits produce a reload
 conflict instead of silently replacing another revision. Editing a validated frame
 requires a fresh human validation.
 
-### Optional local multimodal assistance
+### Local multimodal assistance
 
 Install [Ollama](https://docs.ollama.com/linux) separately to use a local vision
 model. IRIS never installs runtimes or pulls a model automatically. The default
@@ -157,7 +157,8 @@ In another terminal, explicitly download the model:
 OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen3-vl:4b-instruct
 ```
 
-Refresh availability in **Local multimodal review**. Choose the current saved
+Refresh availability in **Multimodal review**, choose **Local**, and select an
+installed vision model from the list. Choose the current saved
 labels or a saved detector output containing 1–8 person/car boxes, then request a
 review. Each request processes one selected frame and its candidate crops. The
 frame is resized to at most 1024 pixels on its longest edge, crops to 320 pixels.
@@ -165,7 +166,7 @@ The model can propose a class correction, rejection or uncertainty; it supplies
 no box coordinates. Missing objects and final geometry remain part of human
 review. Its proposals never validate a frame automatically.
 
-IRIS accepts only loopback HTTP endpoints and locally installed vision models.
+The Ollama adapter accepts only loopback HTTP endpoints and locally installed vision models.
 It rejects cloud model names and remote aliases, ignores HTTP proxy settings,
 and follows no redirects. Images are sent only when a review is explicitly
 requested. Raw responses, prompts, candidate provenance, model digests and
@@ -173,12 +174,60 @@ generation settings remain in the local workspace. Invalid or incomplete output
 fails the job without publishing proposals. Manual annotation and detector
 proposals remain available when Ollama is absent.
 
-The defaults can be changed when starting IRIS:
+The local defaults can be changed when starting IRIS:
 
 ```sh
 IRIS_OLLAMA_URL=http://127.0.0.1:11434 \
   IRIS_OLLAMA_MODEL=qwen3-vl:4b-instruct uv run iris
 ```
+
+### Hosted Qwen models through an API
+
+Choose **API** in the annotation panel to use **Qwen3-VL 32B Instruct** or
+**Qwen3-VL 235B-A22B Instruct** through Alibaba Cloud Model Studio. No local
+model download is needed for these reviews. Manual annotation and saved local
+results remain available without an API account.
+
+Create a Model Studio workspace and API key separately. These presets use the
+[Frankfurt workspace endpoint](https://www.alibabacloud.com/help/en/model-studio/regions).
+Configure the IRIS server environment before starting it:
+
+```sh
+export IRIS_DASHSCOPE_BASE_URL="https://YOUR_WORKSPACE_ID.eu-central-1.maas.aliyuncs.com/compatible-mode/v1"
+# Supply IRIS_DASHSCOPE_API_KEY through your shell or secret manager.
+# Keep the key out of source files, Git, browser storage and screenshots.
+.venv/bin/iris
+```
+
+IRIS reads these environment variables; it does not automatically load `.env`
+files. **Configured** means the settings are present, not that the credentials
+have been tested. Catalog refresh and preview generation never contact Alibaba.
+The access region is Frankfurt, but these model presets use **Global deployment
+scope**: inference is not guaranteed to remain in the EU.
+
+1. Select the API provider/model and saved candidate source.
+2. Generate a preview. Inspect the exact resized scene and crops to be sent,
+   the endpoint, review focus and conservative cost ceiling in USD.
+3. Explicitly authorize this request. Changing the selection or configuration
+   invalidates the preview; previews expire after 30 minutes and can be used once.
+4. Inspect the returned proposals, correct them, and validate the frame yourself.
+
+The cost ceiling uses the documented maximum input tokens and a 1,024-token
+output limit at recorded list prices, **not** a predicted token count. It excludes
+taxes and later provider price changes. Model IDs and dated price sources are
+saved with the request; reported usage is retained when available. A provider
+bill is authoritative. Neither previewing nor saving annotations incurs API cost.
+
+Hosted requests use JSON Object mode and strict local validation. A malformed,
+incomplete or wrong-model response fails without creating labels. IRIS makes
+one attempt, with no automatic retry or switch to another provider. Cancellation
+stops the local worker; the provider may still finish and bill a request it has
+already received. Retrying requires a new preview and approval.
+
+Exact outgoing image hashes, the approved ceiling, provider/model, prompt,
+response and usage remain traceable. The hosted model ID does not provide an
+immutable weight digest; local Ollama requests retain their actual model digest.
+API keys are read only by the server/worker and are never returned to the UI.
 
 ## Development and verification
 
@@ -191,7 +240,8 @@ uv run ruff format --check .
 Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
-multimodal response validation, job lifecycle, cancellation, migration, and
+multimodal response validation, exact outgoing previews, explicit API consent,
+budget checks, job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not
 detection or annotation quality on real drone data. No datasets or model weights
@@ -217,7 +267,10 @@ IRIS_TEST_OLLAMA=1 uv run pytest tests/test_assistance_provider.py -k real_ollam
 This check uses `IRIS_OLLAMA_URL` and `IRIS_OLLAMA_MODEL` when set. It never
 downloads anything and fails if the configured local provider is unavailable.
 Without `IRIS_TEST_OLLAMA=1`, it is skipped. It verifies the response structure
-and provenance, not semantic accuracy.
+and provenance, not semantic accuracy. Qwen3-VL 4B has also completed the real
+local worker/UI workflow on a synthetic fixture using an RTX 4060. Hosted API
+behavior is covered by offline transport and workflow fixtures; no paid request
+or real drone annotation quality is claimed by those tests.
 
 The web UI and API are served by FastAPI; metadata lives in SQLite and media
 in local files. The browser uses plain JavaScript without external assets.
