@@ -5,7 +5,7 @@ the full improvement loop: flight data → frame selection → assisted annotati
 human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
-human review, dataset versions, local detector fine-tuning, held-out evaluation,
+human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
 and explicit model reference selection**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
@@ -306,6 +306,22 @@ available. Cancellation/failure preserves saved step history and logs, but publi
 no incomplete checkpoint. Restart marks unfinished jobs interrupted. Launch a new
 run to retry; exact optimizer-state resume is not implemented.
 
+### Export a reviewed release
+
+In **Dataset releases**, choose a version and click **Download COCO ZIP**. The
+local archive contains its frozen PNGs, COCO bounding-box annotations for each
+train/validation/test split, the original manifest and an export inventory with
+checksums. Validated negative images are included. Image integrity is checked
+before the download; later edits in the annotation editor do not alter the release.
+
+COCO category IDs are **1 = person, 3 = car**. They differ from the native training
+mapping, where car is 2. Each split has its own `annotations.json` and `images/`
+directory. Recorded source attribution, reviewer names and notes are retained in
+the manifest. The download stays local and includes no model weights or original
+videos. Archives are limited to 256 MiB; see [the export format and limits](docs/dataset-export.md).
+This is a training interchange package, not a workspace backup or a ZIP that the
+current single-JSON COCO importer can directly restore.
+
 ## Work through the review queue
 
 Open **Annotation** to see the selected frames in the current session and how
@@ -382,6 +398,7 @@ comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
 COCO archive validation, imported-label review and source split preservation,
+frozen COCO exports, negative images, checksums and interrupted-download cleanup,
 review progress, saved-prediction disagreement and read-only queue persistence,
 COCO metrics, error matching, fixed test audits, reference history,
 job lifecycle, cancellation, migration, and

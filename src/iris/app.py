@@ -27,6 +27,7 @@ from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
 from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
+from iris.dataset_export import ExportLimitError, build_coco_export
 from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
 from iris.evaluation import (
     create_evaluation,
@@ -182,10 +183,33 @@ def public(record: dict) -> dict:
     return {key: value for key, value in record.items() if key != "path"}
 
 
+class _DatasetExportResponse(FileResponse):
+    """Release temporary disk space and the export slot even if the client disconnects."""
+
+    def __init__(self, path: Path, dataset_id: str, export_lock):
+        super().__init__(
+            path,
+            media_type="application/zip",
+            filename=f"iris-dataset-{dataset_id}-coco.zip",
+            headers={"Cache-Control": "no-store"},
+        )
+        self.export_lock = export_lock
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                Path(self.path).unlink(missing_ok=True)
+            finally:
+                self.export_lock.release()
+
+
 def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAPI:
     store = Store(data_dir or Path(os.getenv("IRIS_DATA_DIR", ".iris")))
     jobs = JobManager(store)
     import_lock = threading.Lock()
+    export_lock = threading.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -258,6 +282,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "annotation": True,
                 "assisted_annotation": True,
                 "dataset_versions": True,
+                "dataset_export": True,
                 "coco_import": True,
                 "training": True,
                 "evaluation": True,
@@ -377,6 +402,33 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             )
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/datasets/{dataset_id}/export/coco")
+    def export_dataset(dataset_id: str):
+        require("dataset_versions", dataset_id)
+        if not export_lock.acquire(blocking=False):
+            raise HTTPException(409, "Another dataset export is in progress. Try again shortly.")
+        archive = None
+        try:
+            try:
+                archive = build_coco_export(store, dataset_id)
+            except ExportLimitError as exc:
+                raise HTTPException(413, str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            except OSError as exc:
+                raise HTTPException(
+                    409,
+                    "Could not prepare the dataset export. Check local files and free disk space.",
+                ) from exc
+            return _DatasetExportResponse(archive, dataset_id, export_lock)
+        except BaseException:
+            try:
+                if archive is not None:
+                    archive.unlink(missing_ok=True)
+            finally:
+                export_lock.release()
+            raise
 
     @app.get("/api/datasets/{dataset_id}/frames/{frame_id}/image")
     def dataset_frame_image(dataset_id: str, frame_id: str):

@@ -118,6 +118,14 @@ scene groups and exact pixel hashes to one split across versions. A checksummed
 manifest and image hashes are rechecked before consumption. These hashes detect
 artifact changes; they do not replace backups of the complete workspace.
 
+COCO export reads a frozen release independently of current annotations. It
+verifies the original manifest and the exact PNG bytes written to a temporary ZIP,
+converts boxes to COCO coordinates and category IDs, and preserves the split
+assignments and original provenance. Preparation runs outside the event loop;
+one export per application instance is allowed at a time. The archive is bounded
+to 256 MiB and removed after the response, including interrupted downloads. No
+dataset revision, job or model is created. See [the export contract](dataset-export.md).
+
 Training snapshots the dataset and parent checkpoint hashes before queueing and
 checks them again in the worker. CPU SGD runs for a bounded number of steps with
 batch size one and a recorded seed; only train images are read. Loss components

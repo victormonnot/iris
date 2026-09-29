@@ -11,6 +11,11 @@
     datasets: [],
     datasetId: null,
     datasetRequest: 0,
+    datasetHistoryRequest: 0,
+    datasetDetail: null,
+    exportRequest: 0,
+    exportController: null,
+    exportUrls: new Map(),
     models: [],
     trainings: [],
     trainingId: null,
@@ -232,20 +237,28 @@
   }
 
   async function refreshDatasets() {
+    const request = ++workspace.datasetHistoryRequest;
+    ++workspace.datasetRequest;
+    resetDatasetExport();
     try {
-      workspace.datasets = await api("/api/datasets");
+      const datasets = await api("/api/datasets");
+      if (request !== workspace.datasetHistoryRequest) return;
+      workspace.datasets = datasets;
       if (!workspace.datasets.some((item) => item.id === workspace.datasetId))
         workspace.datasetId = workspace.datasets[0]?.id || null;
       renderDatasetHistory();
       showError("#dataset-history-error", null);
       if (workspace.datasetId) await loadDataset(workspace.datasetId);
+      else ++workspace.datasetRequest;
     } catch (error) {
-      showError("#dataset-history-error", error);
+      if (request === workspace.datasetHistoryRequest)
+        showError("#dataset-history-error", error);
     }
   }
 
   async function loadDataset(id) {
     const request = ++workspace.datasetRequest;
+    resetDatasetExport();
     $("#dataset-detail").hidden = true;
     try {
       const detail = await api(`/api/datasets/${encodeURIComponent(id)}`);
@@ -284,10 +297,107 @@
         null,
         2,
       );
+      workspace.datasetDetail = detail;
+      $("#dataset-coco-download").disabled = false;
       showError("#dataset-history-error", null);
     } catch (error) {
       if (request === workspace.datasetRequest)
         showError("#dataset-history-error", error);
+    }
+  }
+
+  function resetDatasetExport() {
+    ++workspace.exportRequest;
+    workspace.exportController?.abort();
+    workspace.exportController = null;
+    workspace.datasetDetail = null;
+    $("#dataset-coco-download").disabled = true;
+    $("#dataset-coco-download").textContent = "Download COCO ZIP";
+    $("#dataset-export-status").textContent = "";
+    showError("#dataset-export-error", null);
+  }
+
+  function releaseExportUrl(url) {
+    clearTimeout(workspace.exportUrls.get(url));
+    workspace.exportUrls.delete(url);
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadDatasetCoco() {
+    const detail = workspace.datasetDetail;
+    if (
+      !detail ||
+      detail.id !== workspace.datasetId ||
+      workspace.exportController
+    )
+      return;
+    const id = detail.id;
+    const request = ++workspace.exportRequest;
+    const controller = new AbortController();
+    workspace.exportController = controller;
+    const current = () =>
+      request === workspace.exportRequest && id === workspace.datasetId;
+    const button = $("#dataset-coco-download");
+    button.disabled = true;
+    button.textContent = "Preparing COCO ZIP…";
+    $("#dataset-export-status").textContent =
+      "Preparing a local ZIP from the frozen release…";
+    showError("#dataset-export-error", null);
+    try {
+      let response;
+      try {
+        response = await fetch(
+          `/api/datasets/${encodeURIComponent(id)}/export/coco`,
+          { signal: controller.signal, mode: "same-origin", redirect: "error" },
+        );
+      } catch (error) {
+        if (error.name === "AbortError") throw error;
+        throw new Error(
+          "Cannot reach IRIS. Check that the local server is running and try again.",
+        );
+      }
+      if (!current()) return;
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(
+          typeof error?.detail === "string"
+            ? error.detail
+            : `COCO export failed (HTTP ${response.status}). Try again.`,
+        );
+      }
+      if (
+        response.headers.get("content-type")?.split(";")[0].trim() !==
+        "application/zip"
+      )
+        throw new Error("The server did not return a COCO ZIP. Try again.");
+      const blob = await response.blob();
+      if (!current()) return;
+      if (!blob.size || blob.size > 256 * 1024 * 1024)
+        throw new Error("The COCO ZIP is empty or exceeds the 256 MiB limit.");
+      const url = URL.createObjectURL(blob);
+      workspace.exportUrls.set(
+        url,
+        setTimeout(() => releaseExportUrl(url), 60_000),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `iris-dataset-${id}-coco.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      $("#dataset-export-status").textContent =
+        `Download started for “${detail.name}”.`;
+    } catch (error) {
+      if (current() && error.name !== "AbortError") {
+        $("#dataset-export-status").textContent = "";
+        showError("#dataset-export-error", error);
+      }
+    } finally {
+      if (current()) {
+        workspace.exportController = null;
+        button.disabled = false;
+        button.textContent = "Download COCO ZIP";
+      }
     }
   }
 
@@ -470,6 +580,7 @@
   }
 
   $("#dataset-refresh").addEventListener("click", refreshCandidates);
+  $("#dataset-coco-download").addEventListener("click", downloadDatasetCoco);
   $("#dataset-history").addEventListener("change", (event) => {
     workspace.datasetId = event.target.value;
     loadDataset(workspace.datasetId);
@@ -580,7 +691,15 @@
       refreshDatasets();
       refreshTrainingModels();
       refreshTrainings();
-    }
+    } else resetDatasetExport();
+  });
+  window.addEventListener("pagehide", () => {
+    ++workspace.datasetRequest;
+    resetDatasetExport();
+    for (const url of workspace.exportUrls.keys()) releaseExportUrl(url);
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted && workspace.visible) refreshDatasets();
   });
   window.addEventListener("iris:jobs", () => {
     let trainingChanged = false;

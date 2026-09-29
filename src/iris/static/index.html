@@ -1159,12 +1159,36 @@ ollama pull qwen3-vl:4b-instruct</pre
                       id="dataset-detail-warnings"
                       class="dataset-warnings"
                     ></div>
-                    <a
-                      id="dataset-manifest-download"
-                      class="text-button"
-                      download
-                      >Download manifest</a
-                    >
+                    <div class="dataset-download-actions">
+                      <button
+                        id="dataset-coco-download"
+                        class="button button-secondary"
+                        type="button"
+                        aria-describedby="dataset-export-hint"
+                        disabled
+                      >Download COCO ZIP</button>
+                      <a
+                        id="dataset-manifest-download"
+                        class="text-button"
+                        download
+                        >Download manifest</a
+                      >
+                    </div>
+                    <p id="dataset-export-hint" class="field-hint">
+                      Local download of frozen images, reviewed labels, split
+                      files and recorded source/reviewer metadata. Up to 256 MiB.
+                    </p>
+                    <p
+                      id="dataset-export-status"
+                      class="field-hint"
+                      role="status"
+                    ></p>
+                    <p
+                      id="dataset-export-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
                     <details class="dataset-provenance">
                       <summary>Frozen frame revisions and provenance</summary>
                       <pre id="dataset-manifest"></pre>
