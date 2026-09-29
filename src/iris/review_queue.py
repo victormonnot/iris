@@ -1,0 +1,368 @@
+"""Read-only human review progress and disagreement between saved detector outputs."""
+
+from iris.annotations import COCO_MAPPING, TAXONOMY, _coordinates, _finite_number, _latest
+from iris.datasets import _reservations
+from iris.models import COCO_CATEGORIES, get_spec
+from iris.store import Store, _decode
+
+PROTOCOL = "iris-review-disagreement-v1"
+MATCHING = (
+    "Maximum-cardinality same-class matching at the chosen IoU; deterministic augmenting "
+    "paths visit original left indices, then neighbors by descending IoU and right index. "
+    "This does not maximize summed IoU. Remaining different-class overlaps are informative "
+    "conflicts and remain unmatched."
+)
+WARNINGS = [
+    "Disagreement is a review ordering aid, not an accuracy or uncertainty estimate. "
+    "Confidence scores are not calibrated across models.",
+    "Agreement and no detections can both hide missed objects. Review the whole image; "
+    "neither result validates an annotation.",
+    "Only saved person/car predictions above the chosen confidence threshold are compared. "
+    "Each detector's native filtering and detection limits already apply.",
+    "Keep reserved train, validation and test splits. Prioritizing a review never changes "
+    "selection, annotations or split assignments.",
+]
+_COCO_IDS = {index for index, label in enumerate(COCO_CATEGORIES) if index and label != "N/A"}
+
+
+def _thresholds(confidence_threshold, iou_threshold):
+    if not _finite_number(confidence_threshold) or not 0 <= confidence_threshold <= 1:
+        raise ValueError("Confidence threshold must be between 0 and 1")
+    if not _finite_number(iou_threshold) or not 0 < iou_threshold <= 1:
+        raise ValueError("IoU threshold must be greater than 0 and at most 1")
+
+
+def _filtered(detections, width, height, threshold):
+    if not isinstance(detections, list) or len(detections) > 100:
+        raise ValueError("Saved detections must be a list of at most 100 native outputs")
+    result = []
+    for index, detection in enumerate(detections):
+        if not isinstance(detection, dict):
+            raise ValueError("Each saved detection must be an object")
+        category, score = detection.get("label_id"), detection.get("score")
+        if type(category) is not int or category not in _COCO_IDS:
+            raise ValueError("Saved detections must use canonical COCO category IDs")
+        if not _finite_number(score) or not 0 <= score <= 1:
+            raise ValueError("Saved detection confidence must be between 0 and 1")
+        box = _coordinates(detection.get("box"), {"width": width, "height": height})
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        if not _finite_number(area) or area <= 0:
+            raise ValueError("Saved detection box area must be finite and positive")
+        if category in COCO_MAPPING and score >= threshold:
+            result.append({"index": index, "category": category, "box": box})
+    return result
+
+
+def _iou(left, right):
+    intersection = max(0.0, min(left[2], right[2]) - max(left[0], right[0])) * max(
+        0.0, min(left[3], right[3]) - max(left[1], right[1])
+    )
+    left_area = (left[2] - left[0]) * (left[3] - left[1])
+    right_area = (right[2] - right[0]) * (right[3] - right[1])
+    scale = max(left_area, right_area)
+    normalized_intersection = intersection / scale
+    return normalized_intersection / (
+        left_area / scale + right_area / scale - normalized_intersection
+    )
+
+
+def _match(left, right, threshold, *, same_class):
+    neighbors = {}
+    overlaps = {}
+    for left_box in left:
+        candidates = []
+        for right_box in right:
+            if (left_box["category"] == right_box["category"]) != same_class:
+                continue
+            overlap = _iou(left_box["box"], right_box["box"])
+            if overlap >= threshold:
+                candidates.append((-overlap, right_box["index"]))
+                overlaps[left_box["index"], right_box["index"]] = overlap
+        neighbors[left_box["index"]] = [index for _, index in sorted(candidates)]
+    assigned_right = {}
+
+    def augment(left_index, visited):
+        for right_index in neighbors[left_index]:
+            if right_index in visited:
+                continue
+            visited.add(right_index)
+            previous = assigned_right.get(right_index)
+            if previous is None or augment(previous, visited):
+                assigned_right[right_index] = left_index
+                return True
+        return False
+
+    for left_index in sorted(neighbors):
+        augment(left_index, set())
+    pairs = sorted((left_index, right_index) for right_index, left_index in assigned_right.items())
+    matches = [
+        {
+            "left_index": left_index,
+            "right_index": right_index,
+            "iou": overlaps[left_index, right_index],
+        }
+        for left_index, right_index in pairs
+    ]
+    return matches, set(assigned_right.values()), set(assigned_right)
+
+
+def assess_disagreement(
+    left_detections,
+    right_detections,
+    width,
+    height,
+    confidence_threshold=0.5,
+    iou_threshold=0.5,
+) -> dict:
+    """Match canonical person/car outputs without using any reference annotations.
+
+    Maximum-cardinality pairs keep the unmatched ratio invariant to model order.
+    Conflicting classes remain unmatched even when their geometry overlaps.
+    """
+    _thresholds(confidence_threshold, iou_threshold)
+    if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
+        raise ValueError("Image dimensions must be positive integers")
+    left = _filtered(left_detections, width, height, confidence_threshold)
+    right = _filtered(right_detections, width, height, confidence_threshold)
+    matches, matched_left, matched_right = _match(left, right, iou_threshold, same_class=True)
+    unmatched_left = [item for item in left if item["index"] not in matched_left]
+    unmatched_right = [item for item in right if item["index"] not in matched_right]
+    conflicts, _, _ = _match(unmatched_left, unmatched_right, iou_threshold, same_class=False)
+    total = len(left) + len(right)
+    unmatched = len(unmatched_left) + len(unmatched_right)
+    if not total:
+        status = "no_detections"
+        reason = "Neither model has a saved person/car detection above this threshold."
+    elif unmatched:
+        status = "disagreement"
+        reason = f"{unmatched} of {total} detections have no same-class match at this IoU."
+    else:
+        status = "agreement"
+        reason = "All retained detections have a same-class match at this IoU."
+    return {
+        "status": status,
+        "reason": reason,
+        "disagreement": unmatched / total if total else None,
+        "counts": [len(left), len(right)],
+        "matched_count": len(matches),
+        "unmatched_counts": [len(unmatched_left), len(unmatched_right)],
+        "class_conflicts": len(conflicts),
+        "prediction_ids": [],
+        "matches": matches,
+        "unmatched_indices": [
+            [item["index"] for item in unmatched_left],
+            [item["index"] for item in unmatched_right],
+        ],
+        "class_conflict_pairs": conflicts,
+    }
+
+
+def _unavailable(reason):
+    return {
+        "status": "unavailable",
+        "reason": reason,
+        "disagreement": None,
+        "counts": None,
+        "matched_count": None,
+        "unmatched_counts": None,
+        "class_conflicts": None,
+        "prediction_ids": [],
+        "matches": [],
+        "unmatched_indices": [[], []],
+        "class_conflict_pairs": [],
+    }
+
+
+def _comparison(conn, session_id, comparison_id):
+    comparison = _decode(
+        conn.execute("SELECT * FROM comparisons WHERE id=?", (comparison_id,)).fetchone()
+    )
+    if comparison is None:
+        raise KeyError(comparison_id)
+    if comparison["session_id"] != session_id:
+        raise ValueError("Choose a comparison from this session")
+    job = conn.execute("SELECT status FROM jobs WHERE id=?", (comparison["job_id"],)).fetchone()
+    if job is None or job["status"] != "succeeded":
+        raise ValueError("Choose a completed comparison")
+    models = comparison["model_ids"]
+    if (
+        not isinstance(models, list)
+        or len(models) != 2
+        or not all(isinstance(model_id, str) and model_id for model_id in models)
+        or len(set(models)) != 2
+    ):
+        raise ValueError("Choose a comparison of two distinct models")
+    if not isinstance(comparison["config"], dict) or (
+        comparison["config"].get("taxonomy") != "coco-2017-v1"
+    ):
+        raise ValueError("The comparison must use the canonical COCO taxonomy")
+    if not isinstance(comparison["frame_ids"], list) or not all(
+        isinstance(frame_id, str) for frame_id in comparison["frame_ids"]
+    ):
+        raise ValueError("The comparison has an invalid frame selection")
+    runs = {
+        row["model_id"]: _decode(row)
+        for row in conn.execute("SELECT * FROM runs WHERE comparison_id=?", (comparison_id,))
+    }
+    names = []
+    for model_id in models:
+        trained = conn.execute("SELECT name FROM trained_models WHERE id=?", (model_id,)).fetchone()
+        if trained:
+            name = trained["name"]
+        else:
+            try:
+                name = get_spec(model_id)["name"]
+            except ValueError:
+                name = model_id
+        names.append({"id": model_id, "name": name})
+    summary = {
+        **{key: comparison[key] for key in ("id", "name", "model_ids", "created_at")},
+        "models": names,
+    }
+    predictions = {}
+    for row in conn.execute(
+        "SELECT * FROM predictions WHERE comparison_id=? ORDER BY created_at,id", (comparison_id,)
+    ):
+        prediction = _decode(row)
+        predictions.setdefault((prediction["frame_id"], prediction["model_id"]), []).append(
+            prediction
+        )
+    return comparison, summary, runs, predictions
+
+
+def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
+    if frame["id"] not in comparison["frame_ids"]:
+        return _unavailable("This selected image was not included in the saved comparison.")
+    hashes = comparison["config"].get("frame_hashes")
+    if not isinstance(hashes, dict) or hashes.get(frame["id"]) != frame["sha256"]:
+        return _unavailable("The image hash does not match the saved comparison input.")
+    pair = []
+    for model_id in comparison["model_ids"]:
+        run = runs.get(model_id)
+        records = predictions.get((frame["id"], model_id), [])
+        if run is None or len(records) != 1:
+            return _unavailable("A saved model run or prediction is missing or ambiguous.")
+        prediction = records[0]
+        if prediction["run_id"] != run["id"] or prediction["model_id"] != run["model_id"]:
+            return _unavailable("The saved prediction does not match its model run.")
+        if prediction["input_size"] != [frame["width"], frame["height"]]:
+            return _unavailable("The saved prediction dimensions do not match the image.")
+        metadata = run["metadata"]
+        if not isinstance(metadata, dict) or metadata.get("model_id", model_id) != model_id:
+            return _unavailable("The saved run metadata does not match its model.")
+        pair.append(prediction)
+    try:
+        signal = assess_disagreement(
+            pair[0]["detections"],
+            pair[1]["detections"],
+            frame["width"],
+            frame["height"],
+            confidence,
+            iou,
+        )
+    except ValueError as exc:
+        return _unavailable(f"Saved detections cannot be compared: {exc}")
+    signal["prediction_ids"] = [prediction["id"] for prediction in pair]
+    return signal
+
+
+def review_queue(
+    store: Store,
+    session_id: str,
+    *,
+    comparison_id: str | None = None,
+    confidence_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
+) -> dict:
+    """Read all selected frames in source order from one SQLite snapshot.
+
+    Saved detector geometry supplies an optional review signal. Annotation state
+    supplies progress only; labels are never used to calculate disagreement.
+    """
+    _thresholds(confidence_threshold, iou_threshold)
+    counts = dict.fromkeys(
+        ("total", "needs_review", "unannotated", "draft", "pending", "validated"), 0
+    )
+    frames, summary = [], None
+    with store.connect() as conn:
+        conn.execute("BEGIN")
+        session = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
+        if session is None:
+            raise KeyError(session_id)
+        saved = _comparison(conn, session_id, comparison_id) if comparison_id is not None else None
+        if saved:
+            comparison, summary, runs, predictions = saved
+        reserved_groups, reserved_pixels = _reservations(store, conn)
+        for row in conn.execute(
+            "SELECT f.*, a.filename AS source_filename FROM frames f "
+            "JOIN assets a ON a.id=f.asset_id WHERE f.session_id=? AND f.selected=1 "
+            "ORDER BY f.created_at,f.id",
+            (session_id,),
+        ):
+            frame = _decode(row)
+            latest = _latest(conn, frame["id"])
+            decisions = latest["decisions"] if latest else {}
+            suggestions = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT id FROM annotation_suggestions WHERE frame_id=?", (frame["id"],)
+                )
+            }
+            pending = len(suggestions - decisions.keys())
+            annotation_status = latest["status"] if latest else "unannotated"
+            status = "pending" if pending else annotation_status
+            counts[status] += 1
+            counts["total"] += 1
+            counts["needs_review"] += status != "validated"
+            group_split = reserved_groups.get(session["scene_group"])
+            pixel_split = reserved_pixels.get(frame["sha256"])
+            if group_split and pixel_split and group_split != pixel_split:
+                raise ValueError("The image and scene group have conflicting reserved splits")
+            signal = (
+                _frame_signal(
+                    frame, comparison, runs, predictions, confidence_threshold, iou_threshold
+                )
+                if saved
+                else _unavailable("Choose a completed two-model comparison for a review signal.")
+            )
+            frames.append(
+                {
+                    **{
+                        key: frame[key]
+                        for key in (
+                            "id",
+                            "session_id",
+                            "asset_id",
+                            "source_filename",
+                            "frame_index",
+                            "timestamp_seconds",
+                            "width",
+                            "height",
+                            "sha256",
+                        )
+                    },
+                    "review_status": status,
+                    "annotation_status": annotation_status,
+                    "revision": latest["revision"] if latest else 0,
+                    "pending_count": pending,
+                    "box_count": len(latest["boxes"]) if latest else 0,
+                    "reviewer": latest["reviewer"] if latest else "",
+                    "reserved_split": group_split or pixel_split,
+                    "signal": signal,
+                }
+            )
+    return {
+        "session_id": session_id,
+        "taxonomy_id": TAXONOMY["id"],
+        "config": {
+            "comparison_id": comparison_id,
+            "confidence_threshold": confidence_threshold,
+            "iou_threshold": iou_threshold,
+            "protocol": PROTOCOL,
+            "matching": MATCHING,
+        },
+        "comparison": summary,
+        "counts": counts,
+        "warnings": list(WARNINGS),
+        "frames": frames,
+    }

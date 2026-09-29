@@ -193,6 +193,12 @@ source metadata produce reviewable proposals in a new session. Source split
 reservations apply before review and survive dataset versions. Imported labels
 never bypass human validation. See [the import contract](coco-import.md).
 
+A read-only annotation queue summarizes the latest revisions and unresolved
+proposals. Optional class-aware box matching between two saved detector outputs
+helps order inspection without using reference labels as scoring input. The
+queue preserves selection and split reservations; disagreement never validates
+an image. See [the matching protocol and review behavior](review-queue.md).
+
 All five increments are implemented on the initial person/car detection scope,
 including quantitative evaluation and explicit reference selection. Live model verification depends on
 explicit runtime provisioning. The README records setup commands and verification limits.

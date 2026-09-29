@@ -12,6 +12,7 @@
     dirty: false,
     busy: false,
     loading: false,
+    advancing: false,
     request: 0,
     selected: null,
     tool: "select",
@@ -26,6 +27,28 @@
     jobStatuses: new Map(),
     remoteUpdate: false,
     refreshAfterRequest: false,
+  };
+  const queue = {
+    active: false,
+    data: null,
+    filter: "all",
+    order: "source",
+    comparisonId: "",
+    confidence: 0.5,
+    iou: 0.5,
+    comparisons: [],
+    historyDirty: true,
+    stale: true,
+    loading: false,
+    request: 0,
+    timer: null,
+    message: "",
+  };
+  const reviewLabels = {
+    unannotated: "Unannotated",
+    draft: "Draft",
+    pending: "Pending proposals",
+    validated: "Validated",
   };
   const clone = (value) => structuredClone(value);
   const url = (suffix = "annotation") =>
@@ -67,9 +90,9 @@
   }
 
   function discardAllowed() {
-    if (editor.busy) {
+    if (editor.busy || editor.advancing || editor.drag) {
       notify(
-        "Wait for the annotation request to finish before changing frames.",
+        "Finish the current annotation action before changing frames.",
         true,
       );
       return false;
@@ -110,6 +133,8 @@
   }
 
   function updateStatus() {
+    for (const button of window.document.querySelectorAll("#review-queue-list button"))
+      button.disabled = editor.busy || editor.advancing || editor.loading || Boolean(editor.drag);
     const document = editor.document;
     if (!document) return;
     const status = $("#annotation-status");
@@ -122,11 +147,13 @@
         : `${document.status === "validated" ? "Validated" : document.status === "draft" ? "Draft" : "Unannotated"} · revision ${document.revision}`;
     $("#annotation-review-summary").textContent =
       `${editor.boxes.length} label${editor.boxes.length === 1 ? "" : "s"} · ${count} pending proposal${count === 1 ? "" : "s"}`;
-    const blocked = editor.busy || editor.loading;
+    const blocked = editor.busy || editor.advancing || editor.loading;
     $("#annotation-save").disabled =
       blocked || (!editor.dirty && document.status === "draft");
     $("#annotation-validate").disabled =
       blocked || count > 0 || !$("#annotation-reviewer").value.trim();
+    $("#annotation-validate-next").disabled =
+      $("#annotation-validate").disabled || Boolean(editor.drag);
     $("#annotation-save-hint").textContent = count
       ? "Accept or reject every pending proposal before validation."
       : !$("#annotation-reviewer").value.trim()
@@ -207,19 +234,240 @@
 
   function frameCaption(frame, index) {
     const source = sourceFor(frame);
-    return `${index + 1} / ${editor.frames.length} · ${source?.filename || frame.id.slice(0, 8)}${frame.timestamp_seconds != null ? ` · ${timestamp(frame.timestamp_seconds)}` : ""}${frame.selected ? "" : " · no longer selected"}`;
+    return `${index + 1} / ${editor.frames.length} · ${frame.source_filename || source?.filename || frame.id.slice(0, 8)}${frame.timestamp_seconds != null ? ` · ${timestamp(frame.timestamp_seconds)}` : ""}${frame.selected ? "" : " · not selected for datasets"}`;
+  }
+
+  function rememberQueue() {
+    if (!editor.sessionId) return;
+    try {
+      localStorage.setItem(`iris.review-queue.${editor.sessionId}`, JSON.stringify({
+        filter: queue.filter,
+        order: queue.order,
+        comparisonId: queue.comparisonId,
+        confidence: queue.confidence,
+        iou: queue.iou,
+      }));
+    } catch {
+      /* Optional preferences; annotations are only stored by the server. */
+    }
+  }
+
+  function resetQueue() {
+    clearTimeout(queue.timer);
+    queue.request++;
+    queue.data = null;
+    queue.loading = false;
+    queue.stale = true;
+    queue.historyDirty = true;
+    queue.comparisons = [];
+    queue.message = "";
+    queue.filter = "all";
+    queue.order = "source";
+    queue.comparisonId = "";
+    queue.confidence = 0.5;
+    queue.iou = 0.5;
+    try {
+      const saved = JSON.parse(localStorage.getItem(`iris.review-queue.${editor.sessionId}`));
+      if (saved) {
+        if (["all", "needs_review", ...Object.keys(reviewLabels)].includes(saved.filter))
+          queue.filter = saved.filter;
+        if (["source", "disagreement"].includes(saved.order)) queue.order = saved.order;
+        if (typeof saved.comparisonId === "string") queue.comparisonId = saved.comparisonId;
+        for (const key of ["confidence", "iou"])
+          if (typeof saved[key] === "number" && Number.isFinite(saved[key]) && saved[key] >= 0 && saved[key] <= 1 && (key !== "iou" || saved[key] > 0))
+            queue[key] = saved[key];
+      }
+    } catch {
+      /* Missing or invalid preferences use the source-order defaults. */
+    }
+    if (!queue.comparisonId) queue.order = "source";
+    $("#review-queue-filter").value = queue.filter;
+    $("#review-queue-order").value = queue.order;
+    $("#review-queue-confidence").value = queue.confidence;
+    $("#review-queue-iou").value = queue.iou;
+    $("#review-queue-iou").setCustomValidity("");
+    $("#review-queue-error").hidden = true;
+    renderQueueComparisons();
+    renderQueue();
+  }
+
+  function renderQueueComparisons() {
+    const selector = $("#review-queue-comparison");
+    selector.replaceChildren(new Option("No comparison selected", ""));
+    for (const item of queue.comparisons)
+      selector.append(new Option(`${item.name} · ${new Date(item.created_at).toLocaleString()}`, item.id));
+    selector.value = queue.comparisonId;
+    $("#review-queue-order").querySelector('[value="disagreement"]').disabled = !queue.comparisonId;
+    $("#review-queue-confidence").disabled = !queue.comparisonId;
+    $("#review-queue-iou").disabled = !queue.comparisonId;
+  }
+
+  function queueFrames() {
+    const frames = (queue.data?.frames || []).filter((frame) =>
+      queue.filter === "all" ||
+      (queue.filter === "needs_review" ? frame.review_status !== "validated" : frame.review_status === queue.filter),
+    );
+    if (queue.order !== "disagreement" || !queue.comparisonId) return frames;
+    const rank = { disagreement: 0, unavailable: 1, no_detections: 2, agreement: 3 };
+    // Test frames keep their source positions: this is review, not training selection.
+    const prioritized = frames.filter((frame) => frame.reserved_split !== "test").sort((a, b) => {
+      const difference = (rank[a.signal?.status] ?? 1) - (rank[b.signal?.status] ?? 1);
+      return difference || (b.signal?.disagreement ?? 0) - (a.signal?.disagreement ?? 0);
+    });
+    let position = 0;
+    return frames.map((frame) => frame.reserved_split === "test" ? frame : prioritized[position++]);
+  }
+
+  function signalCaption(frame) {
+    if (!queue.data?.comparison) return "";
+    const signal = frame.signal;
+    if (!signal || signal.status === "unavailable")
+      return "Comparison unavailable for this frame";
+    if (signal.status === "no_detections")
+      return "Neither model detected people or cars at this threshold · inspect manually";
+    const count = signal.counts ? ` · ${signal.counts[0]} / ${signal.counts[1]} detections` : "";
+    if (signal.status === "agreement") return `Matched model detections${count} · review still required`;
+    const ratio = signal.disagreement == null ? "Unmatched detections" : `${Math.round(signal.disagreement * 100)}% unmatched detections`;
+    const unmatched = signal.unmatched_counts ? ` · ${signal.unmatched_counts[0]} / ${signal.unmatched_counts[1]} unmatched` : "";
+    const conflicts = signal.class_conflicts ? ` · ${signal.class_conflicts} overlapping class conflict${signal.class_conflicts === 1 ? "" : "s"}` : "";
+    return ratio + count + unmatched + conflicts;
+  }
+
+  function renderQueue() {
+    const counts = $("#review-queue-counts");
+    counts.replaceChildren();
+    if (queue.data) {
+      for (const [key, label] of [["validated", "Validated"], ["needs_review", "Needs review"], ["pending", "Pending proposals"], ["unannotated", "Unannotated"], ["draft", "Draft"]]) {
+        const item = node("span", `review-queue-count ${key}`);
+        item.append(node("strong", "", queue.data.counts[key]), documentText(` ${label}`));
+        counts.append(item);
+      }
+    }
+    const total = queue.data?.counts.total || 0;
+    const validated = queue.data?.counts.validated || 0;
+    $("#review-queue-progress").max = Math.max(total, 1);
+    $("#review-queue-progress").value = validated;
+    $("#review-queue-progress").setAttribute("aria-label", `${validated} of ${total} frames human-validated`);
+    $("#review-queue-loading").hidden = !queue.loading;
+    $("#review-queue-refresh").disabled = queue.loading || !editor.sessionId;
+    $("#review-queue-list").setAttribute("aria-busy", String(queue.loading));
+    $("#review-queue-warning").textContent = queue.message;
+    $("#review-queue-warning").hidden = !queue.message;
+    const comparison = queue.data?.comparison;
+    const modelNames = comparison?.models?.map((model) => model.name).join(" / ") || comparison?.name;
+    $("#review-queue-method-details").hidden = !comparison;
+    $("#review-queue-limits").textContent = (queue.data?.warnings || []).join(" ");
+    $("#review-queue-method").textContent = !comparison
+      ? "The queue includes selected frames in source order. Choose a saved, completed two-model comparison to inspect disagreement. Selection for datasets is unchanged."
+      : `${modelNames} · confidence ≥ ${queue.data.config.confidence_threshold} · matching IoU ≥ ${queue.data.config.iou_threshold}. ${queue.order === "disagreement" ? "Highest unmatched fraction first, then unavailable, no detections and agreement; test frames keep their source positions. " : "Source order. "}Disagreement is a review hint, not accuracy. All frames still require human inspection.`;
+    const list = $("#review-queue-list");
+    const scrollTop = list.scrollTop;
+    const focusedId = list.contains(window.document.activeElement) ? window.document.activeElement.dataset.frameId : null;
+    list.replaceChildren();
+    const frames = queueFrames();
+    for (const frame of frames) {
+      const item = node("div", "review-queue-item");
+      item.setAttribute("role", "listitem");
+      const button = node("button", `review-queue-frame${frame.id === editor.frameId ? " current" : ""}`);
+      button.type = "button";
+      button.dataset.frameId = frame.id;
+      button.setAttribute("aria-current", String(frame.id === editor.frameId));
+      button.disabled = editor.busy || editor.advancing || editor.loading || Boolean(editor.drag);
+      const image = node("img", "review-queue-thumbnail");
+      image.src = `/api/frames/${encodeURIComponent(frame.id)}/image`;
+      image.alt = "";
+      image.loading = "lazy";
+      image.width = 88;
+      image.height = 58;
+      const detail = node("span", "review-queue-frame-detail");
+      const heading = node("span", "review-queue-frame-heading");
+      heading.append(node("strong", "", `${frame.source_filename}${frame.timestamp_seconds != null ? ` · ${timestamp(frame.timestamp_seconds)}` : ""}`));
+      heading.append(node("span", `review-queue-badge ${frame.review_status}`, reviewLabels[frame.review_status] || frame.review_status));
+      if (frame.reserved_split)
+        heading.append(node("span", "review-queue-badge reserved", `${frame.reserved_split}${frame.reserved_split === "test" ? " · review only" : " · reserved"}`));
+      detail.append(heading, node("span", "small muted", `${frame.box_count} saved labels · ${frame.pending_count} pending proposals · revision ${frame.revision}${frame.reviewer ? ` · ${frame.reviewer}` : ""}`));
+      const caption = signalCaption(frame);
+      if (caption) {
+        const signal = node("span", `review-queue-signal ${frame.signal?.status || "unavailable"}`, caption);
+        if (frame.signal?.reason) signal.title = frame.signal.reason;
+        detail.append(signal);
+      }
+      button.append(image, detail);
+      button.addEventListener("click", () => navigate(frame.id));
+      item.append(button);
+      list.append(item);
+    }
+    list.scrollTop = scrollTop;
+    if (focusedId) [...list.querySelectorAll("button")].find((button) => button.dataset.frameId === focusedId)?.focus({ preventScroll: true });
+    $("#review-queue-empty").hidden = !queue.data || frames.length > 0;
+    $("#review-queue-empty").textContent = total ? "No frames match this filter." : "No selected frames. Select images or extracted frames in Data intake.";
+    syncFrames();
+  }
+
+  async function refreshQueue() {
+    clearTimeout(queue.timer);
+    queue.timer = null;
+    if (!queue.active || !editor.sessionId) return false;
+    const sessionId = editor.sessionId;
+    const request = ++queue.request;
+    const current = () => request === queue.request && sessionId === editor.sessionId && sessionId === state.sessionId;
+    queue.loading = true;
+    queue.stale = false;
+    $("#review-queue-error").hidden = true;
+    renderQueue();
+    try {
+      if (queue.historyDirty) {
+        const history = await api(`/api/sessions/${encodeURIComponent(sessionId)}/comparisons`);
+        if (!current()) return false;
+        queue.comparisons = history.filter((item) => item.job?.status === "succeeded" && item.model_ids?.length === 2);
+        queue.historyDirty = false;
+        if (queue.comparisonId && !queue.comparisons.some((item) => item.id === queue.comparisonId)) {
+          queue.comparisonId = "";
+          queue.order = "source";
+          queue.message = "The saved comparison is no longer available. Source order has been restored.";
+          $("#review-queue-order").value = queue.order;
+          rememberQueue();
+        }
+        renderQueueComparisons();
+      }
+      const params = new URLSearchParams();
+      if (queue.comparisonId) params.set("comparison_id", queue.comparisonId);
+      params.set("confidence_threshold", queue.confidence);
+      params.set("iou_threshold", queue.iou);
+      const data = await api(`/api/sessions/${encodeURIComponent(sessionId)}/review-queue?${params}`);
+      if (!current()) return false;
+      queue.data = data;
+      return true;
+    } catch (failure) {
+      if (current()) {
+        queue.data = null;
+        queue.stale = true;
+        $("#review-queue-error").textContent = failure.message;
+        $("#review-queue-error").hidden = false;
+      }
+      return false;
+    } finally {
+      if (current()) {
+        queue.loading = false;
+        renderQueue();
+      }
+    }
+  }
+
+  function scheduleQueue(history = false) {
+    queue.stale = true;
+    if (history) queue.historyDirty = true;
+    clearTimeout(queue.timer);
+    if (queue.active) queue.timer = setTimeout(refreshQueue, 180);
   }
 
   function syncFrames() {
     if (editor.sessionId !== state.sessionId) return;
-    editor.frames = state.frames.filter((frame) => frame.selected);
-    if (
-      (editor.dirty || editor.busy || editor.drag) &&
-      editor.document &&
-      !editor.frames.some((frame) => frame.id === editor.frameId)
-    ) {
-      editor.frames.push({ ...editor.document.frame, selected: false });
-    }
+    editor.frames = queueFrames().map((frame) => ({ ...frame, selected: Boolean(state.frames.find((item) => item.id === frame.id)?.selected) }));
+    const outside = Boolean(editor.document && !editor.frames.some((frame) => frame.id === editor.frameId));
+    if (outside) editor.frames.push({ ...editor.document.frame, selected: Boolean(state.frames.find((item) => item.id === editor.frameId)?.selected) });
+    $("#review-queue-current-hint").hidden = !outside;
+    $("#review-queue-current-hint").textContent = "The open frame is outside the current filter. It stays open so your work is preserved; choose a queue frame to continue.";
     const selector = $("#annotation-frame");
     selector.replaceChildren();
     editor.frames.forEach((frame, index) =>
@@ -230,7 +478,8 @@
       updateStatus();
       return;
     }
-    if (editor.frames.length) loadFrame(editor.frames[0].id);
+    if (editor.loading) return;
+    if (queue.active && editor.frames.length) loadFrame(editor.frames[0].id);
     else {
       editor.frameId = null;
       editor.document = null;
@@ -325,6 +574,7 @@
     renderProposals();
     renderHistory();
     updateStatus();
+    renderQueue();
   }
 
   function documentText(text) {
@@ -683,9 +933,12 @@
   }
 
   async function save(status) {
-    if (!editor.document || editor.busy) return;
+    if (!editor.document || editor.busy || editor.loading || editor.drag) return false;
+    if (status === "validated" && (pending().length || !$("#annotation-reviewer").value.trim())) return false;
+    let saved = false;
     editor.boxes.forEach(updateBoxDecision);
     error(null);
+    editor.request++;
     editor.busy = true;
     updateStatus();
     renderProposals();
@@ -712,6 +965,8 @@
         /* Optional storage. */
       }
       applyDocument(result);
+      saved = true;
+      scheduleQueue();
       notify(
         status === "validated"
           ? `Frame validated · revision ${result.revision}.`
@@ -722,6 +977,38 @@
     } finally {
       finishRequest();
     }
+    return saved;
+  }
+
+  async function validateAndNext() {
+    if (editor.advancing || editor.busy || editor.loading || editor.drag || !editor.document) return;
+    const frameId = editor.frameId;
+    const order = editor.frames.map((frame) => frame.id);
+    const position = order.indexOf(frameId);
+    const following = [...order.slice(position + 1), ...order.slice(0, position)].filter((id) => id !== frameId);
+    editor.advancing = true;
+    updateStatus();
+    let next = null;
+    try {
+      if (!(await save("validated"))) return;
+      if (!(await refreshQueue())) {
+        notify("Frame validated. Refresh the queue before moving to the next frame.");
+        return;
+      }
+      if (frameId !== editor.frameId || editor.dirty || editor.drag) return;
+      const current = queue.data.frames.find((frame) => frame.id === frameId);
+      if (current?.review_status !== "validated") {
+        notify("The frame has new review work. Reload its latest proposals before continuing.");
+        return;
+      }
+      const candidates = queueFrames().filter((frame) => frame.review_status !== "validated" && frame.id !== frameId);
+      next = following.find((id) => candidates.some((frame) => frame.id === id)) || candidates[0]?.id;
+      if (!next) notify("Frame validated. No other frames need review in this queue filter.");
+    } finally {
+      editor.advancing = false;
+      updateStatus();
+    }
+    if (next) await navigate(next);
   }
 
   function threshold() {
@@ -733,6 +1020,7 @@
 
   async function importProposals() {
     if (editor.dirty || editor.busy) return;
+    editor.request++;
     editor.busy = true;
     updateStatus();
     error(null);
@@ -746,6 +1034,7 @@
         }),
       });
       applyDocument(result);
+      scheduleQueue();
       notify(
         "Detector proposals imported. Review each proposal before validation.",
       );
@@ -1134,7 +1423,7 @@
   }
 
   function pointerDown(event) {
-    if (!editor.document || editor.busy || editor.loading || event.button !== 0)
+    if (!editor.document || editor.busy || editor.advancing || editor.loading || event.button !== 0)
       return;
     const point = canvasPoint(event);
     if (!point) return;
@@ -1285,7 +1574,7 @@
       return;
     }
     const frameId = editor.frameId;
-    const request = editor.request;
+    const request = ++editor.request;
     try {
       const document = await api(url());
       if (
@@ -1297,7 +1586,7 @@
       )
         applyDocument(document);
     } catch (failure) {
-      if (frameId === editor.frameId) reportFailure(failure);
+      if (frameId === editor.frameId && request === editor.request) reportFailure(failure);
     }
   }
 
@@ -1326,6 +1615,45 @@
     });
   $("#annotation-save").addEventListener("click", () => save("draft"));
   $("#annotation-validate").addEventListener("click", () => save("validated"));
+  $("#annotation-validate-next").addEventListener("click", validateAndNext);
+  $("#review-queue-filter").addEventListener("change", (event) => {
+    queue.filter = event.target.value;
+    rememberQueue();
+    renderQueue();
+  });
+  $("#review-queue-order").addEventListener("change", (event) => {
+    queue.order = queue.comparisonId ? event.target.value : "source";
+    event.target.value = queue.order;
+    rememberQueue();
+    renderQueue();
+  });
+  function changeQueueConfig() {
+    const confidence = $("#review-queue-confidence");
+    const iou = $("#review-queue-iou");
+    iou.setCustomValidity(Number(iou.value) > 0 ? "" : "Matching IoU must be greater than 0 and at most 1.");
+    if (confidence.value === "" || iou.value === "" || !confidence.reportValidity() || !iou.reportValidity()) return;
+    queue.confidence = Number(confidence.value);
+    queue.iou = Number(iou.value);
+    queue.comparisonId = $("#review-queue-comparison").value;
+    if (!queue.comparisonId) {
+      queue.order = "source";
+      $("#review-queue-order").value = queue.order;
+    }
+    queue.message = "";
+    queue.request++;
+    queue.loading = false;
+    queue.data = null;
+    rememberQueue();
+    renderQueueComparisons();
+    refreshQueue();
+  }
+  for (const selector of ["#review-queue-comparison", "#review-queue-confidence", "#review-queue-iou"])
+    $(selector).addEventListener("change", changeQueueConfig);
+  $("#review-queue-refresh").addEventListener("click", () => {
+    queue.historyDirty = true;
+    refreshQueue();
+    refreshCurrent();
+  });
   $("#annotation-reviewer").addEventListener("input", changed);
   $("#annotation-notes").addEventListener("input", changed);
   $("#annotation-show-proposals").addEventListener("change", paintCanvas);
@@ -1426,19 +1754,31 @@
     editor.frameId = null;
     editor.document = null;
     editor.dirty = false;
+    editor.loading = false;
+    editor.drag = null;
+    editor.remoteUpdate = false;
+    editor.refreshAfterRequest = false;
     editor.request++;
-    syncFrames();
+    resetQueue();
+    scheduleQueue();
   });
-  window.addEventListener("iris:frames", syncFrames);
+  window.addEventListener("iris:frames", () => {
+    if (editor.sessionId !== state.sessionId) return;
+    scheduleQueue();
+  });
   window.addEventListener("iris:workspace", (event) => {
-    if (event.detail.name === "annotation") {
-      syncFrames();
+    queue.active = event.detail.name === "annotation";
+    if (queue.active) {
+      if (queue.stale || !queue.data) scheduleQueue(true);
+      else renderQueue();
       paintCanvas();
       refreshProvider();
     }
   });
   window.addEventListener("iris:jobs", () => {
     let completed = false;
+    let refreshList = false;
+    let history = false;
     for (const job of state.jobs) {
       const old = editor.jobStatuses.get(job.id);
       editor.jobStatuses.set(job.id, job.status);
@@ -1449,12 +1789,20 @@
           (job.kind === "assist" && job.params?.frame_id === editor.frameId))
       )
         completed = true;
+      if (old !== job.status && !isActive(job)) {
+        if (job.kind === "infer") {
+          refreshList = true;
+          history = true;
+        } else if (job.kind === "assist" && (queue.data?.frames || state.frames).some((frame) => frame.id === job.params?.frame_id)) {
+          refreshList = true;
+        }
+      }
     }
     if (completed) refreshCurrent();
+    if (refreshList) scheduleQueue(history);
     updateStatus();
   });
   window.addEventListener("resize", paintCanvas);
   editor.sessionId = state.sessionId;
-  syncFrames();
-  refreshProvider();
+  resetQueue();
 })();

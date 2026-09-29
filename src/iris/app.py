@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -44,6 +44,7 @@ from iris.inference import (
 from iris.jobs import JobManager
 from iris.media import import_asset
 from iris.models import catalog
+from iris.review_queue import review_queue
 from iris.store import Store, new_id, now
 from iris.training import create_training, training_detail
 
@@ -260,6 +261,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "coco_import": True,
                 "training": True,
                 "evaluation": True,
+                "review_queue": True,
             },
         }
 
@@ -520,6 +522,29 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             {**public(frame), "duplicate_count": counts[frame["sha256"]]}
             for frame in store.list("frames", session_id=session_id)
         ]
+
+    @app.get("/api/sessions/{session_id}/review-queue")
+    def session_review_queue(
+        session_id: str,
+        comparison_id: str | None = None,
+        confidence_threshold: float = Query(default=0.5, ge=0, le=1),
+        iou_threshold: float = Query(default=0.5, gt=0, le=1),
+    ):
+        require("sessions", session_id)
+        try:
+            return review_queue(
+                store,
+                session_id,
+                comparison_id=comparison_id,
+                confidence_threshold=confidence_threshold,
+                iou_threshold=iou_threshold,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Comparison not found") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.patch("/api/frames/{frame_id}")
     def select_frame(frame_id: str, payload: SelectionInput):

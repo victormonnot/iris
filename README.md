@@ -6,7 +6,8 @@ human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions, local detector fine-tuning, held-out evaluation,
-and explicit model reference selection**. Trained checkpoints return to the visual
+and explicit model reference selection**, with a review queue for tracking
+annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
 [the architecture and V1 plan](docs/architecture.md).
 
@@ -305,6 +306,31 @@ available. Cancellation/failure preserves saved step history and logs, but publi
 no incomplete checkpoint. Restart marks unfinished jobs interrupted. Launch a new
 run to retry; exact optimizer-state resume is not implemented.
 
+## Work through the review queue
+
+Open **Annotation** to see the selected frames in the current session and how
+many still need review. Filter unannotated images, drafts, pending proposals or
+validated frames. New proposals make a previously validated image need review
+again. An explicitly validated empty image counts as reviewed.
+
+Optionally choose a completed comparison of two models and **Model disagreement
+first**. The queue compares saved person/car boxes by class and overlap at the
+displayed confidence and IoU thresholds. Each image explains its unmatched
+detections or class conflicts. Equal detection counts can still disagree about
+positions. Missing predictions and two empty outputs have distinct explanations;
+neither establishes that an image contains no objects.
+
+Open a frame to correct its labels. **Validate and next** saves a human-validated
+revision, then opens the next image needing review. It requires the same reviewer
+name and resolved proposals as **Validate frame**. Failed saves do not advance,
+and filtering or refreshing preserves the frame being edited. Sorting changes
+neither selected frames nor dataset splits. Test-reserved images remain in source
+order and are marked for review only.
+
+The queue uses existing local results: it starts no inference, training or API
+request. Disagreement is an inspection aid, not an error rate or measured quality.
+Both models can miss the same object. See [review queue behavior and matching](docs/review-queue.md).
+
 ## Evaluate and select a reference
 
 Open **Evaluation**, choose a dataset release and one or two ready models, and
@@ -356,6 +382,7 @@ comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
 COCO archive validation, imported-label review and source split preservation,
+review progress, saved-prediction disagreement and read-only queue persistence,
 COCO metrics, error matching, fixed test audits, reference history,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never

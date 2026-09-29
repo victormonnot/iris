@@ -512,11 +512,50 @@
             </section>
           </section>
           <section id="annotation-workspace" aria-label="Annotation" hidden>
+            <section class="panel review-queue" aria-labelledby="review-queue-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="review-queue-title">Review queue</h2>
+                  <p>Inspect selected frames, resolve proposals and record your review.</p>
+                </div>
+                <button id="review-queue-refresh" type="button" class="text-button">Refresh queue</button>
+              </div>
+              <div id="review-queue-counts" class="review-queue-counts" aria-live="polite"></div>
+              <progress id="review-queue-progress" max="1" value="0" aria-label="Human-validated frames"></progress>
+              <div class="review-queue-controls">
+                <div><label for="review-queue-filter">Review status</label><select id="review-queue-filter">
+                  <option value="all">All selected frames</option>
+                  <option value="needs_review">Needs review</option>
+                  <option value="pending">Pending proposals</option>
+                  <option value="unannotated">Unannotated</option>
+                  <option value="draft">Draft</option>
+                  <option value="validated">Validated</option>
+                </select></div>
+                <div><label for="review-queue-order">Order</label><select id="review-queue-order">
+                  <option value="source">Source order</option>
+                  <option value="disagreement">Model disagreement first</option>
+                </select></div>
+                <div class="review-queue-comparison"><label for="review-queue-comparison">Saved two-model comparison</label><select id="review-queue-comparison"><option value="">No comparison selected</option></select></div>
+                <div><label for="review-queue-confidence">Confidence ≥</label><input id="review-queue-confidence" type="number" min="0" max="1" step="any" value="0.5" /></div>
+                <div><label for="review-queue-iou">Matching IoU ≥</label><input id="review-queue-iou" type="number" min="0" max="1" step="any" value="0.5" /></div>
+              </div>
+              <p id="review-queue-method" class="field-hint">The queue includes selected frames. Selection for datasets is unchanged.</p>
+              <details id="review-queue-method-details" class="review-queue-method-details" hidden>
+                <summary>How to interpret model disagreement</summary>
+                <p id="review-queue-limits" class="field-hint"></p>
+              </details>
+              <p id="review-queue-warning" class="notice" role="status" hidden></p>
+              <p id="review-queue-error" class="inline-error" role="alert" hidden></p>
+              <p id="review-queue-loading" class="field-hint" role="status" hidden>Loading review queue…</p>
+              <p id="review-queue-empty" class="field-hint" hidden>No frames match this filter.</p>
+              <div id="review-queue-list" class="review-queue-list" role="list" aria-label="Frames to review"></div>
+              <p id="review-queue-current-hint" class="field-hint" hidden></p>
+            </section>
             <div id="annotation-empty" class="panel comparison-empty">
               <strong>Build your ground truth.</strong>
               <p>
-                Select frames in Data intake to annotate people and cars. You
-                can draw labels manually and review local detector proposals.
+                Select images or extracted video frames in Data intake, then
+                open a frame in the review queue to annotate people and cars.
               </p>
             </div>
             <p
@@ -746,6 +785,7 @@
                       >
                         Validate frame
                       </button>
+                      <button id="annotation-validate-next" type="button" class="button button-secondary">Validate &amp; next</button>
                     </div>
                     <p class="field-hint">
                       Validation confirms every visible in-scope object was
