@@ -41,8 +41,13 @@ and extracted PNGs. Back up the whole data directory while the server is stopped
 2. Import images or videos. Each upload is limited to 2 GiB. Sources are kept
    with a SHA-256 checksum; importing an identical file into the same session
    is idempotent. Import and extraction stay on this machine.
-3. For a video, choose a time interval, sampling step, and maximum frame count
-   (up to 500 per extraction). Extraction runs in a separate process.
+3. For a video, choose a time range and image budget (up to 500 positions).
+   **Across the whole range**, the default in the interface, distributes those
+   positions across the entire range. Check the timeline and use **Preview images**
+   to inspect up to 12 timestamped thumbnails before starting extraction.
+   **Fixed interval** retains the original sampling behavior; its preview warns
+   when the limit covers only the beginning of the range. Extraction runs in a
+   separate process.
 4. Browse frames, inspect their source and timestamp, and select useful images.
    Selection is persisted; it does **not** mean the image has been annotated
    or human-validated.
@@ -50,18 +55,43 @@ and extracted PNGs. Back up the whole data directory while the server is stopped
    already produced remain available. After a server interruption, unfinished
    jobs are marked interrupted. Re-run extraction explicitly to recover.
 
-Exact duplicate frames are skipped during extraction. Optional perceptual
-deduplication is only a heuristic: inspect the retained frames before relying
-on a selection. Identical images across sessions remain visible as duplicate
-warnings; dataset freezing separately rejects identical pixels crossing splits.
+The budget limits sampled positions, including existing frames and duplicates;
+it is not a guarantee of that many new images. Uniform sampling includes the
+first and last eligible frame when the budget is at least two; a budget of one
+chooses the middle frame. The end time is exclusive. If the range contains fewer
+frames than the budget, every eligible position is considered. Fixed-interval
+sampling preserves the legacy conversion from seconds to the preceding frame.
+API requests without `sampling_mode` keep that legacy behavior.
+
+Previews run locally, create no frames or jobs, and never change the selection.
+The timeline uses metadata; thumbnail preview decodes at most 12 planned
+positions after checking the source checksum. A thumbnail preview shows only a
+subset when more positions are planned. The worker checks the same source
+checksum before extraction and records the sampling method and resolved plan.
+This is temporal sampling, not a model judging which events are interesting.
+Multimodal proposals of video passages are not implemented yet.
+
+Exact duplicate frames are skipped within each video. Optional perceptual
+deduplication is disabled by default and is only a heuristic: it can conflate
+different content, including flat colors. Neither filter fills the vacated
+positions, so retained images may no longer cover the whole range. The job result
+shows sampled positions, new images, existing positions, exact duplicates and
+similar-image skips. Inspect the retained frames before selecting them.
+Identical images across sessions remain visible as duplicate warnings;
+dataset freezing separately rejects identical pixels crossing splits.
 
 Supported video containers are AVI, MP4/M4V, modern MOV, MKV, and WebM, subject
 to OpenCV's bundled codecs. Playlists, MPEG containers, and older MOV files
 without a file-type header are rejected. Browser playback depends on the
 browser's own codec support; a video can be extractable without being playable
 in the browser. Timestamps currently derive from frame index and reported FPS;
-they are approximate for variable-frame-rate recordings. There is no telemetry
-alignment or live capture.
+they are approximate for variable-frame-rate recordings. Some containers also
+report an estimated frame count: a planned position near the end may not be
+decodable. In that case preview or extraction reports an error instead of
+silently substituting another frame. Try a shorter range or import a copy
+converted to a constant frame rate; any frames already extracted remain
+available. IRIS does not scan or transcode the entire video to repair timing
+metadata. There is no telemetry alignment or live capture.
 
 ## Import an annotated dataset
 

@@ -1422,7 +1422,130 @@ main {
 }
 
 .extract-modal {
-  width: 470px;
+  width: 590px;
+}
+
+.extract-mode-field {
+  margin-top: 22px;
+}
+
+.extract-modal input:disabled,
+.extract-modal select:disabled {
+  background: #f2f4f0;
+  color: #879281;
+}
+
+.extract-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 22px;
+  background: #f9fbf8;
+}
+
+.extract-preview-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.extract-preview-heading h3 {
+  font-size: 12px;
+  margin: 0;
+}
+
+.extract-preview .field-hint {
+  margin: 8px 0;
+}
+
+#extract-preview-images {
+  margin-top: 12px;
+}
+
+.extract-timeline {
+  position: relative;
+  height: 26px;
+  margin-top: 18px;
+  background: #e9eee6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.extract-timeline-range {
+  position: absolute;
+  height: 100%;
+  background: #d5e4ca;
+}
+
+.extract-timeline-position {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--green);
+}
+
+.extract-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.extract-plan-warning {
+  border-left: 3px solid #b58627;
+  padding-left: 10px;
+  margin: 14px 0;
+  color: #78550d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.extract-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.extract-thumbnails figure {
+  margin: 0;
+}
+
+.extract-thumbnails img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #e9eee6;
+}
+
+.extract-thumbnails figcaption {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+  margin-top: 4px;
+}
+
+@media (max-width: 520px) {
+  .extract-thumbnails {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .extract-preview {
+    padding: 12px;
+  }
+  .extract-modal .form-grid {
+    gap: 14px 10px;
+  }
+  .extract-modal input,
+  .extract-modal select {
+    min-width: 0;
+  }
 }
 
 .modal-heading {

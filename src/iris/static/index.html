@@ -2056,9 +2056,17 @@ ollama pull qwen3-vl:4b-instruct</pre
         </div>
         <p id="extract-source" class="source-filename"></p>
         <p class="muted small">
-          Sample at fixed time intervals. Every frame keeps a link to the
-          original video and its estimated timestamp.
+          Spread frames across the video or use a fixed interval. Preview the
+          sampling, then review extracted frames in the gallery before selecting them.
         </p>
+        <div class="extract-mode-field">
+          <label for="extract-mode">Sampling method</label>
+          <select id="extract-mode">
+            <option value="uniform" selected>Across the whole range</option>
+            <option value="interval">Fixed interval</option>
+          </select>
+          <p id="extract-mode-hint" class="field-hint"></p>
+        </div>
         <div class="form-grid">
           <div>
             <label for="extract-interval">Interval (seconds)</label
@@ -2121,10 +2129,27 @@ ollama pull qwen3-vl:4b-instruct</pre
             value="4"
           />
           <p class="field-hint">
-            Perceptual hash distance. A higher value skips more frames. Exact
-            duplicates are always deduplicated.
+            Perceptual hash distance. A higher value skips more frames and may
+            leave gaps in time coverage. This does not identify interesting events.
           </p>
         </div>
+        <section class="extract-preview" aria-labelledby="extract-plan-title">
+          <div class="extract-preview-heading">
+            <h3 id="extract-plan-title">Sampling preview</h3>
+            <button id="extract-preview-retry" class="text-button" type="button" hidden>Retry preview</button>
+          </div>
+          <p id="extract-plan-status" class="small" role="status" aria-live="polite"></p>
+          <div id="extract-plan-details" hidden>
+            <p id="extract-plan-range" class="field-hint"></p>
+            <div id="extract-timeline" class="extract-timeline" role="img"></div>
+            <div class="extract-timeline-labels" aria-hidden="true"><span>00:00.00</span><span id="extract-video-end"></span></div>
+            <p id="extract-plan-warning" class="extract-plan-warning" hidden></p>
+            <p class="field-hint">Positions and timestamps are estimated from the video frame rate. Existing frames and duplicate images may reduce the number added.</p>
+          </div>
+          <button id="extract-preview-images" class="button button-secondary" type="button" disabled>Preview images</button>
+          <p id="extract-images-status" class="field-hint" role="status" aria-live="polite">View up to 12 positions locally. This preview adds no frames and performs no scene analysis.</p>
+          <div id="extract-thumbnails" class="extract-thumbnails"></div>
+        </section>
         <p id="extract-error" class="inline-error" role="alert" hidden></p>
         <div class="modal-actions">
           <button
@@ -2133,7 +2158,7 @@ ollama pull qwen3-vl:4b-instruct</pre
             data-close="extract-dialog"
           >
             Cancel</button
-          ><button class="button button-primary" type="submit">
+          ><button id="extract-submit" class="button button-primary" type="submit" disabled>
             Start extraction <span aria-hidden="true">→</span>
           </button>
         </div>

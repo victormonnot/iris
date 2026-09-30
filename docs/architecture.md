@@ -192,6 +192,17 @@ Model files, datasets, private media, and credentials stay outside Git.
 
 ## Data and evaluation invariants
 
+- Video sampling uses one bounded plan for metadata preview, thumbnail preview
+  and worker execution. Explicit `sampling_mode: uniform` distributes up to
+  500 original frame indices across a chosen half-open time range; an omitted
+  mode retains historical fixed-interval sampling and its provenance. The
+  interface defaults to uniform sampling. Planning allocates no full-video grid
+  and decodes no pixels; explicit thumbnail preview decodes at most 12 planned
+  positions without storing artifacts. Source checksums are verified before
+  thumbnails or extraction. Completed jobs retain the plan and skip counts;
+  cancellation preserves completed frames and retries reuse the same indices.
+  Duplicate filtering may reduce temporal coverage. All extracted frames remain
+  unselected until human selection; no semantic video analysis is implied.
 - Every frame retains its source hash, session, extraction configuration, decoded
   dimensions, and source timestamp when available. Exact duplicates are detected
   using content hashes; related scenes need human grouping as well.

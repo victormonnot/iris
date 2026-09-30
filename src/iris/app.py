@@ -53,7 +53,7 @@ from iris.inference import (
     preview_comparison,
 )
 from iris.jobs import JobManager
-from iris.media import import_asset
+from iris.media import import_asset, preview_extraction
 from iris.models import catalog
 from iris.review_queue import review_queue
 from iris.store import Store, new_id, now
@@ -85,6 +85,7 @@ class SelectionInput(BaseModel):
 
 class ExtractionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    sampling_mode: Literal["uniform", "interval"] = "interval"
     interval_seconds: float = Field(default=2, ge=0.05, le=86400)
     start_seconds: float = Field(default=0, ge=0)
     end_seconds: float | None = Field(default=None, gt=0)
@@ -252,6 +253,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     jobs = JobManager(store)
     import_lock = threading.Lock()
     export_lock = threading.Lock()
+    video_preview_lock = threading.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -319,6 +321,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             "capabilities": {
                 "media_import": True,
                 "frame_extraction": True,
+                "video_sampling_preview": True,
                 "frame_selection": True,
                 "inference": True,
                 "annotation": True,
@@ -812,16 +815,49 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             content_disposition_type="inline",
         )
 
+    def extraction_config(payload: ExtractionInput) -> dict:
+        config = payload.model_dump()
+        # Calls made before sampling modes existed keep their exact configuration
+        # and frame provenance. The worker also defaults missing modes to interval.
+        if "sampling_mode" not in payload.model_fields_set:
+            config.pop("sampling_mode")
+        return config
+
+    def extraction_preview(asset_id: str, payload: ExtractionInput, *, images: bool = False):
+        require("assets", asset_id)
+        try:
+            return preview_extraction(
+                store, asset_id, extraction_config(payload), include_images=images
+            )
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/extract/preview")
+    def preview_extraction_plan(asset_id: str, payload: ExtractionInput):
+        return JSONResponse(
+            extraction_preview(asset_id, payload), headers={"Cache-Control": "no-store"}
+        )
+
+    @app.post("/api/assets/{asset_id}/extract/preview-images")
+    def preview_extraction_images(asset_id: str, payload: ExtractionInput):
+        require("assets", asset_id)
+        if not video_preview_lock.acquire(blocking=False):
+            raise HTTPException(409, "A video preview is already being decoded. Try again shortly.")
+        try:
+            return JSONResponse(
+                extraction_preview(asset_id, payload, images=True),
+                headers={"Cache-Control": "no-store"},
+            )
+        finally:
+            video_preview_lock.release()
+
     @app.post("/api/assets/{asset_id}/extract", status_code=202)
     def extract(asset_id: str, payload: ExtractionInput):
-        record = require("assets", asset_id)
-        if record["kind"] != "video":
-            raise HTTPException(422, "Only videos need frame extraction")
-        duration = record["metadata"].get("duration_seconds")
-        if duration and payload.start_seconds >= duration:
-            raise HTTPException(422, "Start time is beyond the end of this video")
+        # Validate the same bounded plan as the preview without decoding media or
+        # opening the source. Source integrity is checked by the local worker.
+        extraction_preview(asset_id, payload)
         try:
-            return jobs.submit(asset_id, payload.model_dump())
+            return jobs.submit(asset_id, extraction_config(payload))
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

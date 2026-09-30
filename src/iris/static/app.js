@@ -11,6 +11,15 @@ const state = {
   inspecting: null,
   inspectionIds: [],
   extracting: null,
+  extractionPreview: {
+    generation: 0,
+    timer: null,
+    plan: null,
+    configKey: null,
+    imagesPending: false,
+    imageUrls: [],
+  },
+  pendingExtractions: new Set(),
   frameFetch: 0,
   pendingSelections: new Map(),
   bulkSelecting: false,
@@ -142,6 +151,7 @@ async function selectSession(id) {
     if (!window.dispatchEvent(event)) return;
   }
   state.sessionId = id;
+  if ($("#extract-dialog").open) $("#extract-dialog").close();
   state.assets = [];
   state.frames = [];
   state.filter = "all";
@@ -423,13 +433,188 @@ async function bulkSelection(selected) {
 }
 
 function openExtraction(asset) {
+  clearExtractionPreview();
   state.extracting = asset.id;
   $("#extract-source").textContent = asset.filename;
   $("#extract-error").hidden = true;
   $("#extract-form").reset();
-  $("#dedup-settings").hidden = true;
-  $("#extract-hamming").disabled = true;
   $("#extract-dialog").showModal();
+  $("#extract-dialog").scrollTop = 0;
+  scheduleExtractionPreview(0);
+}
+
+function clearExtractionPreview() {
+  const preview = state.extractionPreview;
+  preview.generation += 1;
+  clearTimeout(preview.timer);
+  preview.timer = null;
+  preview.plan = null;
+  preview.configKey = null;
+  preview.imagesPending = false;
+  for (const url of preview.imageUrls) URL.revokeObjectURL(url);
+  preview.imageUrls = [];
+  $("#extract-thumbnails").replaceChildren();
+  $("#extract-plan-details").hidden = true;
+  $("#extract-preview-retry").hidden = true;
+  $("#extract-images-status").textContent =
+    "View up to 12 positions locally. This preview adds no frames and performs no scene analysis.";
+}
+
+function extractionConfig() {
+  if (!$("#extract-form").checkValidity()) {
+    throw new Error("Enter valid sampling settings to preview the extraction.");
+  }
+  const mode = $("#extract-mode").value;
+  const start = Number($("#extract-start").value);
+  const end = $("#extract-end").value === "" ? null : Number($("#extract-end").value);
+  if (end !== null && end <= start) {
+    throw new Error("The end time must be after the start time.");
+  }
+  return {
+    sampling_mode: mode,
+    interval_seconds: mode === "uniform" ? 2 : Number($("#extract-interval").value),
+    start_seconds: start,
+    end_seconds: end,
+    max_frames: Number($("#extract-limit").value),
+    dedup_hamming: $("#extract-dedup").checked ? Number($("#extract-hamming").value) : null,
+  };
+}
+
+function extractionPreviewCurrent(generation, assetId, sessionId, configKey) {
+  return $("#extract-dialog").open &&
+    state.extractionPreview.generation === generation &&
+    state.extracting === assetId && state.sessionId === sessionId &&
+    state.extractionPreview.configKey === configKey;
+}
+
+function updateExtractionControls() {
+  const pending = state.pendingExtractions.has(state.extracting);
+  const preview = state.extractionPreview;
+  for (const control of $("#extract-form").querySelectorAll("input, select")) {
+    control.disabled = pending;
+  }
+  $("#extract-interval").disabled = pending || $("#extract-mode").value === "uniform";
+  $("#extract-hamming").disabled = pending || !$("#extract-dedup").checked;
+  $("#dedup-settings").hidden = !$("#extract-dedup").checked;
+  $("#extract-mode-hint").textContent = $("#extract-mode").value === "uniform"
+    ? "Distribute the maximum frame count over the chosen range, including its first and last available frames. One frame samples the midpoint."
+    : "Sample from the start at each interval. The maximum frame count can stop sampling before the end of the range.";
+  const ready = preview.plan && preview.plan.planned_count > 0;
+  $("#extract-submit").disabled = pending || !ready || preview.imagesPending;
+  $("#extract-preview-images").disabled = pending || !ready || preview.imagesPending;
+  $("#extract-preview-images").textContent = preview.imagesPending ? "Loading images…" : "Preview images";
+  $("#extract-preview-retry").disabled = pending;
+}
+
+function scheduleExtractionPreview(delay = 220) {
+  clearExtractionPreview();
+  updateExtractionControls();
+  $("#extract-error").hidden = true;
+  let config;
+  try {
+    config = extractionConfig();
+  } catch (error) {
+    $("#extract-plan-status").textContent = error.message;
+    return;
+  }
+  const preview = state.extractionPreview;
+  const configKey = JSON.stringify(config);
+  preview.configKey = configKey;
+  const generation = preview.generation;
+  const assetId = state.extracting;
+  const sessionId = state.sessionId;
+  $("#extract-plan-status").textContent = "Planning sampling…";
+  preview.timer = setTimeout(async () => {
+    preview.timer = null;
+    try {
+      const plan = await api(`/api/assets/${encodeURIComponent(assetId)}/extract/preview`, {
+        method: "POST", body: configKey,
+      });
+      if (!extractionPreviewCurrent(generation, assetId, sessionId, configKey)) return;
+      preview.plan = plan;
+      renderExtractionPlan(plan);
+    } catch (error) {
+      if (!extractionPreviewCurrent(generation, assetId, sessionId, configKey)) return;
+      $("#extract-plan-status").textContent = error.message;
+      $("#extract-preview-retry").hidden = false;
+    } finally {
+      if (extractionPreviewCurrent(generation, assetId, sessionId, configKey)) updateExtractionControls();
+    }
+  }, delay);
+}
+
+function renderExtractionPlan(plan) {
+  const count = plan.planned_count;
+  $("#extract-plan-status").textContent =
+    `${count} planned position${count === 1 ? "" : "s"} · first ≈ ${timestamp(plan.first_timestamp_seconds)} · last ≈ ${timestamp(plan.last_timestamp_seconds)}`;
+  $("#extract-plan-range").textContent =
+    `Sampling range ${timestamp(plan.start_seconds)}–${timestamp(plan.end_seconds)} · video ${timestamp(plan.duration_seconds)}`;
+  $("#extract-plan-details").hidden = false;
+  const timeline = $("#extract-timeline");
+  timeline.replaceChildren();
+  timeline.setAttribute("aria-label", `${count} planned sampling positions across a ${plan.duration_seconds.toFixed(2)} second video. First at ${timestamp(plan.first_timestamp_seconds)}, last at ${timestamp(plan.last_timestamp_seconds)}.`);
+  const duration = plan.duration_seconds || 1;
+  const percent = (seconds) => `${Math.max(0, Math.min(100, 100 * seconds / duration))}%`;
+  const range = node("span", "extract-timeline-range");
+  range.style.left = percent(plan.start_seconds);
+  range.style.width = percent(plan.end_seconds - plan.start_seconds);
+  timeline.append(range);
+  for (const position of plan.positions) {
+    const marker = node("span", "extract-timeline-position");
+    marker.style.left = percent(position.timestamp_seconds);
+    marker.title = `Frame ${position.frame_index} · ≈ ${timestamp(position.timestamp_seconds)}`;
+    marker.setAttribute("aria-hidden", "true");
+    timeline.append(marker);
+  }
+  $("#extract-video-end").textContent = timestamp(plan.duration_seconds);
+  $("#extract-plan-warning").hidden = !plan.truncated;
+  $("#extract-plan-warning").textContent =
+    "The frame limit stops this interval sampling before the end of the range. Increase the limit, increase the interval or choose Across the whole range.";
+}
+
+async function previewExtractionImages() {
+  const preview = state.extractionPreview;
+  if (!preview.plan || preview.imagesPending || state.pendingExtractions.has(state.extracting)) return;
+  const { generation, configKey } = preview;
+  const assetId = state.extracting;
+  const sessionId = state.sessionId;
+  preview.imagesPending = true;
+  updateExtractionControls();
+  $("#extract-images-status").textContent = "Decoding up to 12 preview images locally…";
+  try {
+    const result = await api(`/api/assets/${encodeURIComponent(assetId)}/extract/preview-images`, {
+      method: "POST", body: configKey,
+    });
+    if (!extractionPreviewCurrent(generation, assetId, sessionId, configKey)) return;
+    for (const url of preview.imageUrls) URL.revokeObjectURL(url);
+    preview.imageUrls = [];
+    const thumbnails = $("#extract-thumbnails");
+    thumbnails.replaceChildren();
+    for (const thumbnail of result.thumbnails) {
+      const prefix = "data:image/jpeg;base64,";
+      if (!thumbnail.image_data_url.startsWith(prefix)) throw new Error("Invalid preview image format.");
+      const bytes = Uint8Array.from(atob(thumbnail.image_data_url.slice(prefix.length)), (character) => character.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+      preview.imageUrls.push(url);
+      const figure = node("figure");
+      const image = node("img");
+      image.src = url;
+      image.alt = `Video preview at approximately ${timestamp(thumbnail.timestamp_seconds)}`;
+      figure.append(image, node("figcaption", "", `≈ ${timestamp(thumbnail.timestamp_seconds)}`));
+      thumbnails.append(figure);
+    }
+    $("#extract-images-status").textContent =
+      `${result.thumbnails.length} of ${result.planned_count} planned positions shown. Preview only: no frames added and no scene analysis. Extracted frames remain unselected for your review.`;
+  } catch (error) {
+    if (extractionPreviewCurrent(generation, assetId, sessionId, configKey)) {
+      $("#extract-images-status").textContent = `${error.message} Use Preview images to retry.`;
+    }
+  } finally {
+    if (extractionPreviewCurrent(generation, assetId, sessionId, configKey)) {
+      preview.imagesPending = false;
+      updateExtractionControls();
+    }
+  }
 }
 
 function openInspection(id) {
@@ -481,14 +666,19 @@ function renderInspection() {
     ["Frame pixels · SHA-256", frame.sha256],
     ["Source file · SHA-256", source?.sha256 || "Unavailable"],
   ];
-  if (frame.extraction?.interval_seconds != null) {
+  if (frame.extraction?.sampling_mode || frame.extraction?.interval_seconds != null) {
     const config = frame.extraction;
+    const sampling = config.sampling_plan;
+    const method = config.sampling_mode === "uniform"
+      ? "Across the whole range"
+      : `Every ${config.interval_seconds}s`;
+    const end = sampling?.end_seconds ?? config.end_seconds;
     metadata.splice(
       4,
       0,
       [
         "Extraction settings",
-        `Every ${config.interval_seconds}s · start ${timestamp(config.start_seconds || 0)} · ${config.max_frames} frames maximum`,
+        `${method} · start ${timestamp(config.start_seconds || 0)}${end == null ? "" : ` · end ${timestamp(end)}`} · ${config.max_frames} frames maximum`,
       ],
       [
         "Similarity filtering",
@@ -576,6 +766,18 @@ function renderJobs() {
     );
     row.append(header);
     if (job.message) row.append(node("p", "job-message", job.message));
+    if (job.kind === "extract" && job.result) {
+      const result = job.result;
+      const planned = result.plan?.planned_count ?? result.planned_count;
+      const parts = [];
+      if (planned != null) parts.push(`${planned} planned`);
+      if (result.sampled != null) parts.push(`${result.sampled} sampled`);
+      if (result.created != null) parts.push(`${result.created} added for review`);
+      for (const [key, label] of [["skipped_existing", "already extracted"], ["skipped_exact", "exact duplicates"], ["skipped_similar", "visually similar"]]) {
+        if (result[key] != null) parts.push(`${result[key]} ${label}`);
+      }
+      if (parts.length) row.append(node("p", "job-message", parts.join(" · ")));
+    }
     if (isActive(job)) {
       const progress = node("progress", "job-progress");
       progress.max = 1;
@@ -742,48 +944,57 @@ for (const filter of ["all", "selected"]) {
 }
 $("#select-visible").addEventListener("click", () => bulkSelection(true));
 $("#clear-selection").addEventListener("click", () => bulkSelection(false));
-$("#extract-dedup").addEventListener("change", (event) => {
-  $("#dedup-settings").hidden = !event.target.checked;
-  $("#extract-hamming").disabled = !event.target.checked;
+$("#extract-form").addEventListener("input", (event) => {
+  if (event.target.matches("input, select")) scheduleExtractionPreview();
+});
+$("#extract-preview-retry").addEventListener("click", () => scheduleExtractionPreview(0));
+$("#extract-preview-images").addEventListener("click", previewExtractionImages);
+$("#extract-dialog").addEventListener("close", () => {
+  if ($("#extract-dialog").open) return;
+  clearExtractionPreview();
+  state.extracting = null;
+  updateExtractionControls();
 });
 
 $("#extract-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const start = Number($("#extract-start").value);
-  const end =
-    $("#extract-end").value === "" ? null : Number($("#extract-end").value);
+  const preview = state.extractionPreview;
+  const assetId = state.extracting;
+  const sessionId = state.sessionId;
+  const generation = preview.generation;
+  const configKey = preview.configKey;
+  if (!preview.plan || preview.imagesPending || state.pendingExtractions.has(assetId)) return;
   const errorBox = $("#extract-error");
-  if (end !== null && end <= start) {
-    errorBox.textContent = "The end time must be after the start time.";
-    errorBox.hidden = false;
-    return;
-  }
-  const button = $("button[type=submit]", event.currentTarget);
-  button.disabled = true;
-  errorBox.hidden = true;
+  let config;
   try {
-    const config = {
-      interval_seconds: Number($("#extract-interval").value),
-      start_seconds: start,
-      end_seconds: end,
-      max_frames: Number($("#extract-limit").value),
-      dedup_hamming: $("#extract-dedup").checked
-        ? Number($("#extract-hamming").value)
-        : null,
-    };
-    await api(`/api/assets/${encodeURIComponent(state.extracting)}/extract`, {
-      method: "POST",
-      body: JSON.stringify(config),
-    });
-    $("#extract-dialog").close();
-    notify("Extraction queued. You can follow its progress below.");
-    await refreshJobs();
+    config = extractionConfig();
   } catch (error) {
     errorBox.textContent = error.message;
     errorBox.hidden = false;
-    if (!$("#extract-dialog").open) notify(error.message, true);
+    return;
+  }
+  if (JSON.stringify(config) !== configKey) {
+    scheduleExtractionPreview(0);
+    return;
+  }
+  state.pendingExtractions.add(assetId);
+  updateExtractionControls();
+  errorBox.hidden = true;
+  try {
+    await api(`/api/assets/${encodeURIComponent(assetId)}/extract`, {
+      method: "POST", body: configKey,
+    });
+    if (extractionPreviewCurrent(generation, assetId, sessionId, configKey)) $("#extract-dialog").close();
+    notify("Extraction queued. Review the unselected frames in the gallery when it finishes.");
+    await refreshJobs();
+  } catch (error) {
+    if (extractionPreviewCurrent(generation, assetId, sessionId, configKey)) {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+    } else notify(error.message, true);
   } finally {
-    button.disabled = false;
+    state.pendingExtractions.delete(assetId);
+    updateExtractionControls();
   }
 });
 

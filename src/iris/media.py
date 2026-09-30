@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import math
 import shutil
 import sqlite3
@@ -15,6 +17,7 @@ import cv2
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from iris.store import new_id, now
+from iris.video_sampling import ALGORITHM, evenly_spaced_indices, plan_extraction
 
 if TYPE_CHECKING:
     from iris.store import Store
@@ -241,17 +244,75 @@ def import_asset(store: Store, session_id: str, source: Path, filename: str) -> 
             image.close()
 
 
-def _finite_number(config: dict, key: str, default: float) -> float:
-    value = config.get(key, default)
+def _verified_video_source(
+    store: Store, asset: dict, cancelled: Callable[[], bool] | None = None
+) -> Path | None:
+    """Reject replaced sources before decoding; hashing can be interrupted."""
+    source = store.artifact_path(asset["path"])
+    if not source.is_file():
+        raise ValueError("The original video is missing or unreadable.")
+    digest = hashlib.sha256()
+    with source.open("rb") as original:
+        while True:
+            if cancelled is not None and cancelled():
+                return None
+            chunk = original.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    if digest.hexdigest() != asset["sha256"]:
+        raise ValueError(
+            "The original video changed since import; import it again as a new source."
+        )
+    if cancelled is not None and cancelled():
+        return None
+    _video_media_type(source)
+    return source
+
+
+def _video_position_error(action: str, frame_index: int) -> ValueError:
+    return ValueError(
+        f"Cannot {action} video frame {frame_index}. "
+        "Video timing metadata may be inaccurate; try a shorter range "
+        "or a constant-frame-rate copy."
+    )
+
+
+def preview_extraction(
+    store: Store, asset_id: str, config: dict, *, include_images: bool = False
+) -> dict:
+    """Preview the exact plan and at most twelve local thumbnails, without writes."""
+    asset = store.get("assets", asset_id)
+    if asset is None or asset["kind"] != "video":
+        raise ValueError("Extraction requires an imported video.")
+    plan = plan_extraction(asset["metadata"], config)
+    result = {**plan, "asset_id": asset_id, "source_sha256": asset["sha256"]}
+    if not include_images:
+        return result
+    source = _verified_video_source(store, asset)
+    capture = cv2.VideoCapture(str(source))
+    thumbnails = []
     try:
-        if isinstance(value, bool):
-            raise ValueError
-        value = float(value)
-        if not math.isfinite(value):
-            raise ValueError
-        return value
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{key} must be a finite number.") from exc
+        if not capture.isOpened():
+            raise ValueError("The original video is missing or unreadable.")
+        for index in evenly_spaced_indices(0, plan["planned_count"] - 1, 12):
+            position = plan["positions"][index]
+            frame_index = position["frame_index"]
+            if not capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index):
+                raise _video_position_error("seek to", frame_index)
+            ok, pixels = capture.read()
+            if not ok or pixels is None:
+                raise _video_position_error("decode", frame_index)
+            with Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB)) as image:
+                image.thumbnail((384, 216), Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                image.save(output, format="JPEG", quality=80)
+                encoded = base64.b64encode(output.getvalue()).decode("ascii")
+            thumbnails.append({**position, "image_data_url": f"data:image/jpeg;base64,{encoded}"})
+        result["thumbnails"] = thumbnails
+        return result
+    finally:
+        capture.release()
 
 
 def extract_frames(
@@ -270,45 +331,23 @@ def extract_frames(
     asset = store.get("assets", asset_id)
     if asset is None or asset["kind"] != "video":
         raise ValueError("Extraction requires an imported video.")
-    interval = _finite_number(config, "interval_seconds", 1.0)
-    start = _finite_number(config, "start_seconds", 0.0)
-    if interval <= 0 or start < 0:
-        raise ValueError("The interval must be positive and the start must be nonnegative.")
-    max_frames = config.get("max_frames", 100)
-    if (
-        isinstance(max_frames, bool)
-        or not isinstance(max_frames, int)
-        or not 1 <= max_frames <= 500
-    ):
-        raise ValueError("max_frames must be an integer between 1 and 500.")
+    plan = plan_extraction(asset["metadata"], config)
+    targets = [position["frame_index"] for position in plan["positions"]]
+    fps = plan["fps"]
     dedup = config.get("dedup_hamming")
-    if dedup is not None and (
-        isinstance(dedup, bool) or not isinstance(dedup, int) or not 0 <= dedup <= 16
-    ):
-        raise ValueError("dedup_hamming must be null or an integer between 0 and 16.")
-    metadata = asset["metadata"]
-    fps = float(metadata["fps"])
-    total_frames = int(metadata["frame_count"])
-    duration = float(metadata["duration_seconds"])
-    end = (
-        duration
-        if config.get("end_seconds") is None
-        else _finite_number(config, "end_seconds", duration)
-    )
-    if end <= start or start >= duration:
-        raise ValueError("The time range must overlap a nonempty portion of the video.")
-    end = min(end, duration)
-    # Bound iteration before constructing a list: tiny intervals must not allocate
-    # an unbounded array or sample the same decoded frame repeatedly.
-    interval = max(interval, 1.0 / fps)
-    targets = []
-    for index in range(max_frames):
-        seconds = start + index * interval
-        if seconds >= end:
-            break
-        frame_index = int(math.floor(seconds * fps + 1e-7))
-        if frame_index < total_frames and (not targets or frame_index != targets[-1]):
-            targets.append(frame_index)
+    provenance = dict(config)
+    if plan["sampling_mode"] == "uniform":
+        provenance["sampling_algorithm"] = ALGORITHM
+        provenance["sampling_plan"] = {
+            key: plan[key]
+            for key in (
+                "planned_count",
+                "start_seconds",
+                "end_seconds",
+                "first_timestamp_seconds",
+                "last_timestamp_seconds",
+            )
+        }
 
     existing = store.list("frames", asset_id=asset_id)
     existing_indices = {frame["frame_index"] for frame in existing}
@@ -326,14 +365,15 @@ def extract_frames(
         "frame_ids": [],
         "cancelled": False,
         "timestamp_basis": "frame_index / nominal_fps",
+        "plan": {**plan, "asset_id": asset_id, "source_sha256": asset["sha256"]},
     }
     if cancelled():
         result["cancelled"] = True
         return result
-    source = store.root / asset["path"]
-    if not source.is_file():
-        raise ValueError("The original video is missing or unreadable.")
-    _video_media_type(source)
+    source = _verified_video_source(store, asset, cancelled)
+    if source is None:
+        result["cancelled"] = True
+        return result
     capture = cv2.VideoCapture(str(source))
     try:
         if not capture.isOpened():
@@ -347,10 +387,13 @@ def extract_frames(
                 result["skipped_existing"] += 1
             else:
                 if not capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index):
-                    raise ValueError(f"Cannot seek to video frame {frame_index}.")
+                    raise _video_position_error("seek to", frame_index)
                 ok, pixels = capture.read()
                 if not ok or pixels is None:
-                    raise ValueError(f"Cannot decode video frame {frame_index}.")
+                    raise _video_position_error("decode", frame_index)
+                if cancelled():
+                    result["cancelled"] = True
+                    break
                 image = Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB))
                 try:
                     pixel_hash = _pixel_hash(image)
@@ -363,13 +406,16 @@ def extract_frames(
                     ):
                         result["skipped_similar"] += 1
                     else:
+                        if cancelled():
+                            result["cancelled"] = True
+                            break
                         record = _frame_record(
                             store,
                             asset,
                             image,
                             frame_index=frame_index,
                             timestamp_seconds=frame_index / fps,
-                            extraction=dict(config),
+                            extraction=provenance,
                         )
                         exact_hashes.add(pixel_hash)
                         perceptual_hashes.append(perceptual_hash)
