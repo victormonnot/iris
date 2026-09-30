@@ -21,6 +21,16 @@
     analysisRequest: 0,
     analysisController: null,
     analysis: null,
+    previewKey: null,
+    previewRequest: 0,
+    previewPending: false,
+    preview: null,
+    previewError: null,
+    auditPreviewKey: null,
+    auditPreviewRequest: 0,
+    auditPreviewPending: false,
+    auditPreview: null,
+    auditPreviewError: null,
     jobStatuses: new Map(),
   };
   const percent = (value) =>
@@ -35,6 +45,119 @@
   const frames = () => view.detail?.frames || [];
   const split = () => view.detail?.split || "val";
   const config = () => view.detail?.config || {};
+  const modeName = (variant) => variant === "tiled" ? "Tiled" : "Full image";
+  function lanes() {
+    const detail = view.detail;
+    if (!detail) return [];
+    return detail.lanes || detail.model_ids.map((id) => ({
+      model_id: id,
+      variant: "full",
+      evaluation_model_id: detail.models?.find((model) => model.model_id === id)?.id || null,
+    }));
+  }
+  function laneKey(lane) {
+    return lane.evaluation_model_id || (view.detail.lanes
+      ? JSON.stringify([lane.model_id, lane.variant]) : lane.model_id);
+  }
+  function laneName(lane) {
+    return `${modelName(lane.model_id)} · ${modeName(lane.variant)}`;
+  }
+  function modelFor(lane) {
+    return (view.detail.models || []).find((model) => lane.evaluation_model_id
+      ? model.id === lane.evaluation_model_id
+      : model.model_id === lane.model_id && (model.variant || "full") === lane.variant);
+  }
+  function belongsToLane(prediction, lane) {
+    const id = lane.evaluation_model_id || modelFor(lane)?.id;
+    if (id) return prediction.evaluation_model_id === id;
+    return !view.detail.lanes && prediction.model_id === lane.model_id;
+  }
+  function inferenceFields(inference = { mode: "full" }) {
+    return {
+      inference_mode: inference.mode,
+      tile_size: inference.tiling?.tile_size ?? 640,
+      overlap: inference.tiling?.overlap ?? 0.2,
+    };
+  }
+  function pipelineDescription(inference = { mode: "full" }, variant = inference.mode) {
+    const label = variant === "paired" ? "Full image vs tiled" : modeName(variant);
+    if (variant === "full" || !variant) return label;
+    const settings = inference.tiling || inference;
+    return `${label} · ${settings.tile_size} px tiles · ${Math.round(settings.overlap * 100)}% overlap`;
+  }
+  function auditPayload(detail) {
+    return {
+      name: `${detail.name.slice(0, 147)} · test audit`,
+      dataset_id: detail.dataset_id,
+      split: "test",
+      model_ids: detail.model_ids,
+      confidence_threshold: detail.config.confidence_threshold,
+      iou_threshold: detail.config.iou_threshold,
+      device: detail.config.device || "cpu",
+      validation_evaluation_id: detail.id,
+      ...inferenceFields(detail.config.inference),
+    };
+  }
+  async function requestAuditPreview(payload, key) {
+    const request = ++view.auditPreviewRequest;
+    view.auditPreviewKey = key;
+    view.auditPreviewPending = true;
+    view.auditPreview = null;
+    view.auditPreviewError = null;
+    try {
+      const result = await api("/api/evaluations/preview", {
+        method: "POST", body: JSON.stringify(payload),
+      });
+      if (request !== view.auditPreviewRequest || view.detail?.id !== payload.validation_evaluation_id) return;
+      view.auditPreview = result;
+    } catch (failure) {
+      if (request !== view.auditPreviewRequest || view.detail?.id !== payload.validation_evaluation_id) return;
+      view.auditPreviewError = failure;
+    } finally {
+      if (request === view.auditPreviewRequest && view.detail?.id === payload.validation_evaluation_id) {
+        view.auditPreviewPending = false;
+        renderActions(false);
+      }
+    }
+  }
+  function evaluationPayload(preview = false) {
+    const mode = $("#evaluation-inference-mode").value;
+    return {
+      name: preview ? "Evaluation preview" : $("#evaluation-name").value.trim(),
+      dataset_id: $("#evaluation-dataset").value,
+      split: "val",
+      model_ids: [...view.chosen],
+      confidence_threshold: Number($("#evaluation-confidence").value),
+      iou_threshold: Number($("#evaluation-iou").value),
+      device: "cpu",
+      validation_evaluation_id: null,
+      inference_mode: mode,
+      tile_size: mode === "full" ? 640 : Number($("#evaluation-tile-size").value),
+      overlap: mode === "full" ? 0.2 : Number($("#evaluation-tile-overlap").value),
+    };
+  }
+  async function requestPreview(payload, key) {
+    const request = ++view.previewRequest;
+    view.previewKey = key;
+    view.previewPending = true;
+    view.preview = null;
+    view.previewError = null;
+    try {
+      const preview = await api("/api/evaluations/preview", {
+        method: "POST", body: JSON.stringify(payload),
+      });
+      if (request !== view.previewRequest) return;
+      view.preview = preview;
+    } catch (failure) {
+      if (request !== view.previewRequest) return;
+      view.previewError = failure;
+    } finally {
+      if (request === view.previewRequest) {
+        view.previewPending = false;
+        updateLaunch();
+      }
+    }
+  }
   function error(selector, value) {
     const target = $(selector);
     target.textContent = value?.message || "";
@@ -44,9 +167,9 @@
     const detail = view.detail;
     return (
       detail?.job?.status === "succeeded" &&
-      detail.models?.length === detail.model_ids.length &&
-      detail.models.every(
-        (model) => model.metrics?.summary?.frame_count === frames().length,
+      detail.models?.length === lanes().length &&
+      lanes().every(
+        (lane) => modelFor(lane)?.metrics?.summary?.frame_count === frames().length,
       )
     );
   }
@@ -55,13 +178,58 @@
       (item) => item.id === $("#evaluation-dataset").value,
     );
     const size = dataset?.summary?.split_counts?.val || 0;
+    const mode = $("#evaluation-inference-mode").value;
+    const tiled = mode !== "full";
+    const payload = evaluationPayload(true);
+    const validTiles = !tiled || (
+      Number.isInteger(payload.tile_size) && payload.tile_size >= 128 && payload.tile_size <= 2048 &&
+      $("#evaluation-tile-overlap").value !== "" && Number.isFinite(payload.overlap) && payload.overlap >= 0 && payload.overlap <= 0.5
+    );
+    const validThresholds = $("#evaluation-confidence").value !== "" &&
+      $("#evaluation-iou").value !== "" &&
+      Number.isFinite(payload.confidence_threshold) && payload.confidence_threshold >= 0 && payload.confidence_threshold <= 1 &&
+      Number.isFinite(payload.iou_threshold) && payload.iou_threshold >= 0.01 && payload.iou_threshold <= 1;
+    const valid = size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    $("#evaluation-tiling-fields").hidden = !tiled;
+    $("#evaluation-tile-size").disabled = !tiled;
+    $("#evaluation-tile-overlap").disabled = !tiled;
+    $("#evaluation-mode-hint").textContent = mode === "paired"
+      ? "Choose one model. Evaluate the same checkpoint on full images and overlapping crops against the same frozen human labels."
+      : tiled
+        ? "Evaluate merged crop detections in the original image. Tile size and overlap are saved with the quality metrics."
+        : "Evaluate each selected model on the whole image.";
     $("#evaluation-dataset-context").textContent = dataset
       ? `${size} validation frames · ${dataset.summary.split_counts.test || 0} reserved test frames · frozen labels and scene groups`
       : "Freeze a release with validation data in Dataset & training first.";
     $("#evaluation-selection").textContent =
-      `${size} validation frames · ${view.chosen.size} models · CPU`;
+      `${size} validation frames · ${view.chosen.size} models · ${mode === "paired" ? "Full image vs tiled" : modeName(mode)} · CPU`;
+    if (valid) {
+      const key = JSON.stringify(payload);
+      if (key !== view.previewKey) requestPreview(payload, key);
+    } else if (view.previewKey !== null) {
+      ++view.previewRequest;
+      view.previewKey = null;
+      view.previewPending = false;
+      view.preview = null;
+      view.previewError = null;
+    }
+    const plan = $("#evaluation-plan");
+    plan.classList.toggle("inline-error", Boolean(view.previewError));
+    if (view.previewPending) plan.textContent = "Checking the number of model passes…";
+    else if (view.previewError) plan.textContent = view.previewError.message;
+    else if (view.chosen.size > (mode === "paired" ? 1 : 2))
+      plan.textContent = mode === "paired" ? "Choose one model for full image vs tiled." : "Choose at most two models.";
+    else if (!validTiles) plan.textContent = "Choose a whole tile size from 128 to 2048 pixels and an overlap from 0 to 0.5.";
+    else if (!validThresholds) plan.textContent = "Choose confidence from 0 to 1 and matching IoU from 0.01 to 1.";
+    else if (view.preview) {
+      const preview = view.preview;
+      const counts = (preview.tiles || []).map((item) => item.tile_count);
+      const tileHint = tiled && counts.length
+        ? ` · ${Math.min(...counts) === Math.max(...counts) ? counts[0] : `${Math.min(...counts)}–${Math.max(...counts)}`} tiles per image` : "";
+      plan.textContent = `${preview.forward_passes} model passes + ${preview.warmup_passes} warm-up passes${tileHint}. Limit: ${tiled ? `${preview.limits.max_tiles_per_frame} tiles per image, ` : ""}${preview.limits.max_forward_passes} passes per evaluation. All processing stays local.`;
+    } else plan.textContent = "";
     $("#evaluation-start").disabled =
-      view.busy || !size || !view.chosen.size || view.chosen.size > 2;
+      view.busy || !valid || view.previewPending || !view.preview || Boolean(view.previewError);
     $("#evaluation-start").textContent = view.busy
       ? "Queuing evaluation…"
       : "Evaluate on validation →";
@@ -111,6 +279,12 @@
   }
   async function refreshCatalogs() {
     const request = ++view.catalogRequest;
+    ++view.previewRequest;
+    view.previewKey = null;
+    view.previewPending = false;
+    view.preview = null;
+    view.previewError = null;
+    $("#evaluation-start").disabled = true;
     try {
       const [datasets, models] = await Promise.all([
         api("/api/datasets"),
@@ -251,9 +425,9 @@
     result.append(head, body);
     return result;
   }
-  function timing(modelId, key) {
+  function timing(lane, key) {
     const values = (view.detail.predictions || [])
-      .filter((item) => item.model_id === modelId)
+      .filter((item) => belongsToLane(item, lane))
       .map((item) => item.timing?.[key])
       .filter(Number.isFinite);
     return values.length
@@ -267,14 +441,13 @@
     classes.replaceChildren();
     $("#evaluation-delta").textContent = "";
     if (!complete()) return;
-    const models = view.detail.model_ids.map((id) =>
-      view.detail.models.find((model) => model.model_id === id),
-    );
+    const runLanes = lanes();
+    const models = runLanes.map(modelFor);
     summary.append(
       table(
-        "Detection quality by model",
+        "Detection quality by model and inference mode",
         [
-          "Model",
+          "Model / mode",
           "mAP .50–.95",
           "AP50",
           "AP75",
@@ -284,27 +457,28 @@
           `Mean ${(config().device || "cpu").toUpperCase()} forward`,
           "Mean total",
         ],
-        models.map((model) => {
+        models.map((model, index) => {
           const s = model.metrics.summary;
+          const lane = runLanes[index];
           return [
-            modelName(model.model_id),
+            laneName(lane),
             percent(s.map),
             percent(s.map50),
             percent(s.map75),
             percent(s.precision),
             percent(s.recall),
             `${count(s.tp)} / ${count(s.fp)} / ${count(s.fn)}`,
-            timing(model.model_id, "inference_ms"),
-            timing(model.model_id, "total_ms"),
+            timing(lane, "inference_ms"),
+            timing(lane, "total_ms"),
           ];
         }),
       ),
     );
     const rows = [];
-    for (const model of models)
+    for (const [index, model] of models.entries())
       for (const item of model.metrics.per_class || [])
         rows.push([
-          modelName(model.model_id),
+          laneName(runLanes[index]),
           item.label,
           count(item.support),
           percent(item.ap),
@@ -318,7 +492,7 @@
       table(
         "Quality and labeled support per class",
         [
-          "Model",
+          "Model / mode",
           "Class",
           "Labeled boxes",
           "AP .50–.95",
@@ -343,13 +517,29 @@
         return `${label}: ${Number.isFinite(first[key]) && Number.isFinite(second[key]) ? `${difference >= 0 ? "+" : ""}${(difference * 100).toFixed(1)} percentage points` : "N/A"}`;
       });
       $("#evaluation-delta").textContent =
-        `${modelName(models[1].model_id)} minus ${modelName(models[0].model_id)} on these same frozen frames — ${deltas.join(" · ")}.`;
+        `${laneName(runLanes[1])} minus ${laneName(runLanes[0])} on these same frozen frames — ${deltas.join(" · ")}.`;
     }
   }
-  function errorsFor(modelId, id) {
-    return view.detail.models
-      .find((model) => model.model_id === modelId)
+  function errorsFor(lane, id) {
+    return modelFor(lane)
       ?.metrics?.frames?.find((frame) => frame.frame_id === id);
+  }
+  function normalizeAnalysis(result) {
+    if (result.protocol !== "iris-error-analysis-v2") return result;
+    const counts = (scopes) => Object.fromEntries(Object.entries(scopes).map(
+      ([scope, stats]) => [scope, { ...stats, models: stats.runs }],
+    ));
+    return {
+      ...result,
+      models: result.runs,
+      comparison: result.comparison ? {
+        ...result.comparison,
+        baseline_model_id: result.comparison.baseline_run_id,
+        candidate_model_id: result.comparison.candidate_run_id,
+      } : null,
+      summary: counts(result.summary),
+      frames: result.frames.map((frame) => ({ ...frame, counts: counts(frame.counts) })),
+    };
   }
   function analysisClass() {
     return view.analysis ? $("#evaluation-analysis-class").value : "all";
@@ -392,7 +582,7 @@
         signal: controller.signal,
       });
       if (!current()) return;
-      view.analysis = result;
+      view.analysis = normalizeAnalysis(result);
       $("#evaluation-analysis-status").textContent = "";
       for (const selector of ["class", "filter", "sort"])
         $(`#evaluation-analysis-${selector}`).disabled = false;
@@ -464,8 +654,8 @@
     return frames().filter(
       (frame) =>
         !$("#evaluation-errors-only").checked ||
-        view.detail.model_ids.some((id) => {
-          const errors = errorsFor(id, frameId(frame));
+        lanes().some((lane) => {
+          const errors = errorsFor(lane, frameId(frame));
           return errors && (errors.fp > 0 || errors.fn > 0);
         }),
     );
@@ -486,7 +676,7 @@
     $("#evaluation-analysis-context").textContent =
       `Saved confidence ≥ ${analysis.confidence_threshold} · matching IoU ≥ ${analysis.iou_threshold}. ` +
       (analysis.comparison
-        ? `Baseline: ${names.get(baseline)} → candidate: ${names.get(candidate)} (saved model order). `
+        ? `Baseline: ${names.get(baseline)} → candidate: ${names.get(candidate)} (saved run order). `
         : "One model; paired changes are unavailable. ") +
       (analysis.split === "test"
         ? "Test audit: reporting only. Use validation for model selection."
@@ -678,17 +868,17 @@
         `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${labels.length} ${analysisClass()} human-validated boxes (class filter)`;
     container.classList.toggle(
       "single-model",
-      view.detail.model_ids.length === 1,
+      lanes().length === 1,
     );
     if (!frame) return;
-    for (const modelId of view.detail.model_ids) {
+    for (const lane of lanes()) {
       const prediction = (view.detail.predictions || []).find(
-        (item) => item.frame_id === view.frameId && item.model_id === modelId,
+        (item) => item.frame_id === view.frameId && belongsToLane(item, lane),
       );
-      const errors = errorsFor(modelId, view.frameId);
+      const errors = errorsFor(lane, view.frameId);
       const card = node("article", "prediction-card");
       const heading = node("div", "prediction-heading");
-      heading.append(node("h3", "", modelName(modelId)));
+      heading.append(node("h3", "", laneName(lane)));
       const shown = (prediction?.detections || [])
         .map((detection, index) => ({ ...detection, index }))
         .filter(
@@ -708,7 +898,7 @@
       const svg = svgNode("svg", {
         viewBox: `0 0 ${frame.width} ${frame.height}`,
         role: "img",
-        "aria-label": `${modelName(modelId)}, ${shown.length} detections, ${labels.length} human labels`,
+        "aria-label": `${laneName(lane)}, ${shown.length} detections, ${labels.length} human labels`,
       });
       svg.append(
         svgNode("image", {
@@ -752,7 +942,7 @@
       const context = node("div", "evaluation-frame-errors");
       const scoped =
         view.analysis?.frames.find((item) => item.frame_id === view.frameId)
-          ?.counts[analysisClass()].models[modelId] || errors;
+          ?.counts[analysisClass()].models[view.analysis?.protocol === "iris-error-analysis-v2" ? laneKey(lane) : lane.model_id] || errors;
       context.append(
         node(
           "p",
@@ -761,7 +951,7 @@
             ? `${scoped.tp} matched · ${scoped.fp} false positives · ${scoped.fn} missed labels${analysisClass() === "all" ? "" : ` · ${analysisClass()} only`}`
             : prediction
               ? "Raw predictions available; complete frame error metrics are not available yet."
-              : "This model has not processed this frame.",
+              : "This model and inference mode have not processed this frame.",
         ),
       );
       if (errors && (scoped.fp || scoped.fn)) {
@@ -789,21 +979,35 @@
     $("#evaluation-reference-form").hidden = !finished || split() !== "val";
     const select = $("#evaluation-reference-model");
     const previous = changed ? "" : select.value;
-    select.replaceChildren(new Option("Choose a model", ""));
-    for (const id of view.detail.model_ids)
-      select.append(new Option(modelName(id), id));
+    select.replaceChildren(new Option("Choose a model and inference mode", ""));
+    for (const lane of lanes())
+      select.append(new Option(laneName(lane), laneKey(lane)));
     select.value = previous;
     $("#evaluation-reference-save").disabled =
       view.referenceBusy || !view.references;
     const dataset = view.datasets.find(
       (item) => item.id === view.detail.dataset_id,
     );
-    $("#evaluation-test-audit").hidden =
-      !finished ||
-      split() !== "val" ||
-      !(dataset?.summary?.split_counts?.test > 0);
+    const auditAvailable = finished && split() === "val" && dataset?.summary?.split_counts?.test > 0;
+    $("#evaluation-test-audit").hidden = !auditAvailable;
+    if (auditAvailable) {
+      const payload = auditPayload(view.detail);
+      const key = JSON.stringify(payload);
+      if (key !== view.auditPreviewKey) requestAuditPreview(payload, key);
+    } else if (view.auditPreviewKey !== null) {
+      ++view.auditPreviewRequest;
+      view.auditPreviewKey = null;
+      view.auditPreview = null;
+      view.auditPreviewPending = false;
+      view.auditPreviewError = null;
+    }
+    const plan = $("#evaluation-audit-plan");
+    plan.classList.toggle("inline-error", Boolean(view.auditPreviewError));
+    plan.textContent = view.auditPreviewPending ? "Checking model passes on the reserved test split…"
+      : view.auditPreviewError ? view.auditPreviewError.message
+        : view.auditPreview ? `${view.auditPreview.frames_total} reserved test frames · ${view.auditPreview.forward_passes} model passes + ${view.auditPreview.warmup_passes} warm-up passes · ${pipelineDescription(config().inference)}. The saved settings will be copied unchanged.` : "";
     $("#evaluation-audit-start").disabled =
-      view.auditBusy || !$("#evaluation-audit-confirm").checked;
+      view.auditBusy || !$("#evaluation-audit-confirm").checked || view.auditPreviewPending || !view.auditPreview || Boolean(view.auditPreviewError);
   }
   function renderDetail(changed) {
     const detail = view.detail,
@@ -811,7 +1015,7 @@
     $("#evaluation-detail").hidden = false;
     $("#evaluation-detail-name").textContent = detail.name;
     $("#evaluation-detail-context").textContent =
-      `${config().dataset_name || detail.dataset_id} · ${split() === "test" ? "Final test audit" : "Validation"} · ${frames().length} frozen frames · ${(config().device || "cpu").toUpperCase()} · ${new Date(detail.created_at).toLocaleString()}`;
+      `${config().dataset_name || detail.dataset_id} · ${split() === "test" ? "Final test audit" : "Validation"} · ${frames().length} frozen frames · ${pipelineDescription(config().inference)} · ${(config().device || "cpu").toUpperCase()} · ${new Date(detail.created_at).toLocaleString()}`;
     $("#evaluation-detail-status").textContent =
       job?.status || "Unknown status";
     $("#evaluation-detail-status").className =
@@ -821,7 +1025,7 @@
     $("#evaluation-completeness").textContent = complete()
       ? split() === "test"
         ? "Completed test audit. Report this result; choose reference models from validation evidence."
-        : "Completed validation evaluation. Metrics cover every frozen frame for each model."
+        : "Completed validation evaluation. Metrics cover every frozen frame for each model and inference mode."
       : "Incomplete evaluation. Saved predictions remain inspectable; no complete quality comparison is available.";
     const warnings = $("#evaluation-warnings");
     warnings.replaceChildren();
@@ -845,15 +1049,19 @@
         split: detail.split,
         config: detail.config,
         models: detail.models.map((model) => ({
+          evaluation_model_id: model.id,
           model_id: model.model_id,
+          variant: model.variant || "full",
           metadata: model.metadata,
           protocol: model.metrics?.protocol,
         })),
         prediction_count: detail.predictions.length,
         frame_timings: detail.predictions.map((prediction) => ({
+          evaluation_model_id: prediction.evaluation_model_id,
           model_id: prediction.model_id,
           frame_id: prediction.frame_id,
           timing: prediction.timing,
+          tiles: prediction.metadata?.tiles,
         })),
       },
       null,
@@ -867,9 +1075,11 @@
       node(
         current ? "h3" : "h4",
         "",
-        reference.metadata?.model_name || reference.model_id,
+        `${reference.metadata?.model_name || reference.model_id} · ${modeName(reference.metadata?.variant || "full")}`,
       ),
     );
+    if (reference.metadata?.variant === "tiled")
+      entry.append(node("p", "field-hint", pipelineDescription(reference.metadata.inference, "tiled")));
     entry.append(
       node(
         "p",
@@ -923,6 +1133,11 @@
   }
   async function refresh() {
     $("#evaluation-refresh").disabled = true;
+    ++view.auditPreviewRequest;
+    view.auditPreviewKey = null;
+    view.auditPreview = null;
+    view.auditPreviewPending = false;
+    view.auditPreviewError = null;
     await refreshCatalogs();
     await Promise.all([refreshHistory(), refreshReferences()]);
     $("#evaluation-refresh").disabled = false;
@@ -942,16 +1157,7 @@
   $("#evaluation-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if ($("#evaluation-start").disabled) return;
-    const payload = {
-      name: $("#evaluation-name").value.trim(),
-      dataset_id: $("#evaluation-dataset").value,
-      split: "val",
-      model_ids: [...view.chosen],
-      confidence_threshold: Number($("#evaluation-confidence").value),
-      iou_threshold: Number($("#evaluation-iou").value),
-      device: "cpu",
-      validation_evaluation_id: null,
-    };
+    const payload = evaluationPayload();
     if (!payload.name) return $("#evaluation-name").focus();
     view.busy = true;
     updateLaunch();
@@ -978,16 +1184,7 @@
     renderActions(false);
     error("#evaluation-audit-error", null);
     try {
-      await submit({
-        name: `${detail.name.slice(0, 147)} · test audit`,
-        dataset_id: detail.dataset_id,
-        split: "test",
-        model_ids: detail.model_ids,
-        confidence_threshold: detail.config.confidence_threshold,
-        iou_threshold: detail.config.iou_threshold,
-        device: detail.config.device || "cpu",
-        validation_evaluation_id: detail.id,
-      });
+      await submit(auditPayload(detail));
     } catch (failure) {
       error("#evaluation-audit-error", failure);
     } finally {
@@ -1004,9 +1201,12 @@
       split() !== "val"
     )
       return;
+    const lane = lanes().find((item) => laneKey(item) === $("#evaluation-reference-model").value);
+    if (!lane) return $("#evaluation-reference-model").focus();
     const payload = {
       evaluation_id: view.detail.id,
-      model_id: $("#evaluation-reference-model").value,
+      model_id: lane.model_id,
+      variant: lane.variant,
       reviewer: $("#evaluation-reference-reviewer").value.trim(),
       notes: $("#evaluation-reference-notes").value.trim(),
       expected_previous_id: view.references.current?.id || null,
@@ -1035,6 +1235,9 @@
   });
   $("#evaluation-refresh").addEventListener("click", refresh);
   $("#evaluation-dataset").addEventListener("change", updateLaunch);
+  $("#evaluation-inference-mode").addEventListener("change", updateLaunch);
+  for (const selector of ["tile-size", "tile-overlap", "confidence", "iou"])
+    $(`#evaluation-${selector}`).addEventListener("input", updateLaunch);
   $("#evaluation-history").addEventListener("change", (event) => {
     view.activeId = event.target.value;
     view.detail = null;

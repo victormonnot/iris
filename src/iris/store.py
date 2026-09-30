@@ -127,14 +127,16 @@ CREATE TABLE IF NOT EXISTS evaluations (
 );
 CREATE TABLE IF NOT EXISTS evaluation_models (
     id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
-    model_id TEXT NOT NULL, metadata TEXT NOT NULL, metrics TEXT,
-    created_at TEXT NOT NULL, UNIQUE(evaluation_id,model_id)
+    model_id TEXT NOT NULL, variant TEXT NOT NULL DEFAULT 'full'
+    CHECK(variant IN ('full','tiled')), metadata TEXT NOT NULL, metrics TEXT,
+    created_at TEXT NOT NULL, UNIQUE(evaluation_id,model_id,variant)
 );
 CREATE TABLE IF NOT EXISTS evaluation_predictions (
     id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
     evaluation_model_id TEXT NOT NULL REFERENCES evaluation_models(id),
     frame_id TEXT NOT NULL REFERENCES frames(id), model_id TEXT NOT NULL,
     detections TEXT NOT NULL, timing TEXT NOT NULL, input_size TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL, UNIQUE(evaluation_model_id,frame_id)
 );
 CREATE TABLE IF NOT EXISTS model_references (
@@ -178,6 +180,19 @@ INSERT INTO runs_v9 (id,comparison_id,model_id,metadata,created_at)
 SELECT id,comparison_id,model_id,metadata,created_at FROM runs;
 DROP TABLE runs;
 ALTER TABLE runs_v9 RENAME TO runs;
+"""
+
+EVALUATION_VARIANTS_MIGRATION = """
+CREATE TABLE evaluation_models_v10 (
+    id TEXT PRIMARY KEY, evaluation_id TEXT NOT NULL REFERENCES evaluations(id),
+    model_id TEXT NOT NULL, variant TEXT NOT NULL DEFAULT 'full'
+    CHECK(variant IN ('full','tiled')), metadata TEXT NOT NULL, metrics TEXT,
+    created_at TEXT NOT NULL, UNIQUE(evaluation_id,model_id,variant)
+);
+INSERT INTO evaluation_models_v10 (id,evaluation_id,model_id,metadata,metrics,created_at)
+SELECT id,evaluation_id,model_id,metadata,metrics,created_at FROM evaluation_models;
+DROP TABLE evaluation_models;
+ALTER TABLE evaluation_models_v10 RENAME TO evaluation_models;
 """
 
 JSON_FIELDS = {
@@ -257,7 +272,7 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10):
                 raise RuntimeError(f"Unsupported database version: {version}")
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
@@ -281,9 +296,23 @@ class Store:
                 migration += (
                     "ALTER TABLE predictions ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';"
                 )
+            evaluation_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(evaluation_models)")
+            }
+            if evaluation_columns and "variant" not in evaluation_columns:
+                migration += EVALUATION_VARIANTS_MIGRATION
+                conn.execute("PRAGMA foreign_keys=OFF")
+            evaluation_predictions_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(evaluation_predictions)")
+            }
+            if evaluation_predictions_columns and "metadata" not in evaluation_predictions_columns:
+                migration += (
+                    "ALTER TABLE evaluation_predictions "
+                    "ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';"
+                )
             try:
                 conn.executescript(
-                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=9;"
+                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=10;"
                 )
                 if conn.execute("PRAGMA foreign_key_check").fetchone():
                     raise RuntimeError("Database migration found broken foreign keys")

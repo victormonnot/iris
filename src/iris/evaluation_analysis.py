@@ -3,11 +3,18 @@
 import math
 import re
 
-from iris.evaluation import evaluation_detail
+from iris.evaluation import (
+    _timing_protocol,
+    evaluation_detail,
+    evaluation_inference,
+    evaluation_lanes,
+)
 from iris.metrics import CLASS_IDS, _iou, _number, _validate, get_protocol
 from iris.store import Store
+from iris.tiling import _validate_tile_prediction, tile_boxes
 
 PROTOCOL = "iris-error-analysis-v1"
+RUN_PROTOCOL = "iris-error-analysis-v2"
 FILTERS = ("all", "person", "car")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 WARNINGS = [
@@ -43,7 +50,12 @@ def _indices(values, limit: int, description: str) -> set[int]:
 def _recorded_protocol(config: dict) -> dict:
     confidence = _number(config["confidence_threshold"], "Saved confidence threshold")
     iou = _number(config["iou_threshold"], "Saved IoU threshold")
-    supported = get_protocol(confidence, iou)
+    max_detections = 300 if config.get("inference", {}).get("mode", "full") != "full" else 100
+    supported = (
+        get_protocol(confidence, iou, max_detections=max_detections)
+        if max_detections != 100
+        else get_protocol(confidence, iou)
+    )
     recorded = config["protocol"]
     _require(isinstance(recorded, dict), "Saved evaluation protocol is missing")
     # Recorded outputs remain readable after dependency upgrades: no metric engine runs here.
@@ -137,7 +149,123 @@ def _validate_identity(detail: dict, evaluation_id: str) -> tuple[list[str], dic
     return model_ids, protocol
 
 
-def _model_results(detail: dict, model: dict, protocol: dict) -> dict:
+def _ordered_runs(detail: dict, model_ids: list[str]) -> tuple[list[dict], bool]:
+    """Keep checkpoint identities distinct from each saved inference execution."""
+    models, config = detail["models"], detail["config"]
+    versioned = "inference" in config
+    _require(isinstance(models, list), "Saved evaluation model runs must be a list")
+    if not versioned:
+        expected = [(identifier, "full") for identifier in model_ids]
+    else:
+        mode = evaluation_inference(detail)["mode"]
+        expected = [(lane["model_id"], lane["variant"]) for lane in evaluation_lanes(detail)]
+        _require(
+            config.get("lanes")
+            == [{"model_id": identifier, "variant": variant} for identifier, variant in expected],
+            "Saved evaluation run order differs from its inference plan",
+        )
+        _require(
+            config.get("timing_protocol")
+            == _timing_protocol("full" if mode == "full" else "tiled"),
+            "Saved evaluation timing protocol differs from its inference plan",
+        )
+    _require(
+        len(models) == len(expected)
+        and {(model["model_id"], model.get("variant", "full")) for model in models} == set(expected)
+        and all(isinstance(model["id"], str) and model["id"] for model in models)
+        and len({model["id"] for model in models}) == len(models),
+        "Saved evaluation requires complete predictions and metrics for every model run",
+    )
+    by_identity = {(model["model_id"], model.get("variant", "full")): model for model in models}
+    ordered = [by_identity[identity] for identity in expected]
+    if versioned:
+        _require(
+            detail.get("lanes")
+            == [
+                {
+                    "model_id": model["model_id"],
+                    "variant": model["variant"],
+                    "evaluation_model_id": model["id"],
+                }
+                for model in ordered
+            ],
+            "Saved evaluation lane identities are inconsistent",
+        )
+    by_id = {model["id"]: model for model in models}
+    _require(
+        all(
+            prediction["evaluation_model_id"] in by_id
+            and prediction["model_id"] == by_id[prediction["evaluation_model_id"]]["model_id"]
+            for prediction in detail["predictions"]
+        ),
+        "Saved prediction references an unknown or inconsistent model run",
+    )
+    return ordered, versioned
+
+
+def _run_inference(detail: dict, model: dict) -> dict:
+    variant = model["variant"]
+    inference = {"variant": variant}
+    if variant == "tiled":
+        config = detail["config"]["inference"]
+        inference.update(
+            algorithm=config["algorithm"],
+            **config["tiling"],
+            tile_boxes={
+                frame["frame_id"]: tile_boxes(frame["width"], frame["height"], config["tiling"])
+                for frame in detail["frames"]
+            },
+        )
+    _require(
+        model["metadata"].get("inference") == inference
+        and model["metadata"].get("timing_protocol") == _timing_protocol(variant),
+        "Saved model run differs from its recorded inference plan",
+    )
+    return inference
+
+
+def _prediction_inference(prediction: dict, inference: dict):
+    metadata = prediction["metadata"]
+    _require(isinstance(metadata, dict), "Saved prediction metadata must be an object")
+    if inference["variant"] == "full":
+        _require("tiles" not in metadata, "Saved full-image prediction contains tiled results")
+        return
+    boxes, tiles = inference["tile_boxes"][prediction["frame_id"]], metadata.get("tiles")
+    _require(
+        isinstance(tiles, list) and len(tiles) == len(boxes),
+        "Saved tiled prediction is missing its complete crop results",
+    )
+    sources = []
+    for index, (box, tile) in enumerate(zip(boxes, tiles, strict=True)):
+        _require(
+            type(tile["tile_index"]) is int and tile["tile_index"] == index and tile["box"] == box,
+            "Saved prediction crops differ from the recorded tile plan",
+        )
+        _validate_tile_prediction(tile, box[2] - box[0], box[3] - box[1])
+        sources.append(
+            [
+                {
+                    **detection,
+                    "box": [
+                        detection["box"][0] + box[0],
+                        detection["box"][1] + box[1],
+                        detection["box"][2] + box[0],
+                        detection["box"][3] + box[1],
+                    ],
+                    "tile_index": index,
+                }
+                for detection in tile["detections"]
+            ]
+        )
+    for detection in prediction["detections"]:
+        index = detection.get("tile_index")
+        _require(
+            type(index) is int and 0 <= index < len(sources) and detection in sources[index],
+            "Saved merged detection has no matching original-pixel crop result",
+        )
+
+
+def _model_results(detail: dict, model: dict, protocol: dict, *, versioned: bool) -> dict:
     identifier, config = model["model_id"], detail["config"]
     metadata, metrics = model["metadata"], model["metrics"]
     device = metadata.get("device")
@@ -158,14 +286,27 @@ def _model_results(detail: dict, model: dict, protocol: dict) -> dict:
         and metrics["protocol"] == protocol,
         "Saved model metrics or checkpoint identity is incomplete or inconsistent",
     )
-    predictions = [row for row in detail["predictions"] if row["model_id"] == identifier]
+    inference = _run_inference(detail, model) if versioned else None
+    predictions = [
+        row for row in detail["predictions"] if row["evaluation_model_id"] == model["id"]
+    ]
     for prediction in predictions:
         _require(
-            prediction["evaluation_id"] == detail["id"]
-            and prediction["evaluation_model_id"] == model["id"],
+            prediction["evaluation_id"] == detail["id"] and prediction["model_id"] == identifier,
             "Saved prediction has an inconsistent evaluation or model identity",
         )
-    normalized, ignored = _validate(detail["frames"], predictions)
+        if inference is not None:
+            _prediction_inference(prediction, inference)
+    if inference is not None and inference["variant"] == "full":
+        _require(
+            all(len(prediction["detections"]) <= 100 for prediction in predictions),
+            "Saved full-image prediction exceeds the native detector output limit",
+        )
+    normalized, ignored = _validate(
+        detail["frames"],
+        predictions,
+        max_detections=protocol.get("max_saved_detections_per_image", 100),
+    )
     by_prediction = {row["frame_id"]: row for row in predictions}
     rows = metrics["frames"]
     _require(
@@ -294,19 +435,17 @@ def _validate_totals(metrics, results, frames, predictions, ignored):
 
 def _analyze(detail: dict, evaluation_id: str) -> dict:
     model_ids, protocol = _validate_identity(detail, evaluation_id)
-    models = detail["models"]
-    _require(
-        isinstance(models, list)
-        and len(models) == len(model_ids)
-        and {model["model_id"] for model in models} == set(model_ids)
-        and len({model["id"] for model in models}) == len(models)
-        and all(row["model_id"] in model_ids for row in detail["predictions"]),
-        "Saved evaluation requires complete predictions and metrics for every model",
-    )
-    results = {model["model_id"]: _model_results(detail, model, protocol) for model in models}
+    models, versioned = _ordered_runs(detail, model_ids)
+    collection = "runs" if versioned else "models"
+    identifiers = [model["id"] if versioned else model["model_id"] for model in models]
+    results = {
+        identifier: _model_results(detail, model, protocol, versioned=versioned)
+        for identifier, model in zip(identifiers, models, strict=True)
+    }
+    identity = "run_id" if versioned else "model_id"
     comparison = (
-        {"baseline_model_id": model_ids[0], "candidate_model_id": model_ids[1]}
-        if len(model_ids) == 2
+        {f"baseline_{identity}": identifiers[0], f"candidate_{identity}": identifiers[1]}
+        if len(identifiers) == 2
         else None
     )
     frames = []
@@ -319,7 +458,7 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
             }
             changes = None
             if comparison:
-                baseline, candidate = (results[model_id][identifier] for model_id in model_ids)
+                baseline, candidate = (results[run_id][identifier] for run_id in identifiers)
                 new = sorted(baseline["matched"] & candidate["missed"] & indices)
                 recovered = sorted(baseline["missed"] & candidate["matched"] & indices)
                 changes = {
@@ -331,9 +470,8 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
                 }
             counts[label] = {
                 "ground_truth_count": len(indices),
-                "models": {
-                    model_id: results[model_id][identifier]["counts"][label]
-                    for model_id in model_ids
+                collection: {
+                    run_id: results[run_id][identifier]["counts"][label] for run_id in identifiers
                 },
                 "changes": changes,
             }
@@ -355,18 +493,18 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
         summary[label] = {
             "frame_count": len(frames),
             "ground_truth_count": sum(item["ground_truth_count"] for item in stats),
-            "models": {
-                model_id: {
+            collection: {
+                run_id: {
                     **{
-                        key: sum(item["models"][model_id][key] for item in stats)
+                        key: sum(item[collection][run_id][key] for item in stats)
                         for key in ("tp", "fp", "fn")
                     },
                     "error_frames": sum(
-                        bool(item["models"][model_id]["fp"] or item["models"][model_id]["fn"])
+                        bool(item[collection][run_id]["fp"] or item[collection][run_id]["fn"])
                         for item in stats
                     ),
                 }
-                for model_id in model_ids
+                for run_id in identifiers
             },
             "changes": {
                 key: sum(item["changes"][key] for item in stats)
@@ -383,10 +521,21 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
         "evaluation_id": evaluation_id,
         "dataset_id": detail["dataset_id"],
         "split": detail["split"],
-        "protocol": PROTOCOL,
+        "protocol": RUN_PROTOCOL if versioned else PROTOCOL,
         "confidence_threshold": protocol["confidence_threshold"],
         "iou_threshold": protocol["iou_threshold"],
-        "models": [
+        collection: [
+            {
+                "id": model["id"],
+                "model_id": model["model_id"],
+                "variant": model["variant"],
+                "name": detail["config"]["model_names"][model["model_id"]]
+                + (" · Full image" if model["variant"] == "full" else " · Tiled"),
+            }
+            for model in models
+        ]
+        if versioned
+        else [
             {"id": identifier, "name": detail["config"]["model_names"][identifier]}
             for identifier in model_ids
         ],

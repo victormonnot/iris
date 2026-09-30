@@ -33,16 +33,18 @@ def test_analysis_matches_saved_counts_and_preserves_all_records(client, ready_m
     assert response.status_code == 200, response.text
     analysis = response.json()
     assert analysis["evaluation_id"] == detail["id"]
-    assert analysis["protocol"] == "iris-error-analysis-v1"
+    assert analysis["protocol"] == "iris-error-analysis-v2"
     assert analysis["comparison"] == {
-        "baseline_model_id": MODEL_IDS[0],
-        "candidate_model_id": MODEL_IDS[1],
+        "baseline_run_id": detail["lanes"][0]["evaluation_model_id"],
+        "candidate_run_id": detail["lanes"][1]["evaluation_model_id"],
     }
+    assert [run["model_id"] for run in analysis["runs"]] == MODEL_IDS
+    assert all(run["variant"] == "full" for run in analysis["runs"])
     assert analysis["summary"]["all"]["changes"] == {"new_misses": 2, "recovered": 0, "fp_delta": 0}
     assert analysis["summary"]["person"]["changes"]["new_misses"] == 1
     assert analysis["summary"]["car"]["changes"]["new_misses"] == 1
     for row in detail["models"]:
-        counts = analysis["summary"]["all"]["models"][row["model_id"]]
+        counts = analysis["summary"]["all"]["runs"][row["id"]]
         assert all(counts[key] == row["metrics"]["summary"][key] for key in ("tp", "fp", "fn"))
     assert {name: store.list(name) for name in tables} == before
     assert client.get("/api/system").json()["capabilities"]["evaluation_analysis"] is True
@@ -70,7 +72,7 @@ def test_single_model_has_errors_but_no_paired_claim(client, ready_models):
     analysis = response.json()
     assert analysis["comparison"] is None
     assert analysis["summary"]["all"]["changes"] is None
-    assert analysis["summary"]["all"]["models"][MODEL_IDS[1]]["fn"] == 2
+    assert analysis["summary"]["all"]["runs"][detail["models"][0]["id"]]["fn"] == 2
 
 
 def test_saved_analysis_survives_live_draft_and_workspace_reopen(client, ready_models):

@@ -83,7 +83,13 @@ def comparison_lanes(comparison: dict) -> list[dict]:
     return expected
 
 
-def _work_plan(frames: list[dict], lanes: list[dict], inference: dict) -> dict:
+def _work_plan(
+    frames: list[dict],
+    lanes: list[dict],
+    inference: dict,
+    *,
+    max_forward_passes: int = MAX_FORWARD_PASSES,
+) -> dict:
     tiled = any(lane["variant"] == "tiled" for lane in lanes)
     tiles = [
         {
@@ -100,10 +106,10 @@ def _work_plan(frames: list[dict], lanes: list[dict], inference: dict) -> dict:
         for lane in lanes
     )
     total = passes + len(lanes)
-    if total > MAX_FORWARD_PASSES:
+    if total > max_forward_passes:
         raise ValueError(
             f"This selection needs {total} detector passes including warmup; "
-            f"the limit is {MAX_FORWARD_PASSES}. Select fewer frames or larger tiles."
+            f"the limit is {max_forward_passes}. Use fewer images or larger tiles."
         )
     return {
         "frames_total": len(frames),
@@ -113,7 +119,7 @@ def _work_plan(frames: list[dict], lanes: list[dict], inference: dict) -> dict:
         "tiles": tiles,
         "limits": {
             "max_tiles_per_frame": MAX_TILES_PER_FRAME,
-            "max_forward_passes": MAX_FORWARD_PASSES,
+            "max_forward_passes": max_forward_passes,
         },
     }
 

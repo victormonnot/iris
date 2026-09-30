@@ -31,7 +31,18 @@ def _number(value, description: str) -> float:
     return number
 
 
-def get_protocol(confidence_threshold: float = 0.5, iou_threshold: float = 0.5) -> dict:
+def _prediction_limit(value: int) -> int:
+    if type(value) is not int or value not in (100, 300):
+        raise ValueError("The saved prediction limit must be 100 or 300")
+    return value
+
+
+def get_protocol(
+    confidence_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
+    *,
+    max_detections: int = MAX_DETECTIONS,
+) -> dict:
     """Return the serializable metric definition, including the installed engine version."""
     confidence = _number(confidence_threshold, "Confidence threshold")
     iou = _number(iou_threshold, "IoU threshold")
@@ -39,7 +50,8 @@ def get_protocol(confidence_threshold: float = 0.5, iou_threshold: float = 0.5) 
         raise ValueError("Confidence threshold must be between 0 and 1")
     if not 0 < iou <= 1:
         raise ValueError("IoU threshold must be greater than 0 and at most 1")
-    return {
+    limit = _prediction_limit(max_detections)
+    protocol = {
         "id": PROTOCOL_ID,
         "engine": "pycocotools.COCOeval",
         "engine_version": importlib.metadata.version("pycocotools"),
@@ -76,6 +88,24 @@ def get_protocol(confidence_threshold: float = 0.5, iou_threshold: float = 0.5) 
             "These are full-image metrics; no object-size breakdown or uncertainty estimate.",
         ],
     }
+    if limit == 300:
+        # Keep the historical definition byte-for-byte equivalent for old runs.
+        # The accepted pipeline output grows; the COCO AP maxDets stays 100.
+        protocol.pop("native_max_detections_per_image")
+        protocol.update(
+            id="coco-bbox-iris-v2",
+            max_saved_detections_per_image=limit,
+            native_max_detections_per_call=MAX_DETECTIONS,
+            limitations=[
+                *protocol["limitations"][:2],
+                "Each run scores its final original-image predictions, after detector filtering "
+                "and any recorded tile merging; discarded predictions cannot be recovered.",
+                "COCO AP keeps maxDets=100. Operating-point counts use every saved prediction "
+                "above threshold, including merged outputs beyond that AP limit.",
+                "Metrics have no object-size breakdown or uncertainty estimate.",
+            ],
+        )
+    return protocol
 
 
 def _box(value, width: int, height: int) -> list[float]:
@@ -87,7 +117,13 @@ def _box(value, width: int, height: int) -> list[float]:
     return [x1, y1, x2, y2]
 
 
-def _validate(frames: list[dict], predictions: list[dict]) -> tuple[list[dict], int]:
+def _validate(
+    frames: list[dict],
+    predictions: list[dict],
+    *,
+    max_detections: int = MAX_DETECTIONS,
+) -> tuple[list[dict], int]:
+    limit = _prediction_limit(max_detections)
     if not isinstance(frames, list) or not frames:
         raise ValueError("Evaluation requires at least one reviewed frame")
     normalized, seen = [], set()
@@ -132,8 +168,8 @@ def _validate(frames: list[dict], predictions: list[dict]) -> tuple[list[dict], 
     ignored = 0
     for frame in normalized:
         raw = rows[frame["frame_id"]].get("detections")
-        if not isinstance(raw, list) or len(raw) > MAX_DETECTIONS:
-            raise ValueError("Every frame must contain a list of at most 100 native detections")
+        if not isinstance(raw, list) or len(raw) > limit:
+            raise ValueError(f"Every frame must contain a list of at most {limit} saved detections")
         frame["detections"] = []
         for index, item in enumerate(raw):
             if not isinstance(item, dict):
@@ -256,14 +292,15 @@ def evaluate_predictions(
     *,
     confidence_threshold: float = 0.5,
     iou_threshold: float = 0.5,
+    max_detections: int = MAX_DETECTIONS,
 ) -> dict:
     """Score complete saved predictions against a frozen, reviewed frame list.
 
     Frame and detection order are preserved, making equal-score results repeatable
     and error-example indices traceable to the unchanged source artifacts.
     """
-    protocol = get_protocol(confidence_threshold, iou_threshold)
-    normalized, ignored = _validate(frames, predictions)
+    protocol = get_protocol(confidence_threshold, iou_threshold, max_detections=max_detections)
+    normalized, ignored = _validate(frames, predictions, max_detections=max_detections)
     confidence, threshold = protocol["confidence_threshold"], protocol["iou_threshold"]
     ap = _average_precision(normalized)
     totals = {label: {"tp": 0, "fp": 0, "fn": 0, "support": 0} for label in CLASS_IDS}

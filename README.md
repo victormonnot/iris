@@ -180,9 +180,10 @@ results are published; earlier completed results survive. In **Annotation** and
 The disagreement queue also accepts the two variants of the same checkpoint.
 Proposals remain in original-image coordinates and require human review.
 
-This mode currently measures visual outputs and processing time. **Quality
-evaluation still runs full-image inference**: its mAP scores do not evaluate a
-tiled comparison. No measured quality gain from tiling is implied by more boxes.
+Use the same inference modes in **Quality evaluation** to score a frozen,
+reviewed validation split. **Full image vs tiled** compares one checkpoint's
+quality and processing time in the same evaluation. More boxes in the visual
+comparator alone do not establish a quality gain.
 
 ## Annotate and review
 
@@ -416,12 +417,21 @@ Both models can miss the same object. See [review queue behavior and matching](d
 
 ## Evaluate and select a reference
 
-Open **Evaluation**, choose a dataset release and one or two ready models, and
-run them on the release's complete **validation** split. The models use the same
+Open **Evaluation**, choose a dataset release, one or two ready models and an
+inference mode, then inspect the estimated work before launching on the complete
+**validation** split. The models use the same
 frozen images and reviewed labels. Choose the confidence and IoU thresholds for
 precision/recall before launching; the default is 0.5 for both. Runs record the
 dataset manifest hash, checkpoint hashes, training ancestry, class mapping,
 metric implementation, thresholds, device and timing protocol.
+
+Choose **Full image vs tiled** with one checkpoint to measure the effect of
+tiling on the same held-out data. The results keep distinct full-image and tiled
+runs, including separate metric columns, per-frame errors, processing times and
+provenance. **Tiled image** can also compare two checkpoints using the same tile
+settings. Tiles use the comparator's implementation and limits of 64 per image;
+an evaluation permits at most 4,096 detector passes including warmups. The entire
+split is evaluated or the request is rejected; large splits are never silently sampled.
 
 Results include COCO bbox mAP at IoU 0.50:0.95, AP50, AP75, per-class AP, and
 precision/recall with true/false positives and missed objects at the chosen
@@ -433,15 +443,18 @@ plus inference and total processing times. Saved partial predictions remain
 inspectable after cancellation or failure; an incomplete comparison cannot
 support reference selection.
 
-After a complete validation run, select a model as the workspace reference with
+After a complete validation run, select a model and inference mode as the workspace reference with
 your reviewer name and reason. The choice and its evidence are appended to a
 history; previous references and checkpoints remain available. Nothing selects
 the latest training or the highest score automatically. A new training run does
-not replace the reference.
+not replace the reference. A tiled reference records its tile size, overlap and
+merge settings; selecting the same weights in full-image mode is a different choice.
 
 If the dataset has a **test** split, launch a final audit from the completed
 validation run. The audit reuses the same models, checkpoint hashes, thresholds,
-device and metric protocol. Test results cannot directly promote a reference.
+inference modes, tile/merge settings, device and metric protocol. Its pass count
+is previewed separately because the test split can contain different images.
+Test results cannot directly promote a reference.
 Repeatedly inspecting test results and then changing models can still bias
 human decisions; preserve the test for final reporting. IRIS rejects local
 training overlap by both scene group and exact image pixels, including ancestor

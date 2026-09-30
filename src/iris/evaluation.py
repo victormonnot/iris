@@ -7,11 +7,72 @@ from collections.abc import Callable
 
 from iris.datasets import MAX_FRAMES, load_manifest
 from iris.inference import PROTOCOL as TIMING_PROTOCOL
-from iris.inference import _validate_prediction
+from iris.inference import TILED_PROTOCOL, _validate_prediction, _work_plan, comparison_lanes
 from iris.metrics import evaluate_predictions, get_protocol
 from iris.models import TorchvisionDetector, catalog
 from iris.store import Store, _decode, new_id, now
+from iris.tiling import (
+    TiledInferenceCancelled,
+    tile_boxes,
+    tiled_predict,
+    validate_tiling_config,
+)
 from iris.training import _read_training_image
+
+MAX_EVALUATION_FORWARD_PASSES = 4096
+
+
+def evaluation_lanes(evaluation: dict) -> list[dict]:
+    """Ordered checkpoint/pipeline identities, including legacy full-image records."""
+    return comparison_lanes(evaluation)
+
+
+def evaluation_inference(evaluation: dict) -> dict:
+    """Read the frozen inference configuration without treating malformed data as legacy."""
+    evaluation_lanes(evaluation)
+    inference = evaluation["config"].get("inference", {"mode": "full"})
+    if inference.get("mode") == "full":
+        if inference != {"mode": "full"}:
+            raise ValueError("Unsupported saved full-image inference protocol")
+    else:
+        settings = inference.get("tiling", {})
+        if (
+            set(inference) != {"mode", "algorithm", "tiling"}
+            or inference.get("algorithm") != "iris-tiling-v1"
+            or not isinstance(settings, dict)
+            or settings
+            != validate_tiling_config(settings.get("tile_size"), settings.get("overlap"))
+        ):
+            raise ValueError("Unsupported saved tiling protocol")
+    return inference
+
+
+def _timing_protocol(variant: str) -> dict:
+    protocol = TIMING_PROTOCOL if variant == "full" else TILED_PROTOCOL
+    return {key: value for key, value in protocol.items() if key != "quality_metrics"}
+
+
+def _evaluation_work(frames: list[dict], lanes: list[dict], inference: dict) -> dict:
+    return _work_plan(
+        [{**frame, "id": frame["frame_id"]} for frame in frames],
+        lanes,
+        inference,
+        max_forward_passes=MAX_EVALUATION_FORWARD_PASSES,
+    )
+
+
+def _lane_inference(lane: dict, inference: dict, frames: list[dict]) -> dict:
+    result = {"variant": lane["variant"]}
+    if lane["variant"] == "tiled":
+        result.update(
+            algorithm=inference["algorithm"],
+            **inference["tiling"],
+            tile_boxes={
+                frame["frame_id"]: tile_boxes(frame["width"], frame["height"], inference["tiling"])
+                for frame in frames
+            },
+        )
+    return result
 
 
 class ReferenceConflict(RuntimeError):
@@ -110,14 +171,39 @@ def _ready_models(store: Store, model_ids: list[str], frames: list[dict]) -> tup
 def _complete_models(store: Store, evaluation: dict) -> list[dict]:
     job = store.get("jobs", evaluation["job_id"])
     rows = store.list("evaluation_models", evaluation_id=evaluation["id"])
+    lanes = evaluation_lanes(evaluation)
+    evaluation_inference(evaluation)
     if (
         job is None
         or job["status"] != "succeeded"
-        or len(rows) != len(evaluation["model_ids"])
-        or {row["model_id"] for row in rows} != set(evaluation["model_ids"])
-        or any(row["metrics"] is None for row in rows)
+        or len(rows) != len(lanes)
+        or {(row["model_id"], row.get("variant", "full")) for row in rows}
+        != {(lane["model_id"], lane["variant"]) for lane in lanes}
+        or any(not isinstance(row["metrics"], dict) for row in rows)
     ):
         raise ValueError("Evaluation must finish successfully for every model first")
+    _, frames = _heldout_frames(store, evaluation["dataset_id"], evaluation["split"])
+    inference = evaluation_inference(evaluation)
+    legacy = "inference" not in evaluation["config"]
+    for row in rows:
+        variant = row.get("variant", "full")
+        expected = _lane_inference(
+            {"model_id": row["model_id"], "variant": variant}, inference, frames
+        )
+        metadata = row["metadata"]
+        recorded = metadata.get("inference", {"variant": "full"} if legacy else None)
+        if (
+            recorded != expected
+            or metadata.get("model_id") != row["model_id"]
+            or metadata.get("weight_sha256")
+            != evaluation["config"]["model_hashes"][row["model_id"]]
+            or metadata.get("lineage") != evaluation["config"]["model_lineages"][row["model_id"]]
+            or metadata.get("protocol") != evaluation["config"]["protocol"]
+            or row["metrics"].get("protocol") != evaluation["config"]["protocol"]
+            or metadata.get("timing_protocol", _timing_protocol(variant) if legacy else None)
+            != _timing_protocol(variant)
+        ):
+            raise ValueError("Saved evaluation run does not match its frozen inference settings")
     return rows
 
 
@@ -143,11 +229,22 @@ def _validation_audit(
             raise ValueError(
                 "A test audit must retain validation checkpoints and evaluation settings"
             )
+    inference = evaluation_inference({"model_ids": model_ids, "config": config})
+    previous_inference = evaluation_inference(previous)
+    if (
+        previous_inference != inference
+        or evaluation_lanes(previous)
+        != evaluation_lanes({"model_ids": model_ids, "config": config})
+        or previous["config"].get("timing_protocol", _timing_protocol(previous_inference["mode"]))
+        != config.get("timing_protocol", _timing_protocol(inference["mode"]))
+    ):
+        raise ValueError(
+            "A test audit must retain validation inference settings and timing protocol"
+        )
 
 
-def create_evaluation(
+def _prepare_evaluation(
     store: Store,
-    jobs,
     *,
     name: str,
     dataset_id: str,
@@ -157,7 +254,10 @@ def create_evaluation(
     iou_threshold: float = 0.5,
     device: str = "cpu",
     validation_evaluation_id: str | None = None,
-) -> dict:
+    inference_mode: str = "full",
+    tile_size: int = 640,
+    overlap: float = 0.2,
+) -> tuple[list[dict], dict]:
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 160:
         raise ValueError("Evaluation name must contain between 1 and 160 characters")
     if split not in {"val", "test"}:
@@ -184,6 +284,12 @@ def create_evaluation(
     if split == "val" and validation_evaluation_id is not None:
         raise ValueError("Validation evaluations cannot be linked as test audits")
     dataset, frames = _heldout_frames(store, dataset_id, split)
+    tiling = validate_tiling_config(tile_size, overlap)
+    inference = {"mode": inference_mode}
+    if inference_mode != "full":
+        inference.update(algorithm="iris-tiling-v1", tiling=tiling)
+    lanes = evaluation_lanes({"model_ids": model_ids, "config": {"inference": inference}})
+    work = _evaluation_work(frames, lanes, inference)
     selected, lineages = _ready_models(store, model_ids, frames)
     config = {
         "dataset_name": dataset["name"],
@@ -202,11 +308,14 @@ def create_evaluation(
         "taxonomy_id": "iris-objects-v1",
         "class_mapping": {"person": 1, "car": 3},
         "protocol": get_protocol(
-            confidence_threshold=confidence_threshold, iou_threshold=iou_threshold
+            confidence_threshold=confidence_threshold,
+            iou_threshold=iou_threshold,
+            max_detections=100 if inference_mode == "full" else 300,
         ),
-        "timing_protocol": {
-            key: value for key, value in TIMING_PROTOCOL.items() if key != "quality_metrics"
-        },
+        "timing_protocol": _timing_protocol(inference_mode),
+        "inference": inference,
+        "lanes": lanes,
+        "work": work,
         "warnings": list(
             dict.fromkeys([*dataset["summary"].get("warnings", []), PRETRAINING_WARNING])
         ),
@@ -218,6 +327,45 @@ def create_evaluation(
             "This test audit retains validation settings. Repeated inspection of test results "
             "can bias later model choices; reference selection uses validation only."
         )
+    return frames, config
+
+
+def preview_evaluation(store: Store, **settings) -> dict:
+    """Plan the complete frozen split without loading a detector or creating a job."""
+    _, config = _prepare_evaluation(store, **settings)
+    return {"inference": config["inference"], "lanes": config["lanes"], **config["work"]}
+
+
+def create_evaluation(
+    store: Store,
+    jobs,
+    *,
+    name: str,
+    dataset_id: str,
+    model_ids: list[str],
+    split: str = "val",
+    confidence_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
+    device: str = "cpu",
+    validation_evaluation_id: str | None = None,
+    inference_mode: str = "full",
+    tile_size: int = 640,
+    overlap: float = 0.2,
+) -> dict:
+    _, config = _prepare_evaluation(
+        store,
+        name=name,
+        dataset_id=dataset_id,
+        model_ids=model_ids,
+        split=split,
+        confidence_threshold=confidence_threshold,
+        iou_threshold=iou_threshold,
+        device=device,
+        validation_evaluation_id=validation_evaluation_id,
+        inference_mode=inference_mode,
+        tile_size=tile_size,
+        overlap=overlap,
+    )
     identifier, job_id, created_at = new_id(), new_id(), now()
     with jobs.guard, store.connect() as connection:
         connection.execute(
@@ -249,7 +397,21 @@ def create_evaluation(
 
 
 def evaluation_summary(store: Store, row: dict) -> dict:
-    return {**row, "job": store.get("jobs", row["job_id"])}
+    runs = {
+        (model["model_id"], model.get("variant", "full")): model
+        for model in store.list("evaluation_models", evaluation_id=row["id"])
+    }
+    return {
+        **row,
+        "job": store.get("jobs", row["job_id"]),
+        "lanes": [
+            {
+                **lane,
+                "evaluation_model_id": runs.get((lane["model_id"], lane["variant"]), {}).get("id"),
+            }
+            for lane in evaluation_lanes(row)
+        ],
+    }
 
 
 def evaluation_detail(store: Store, evaluation_id: str) -> dict:
@@ -315,11 +477,16 @@ def run_evaluation(
     }:
         raise ValueError("An evaluation is immutable; create a new evaluation to retry")
     config, model_ids = row["config"], row["model_ids"]
+    lanes = evaluation_lanes(row)
+    inference = evaluation_inference(row)
+    maximum = 100 if inference["mode"] == "full" else 300
     result = {
         "evaluation_id": evaluation_id,
         "frames_total": len(config["frame_ids"]),
         "models_total": len(model_ids),
         "models_completed": 0,
+        "runs_total": len(lanes),
+        "runs_completed": 0,
         "predictions_created": 0,
         "cancelled": False,
     }
@@ -337,20 +504,28 @@ def run_evaluation(
         "model_hashes"
     ] or lineages != config["model_lineages"]:
         raise ValueError("Checkpoint or training provenance changed since evaluation was queued")
+    work = _evaluation_work(frames, lanes, inference)
+    if ("inference" in config or "work" in config) and work != config.get("work"):
+        raise ValueError("Saved inference work plan changed since evaluation was queued")
     if (
         get_protocol(
             confidence_threshold=config["confidence_threshold"],
             iou_threshold=config["iou_threshold"],
+            max_detections=maximum,
         )
         != config["protocol"]
     ):
         raise ValueError("Evaluation protocol changed since this evaluation was queued")
+    if config.get("timing_protocol", _timing_protocol(inference["mode"])) != _timing_protocol(
+        inference["mode"]
+    ):
+        raise ValueError("Evaluation timing protocol changed since this evaluation was queued")
     if row["split"] == "test":
         _validation_audit(
             store, config["validation_evaluation_id"], row["dataset_id"], model_ids, config
         )
-    total = len(frames) * len(model_ids)
-    for model_index, model_id in enumerate(model_ids):
+    total = len(frames) * len(lanes)
+    for model_id in model_ids:
         if cancelled():
             return {**result, "cancelled": True}
         progress(result["predictions_created"] / total, f"Loading {selected[model_id]['name']}")
@@ -360,77 +535,144 @@ def run_evaluation(
         try:
             if detector.metadata.get("weight_sha256") != config["model_hashes"][model_id]:
                 raise ValueError("Checkpoint changed since evaluation was queued")
-            model_row = store.insert(
-                "evaluation_models",
-                {
-                    "id": new_id(),
-                    "evaluation_id": evaluation_id,
-                    "model_id": model_id,
-                    "metadata": {
-                        **detector.metadata,
-                        "model_name": config["model_names"][model_id],
-                        "protocol": config["protocol"],
-                        "lineage": lineages[model_id],
-                    },
-                    "metrics": None,
-                    "created_at": now(),
-                },
-            )
-            with _read_training_image(store, frames[0]) as image:
+            model_lanes = [lane for lane in lanes if lane["model_id"] == model_id]
+            for lane_index, lane in enumerate(model_lanes):
                 if cancelled():
-                    return {**result, "cancelled": True}
-                progress(result["predictions_created"] / total, "Warming up model (not timed)")
-                detector.warmup(image)
-            predictions = []
-            for frame in frames:
-                if cancelled():
-                    return {**result, "cancelled": True}
-                started = time.perf_counter()
-                with _read_training_image(store, frame) as image:
-                    decoded = time.perf_counter()
-                    prediction = detector.predict(image)
-                elapsed = (time.perf_counter() - started) * 1000
-                _validate_prediction(prediction, frame)
-                prediction_row = store.insert(
-                    "evaluation_predictions",
+                    raise TiledInferenceCancelled()
+                variant = lane["variant"]
+                saved_inference = _lane_inference(lane, inference, frames)
+                model_row = store.insert(
+                    "evaluation_models",
                     {
                         "id": new_id(),
                         "evaluation_id": evaluation_id,
-                        "evaluation_model_id": model_row["id"],
                         "model_id": model_id,
-                        "frame_id": frame["frame_id"],
-                        "detections": prediction["detections"],
-                        "input_size": prediction["input_size"],
-                        "timing": {
-                            **prediction["timing"],
-                            "decode_ms": (decoded - started) * 1000,
-                            "total_ms": elapsed,
+                        "variant": variant,
+                        "metadata": {
+                            **detector.metadata,
+                            "model_name": config["model_names"][model_id],
+                            "protocol": config["protocol"],
+                            "lineage": lineages[model_id],
+                            "inference": saved_inference,
+                            "timing_protocol": _timing_protocol(variant),
                         },
+                        "metrics": None,
                         "created_at": now(),
                     },
                 )
-                predictions.append(prediction_row)
-                result["predictions_created"] += 1
-                progress(
-                    result["predictions_created"] / total,
-                    f"Saved {result['predictions_created']} / {total} held-out predictions",
+                with _read_training_image(store, frames[0]) as image:
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    progress(
+                        result["predictions_created"] / total,
+                        f"Warming up {variant} run (not timed)",
+                    )
+                    if variant == "tiled":
+                        with image.crop(
+                            tuple(saved_inference["tile_boxes"][frames[0]["frame_id"]][0])
+                        ) as crop:
+                            detector.warmup(crop)
+                    else:
+                        detector.warmup(image)
+                predictions = []
+                for frame_position, frame in enumerate(frames, 1):
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    progress_overhead = 0.0
+
+                    def tile_progress(
+                        done,
+                        count,
+                        position=frame_position,
+                        completed_count=result["predictions_created"],
+                    ):
+                        nonlocal progress_overhead
+                        reporting = time.perf_counter()
+                        progress(
+                            (completed_count + done / count) / total,
+                            f"Tiled held-out image {position} / {len(frames)}: "
+                            f"{done} / {count} tiles; merging before saving",
+                        )
+                        progress_overhead += time.perf_counter() - reporting
+
+                    started = time.perf_counter()
+                    with _read_training_image(store, frame) as image:
+                        decoded = time.perf_counter()
+                        if variant == "tiled":
+                            prediction = tiled_predict(
+                                detector,
+                                image,
+                                inference["tiling"],
+                                cancelled=cancelled,
+                                progress=tile_progress,
+                            )
+                        else:
+                            prediction = detector.predict(image)
+                            prediction["timing"] = {
+                                **prediction["timing"],
+                                "forward_passes": 1,
+                                "tile_count": 0,
+                                "crop_ms": 0.0,
+                                "merge_ms": 0.0,
+                            }
+                    elapsed = max(0, time.perf_counter() - started - progress_overhead) * 1000
+                    _validate_prediction(prediction, frame)
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    prediction_row = store.insert(
+                        "evaluation_predictions",
+                        {
+                            "id": new_id(),
+                            "evaluation_id": evaluation_id,
+                            "evaluation_model_id": model_row["id"],
+                            "model_id": model_id,
+                            "frame_id": frame["frame_id"],
+                            "detections": prediction["detections"],
+                            "input_size": prediction["input_size"],
+                            "metadata": prediction.get("metadata", {}),
+                            "timing": {
+                                **prediction["timing"],
+                                "decode_ms": (decoded - started) * 1000,
+                                "total_ms": elapsed,
+                            },
+                            "created_at": now(),
+                        },
+                    )
+                    predictions.append(prediction_row)
+                    result["predictions_created"] += 1
+                    progress(
+                        result["predictions_created"] / total,
+                        f"Saved {result['predictions_created']} / {total} held-out predictions",
+                    )
+                if cancelled():
+                    raise TiledInferenceCancelled()
+                metrics = evaluate_predictions(
+                    frames,
+                    predictions,
+                    confidence_threshold=config["confidence_threshold"],
+                    iou_threshold=config["iou_threshold"],
+                    max_detections=maximum,
                 )
-            if cancelled():
-                return {**result, "cancelled": True}
-            metrics = evaluate_predictions(
-                frames,
-                predictions,
-                confidence_threshold=config["confidence_threshold"],
-                iou_threshold=config["iou_threshold"],
-            )
-            if cancelled():
-                return {**result, "cancelled": True}
-            completed = {**result, "models_completed": result["models_completed"] + 1}
-            if not _publish_metrics(
-                store, row, model_row, metrics, completed, final=model_index == len(model_ids) - 1
-            ):
-                return {**result, "cancelled": True}
-            result = completed
+                if cancelled():
+                    raise TiledInferenceCancelled()
+                completed = {
+                    **result,
+                    "models_completed": result["models_completed"]
+                    + int(lane_index == len(model_lanes) - 1),
+                    "runs_completed": result["runs_completed"] + 1,
+                }
+                if not _publish_metrics(
+                    store,
+                    row,
+                    model_row,
+                    metrics,
+                    completed,
+                    final=completed["runs_completed"] == len(lanes),
+                ):
+                    raise TiledInferenceCancelled()
+                result = completed
+        except TiledInferenceCancelled:
+            return {**result, "cancelled": True}
         finally:
             del detector
     return result
@@ -449,6 +691,7 @@ def promote_reference(
     reviewer: str,
     notes: str,
     expected_previous_id: str | None = None,
+    variant: str | None = None,
 ) -> dict:
     if not isinstance(reviewer, str) or not 1 <= len(reviewer.strip()) <= 120:
         raise ValueError("Record a reviewer name of 1 to 120 characters")
@@ -458,9 +701,20 @@ def promote_reference(
     if row is None or row["split"] != "val":
         raise ValueError("Reference selection requires a validation evaluation, never a test audit")
     models = _complete_models(store, row)
-    selected = next((model for model in models if model["model_id"] == model_id), None)
-    if selected is None:
-        raise ValueError("Choose a model from this completed evaluation")
+    if variant is not None and variant not in {"full", "tiled"}:
+        raise ValueError("Choose the full or tiled inference variant")
+    matches = [
+        model
+        for model in models
+        if model["model_id"] == model_id
+        and (variant is None or model.get("variant", "full") == variant)
+    ]
+    if not matches:
+        raise ValueError("Choose a model and inference variant from this completed evaluation")
+    if len(matches) != 1:
+        raise ValueError("Choose an explicit inference variant for this checkpoint")
+    selected = matches[0]
+    selected_variant = selected.get("variant", "full")
     dataset, frames = _heldout_frames(store, row["dataset_id"], "val")
     available, lineages = _ready_models(store, [model_id], frames)
     if (
@@ -482,6 +736,13 @@ def promote_reference(
         "iou_threshold": row["config"]["iou_threshold"],
         "warnings": row["config"]["warnings"],
         "previous_reference_id": expected_previous_id,
+        "evaluation_model_id": selected["id"],
+        "variant": selected_variant,
+        "inference": selected["metadata"].get("inference", {"variant": "full"}),
+        "device": row["config"]["device"],
+        "timing_protocol": selected["metadata"].get(
+            "timing_protocol", _timing_protocol(selected_variant)
+        ),
     }
     identifier = new_id()
     with store.connect() as connection:

@@ -342,7 +342,7 @@ def test_schema8_migration_keeps_saved_rows_and_foreign_keys_and_allows_second_v
     assert detail["lanes"][0]["run_id"] == before["runs"][0]["id"]
     with store.connect() as conn:
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE predictions SET run_id='missing'")
     run = before["runs"][0]

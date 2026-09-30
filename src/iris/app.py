@@ -40,6 +40,7 @@ from iris.evaluation import (
     create_evaluation,
     evaluation_detail,
     evaluation_summary,
+    preview_evaluation,
     promote_reference,
     reference_history,
 )
@@ -157,12 +158,16 @@ class EvaluationInput(BaseModel):
     iou_threshold: float = Field(default=0.5, gt=0, le=1)
     device: Literal["cpu", "cuda"] = "cpu"
     validation_evaluation_id: str | None = None
+    inference_mode: Literal["full", "tiled", "paired"] = "full"
+    tile_size: int = Field(default=640, ge=128, le=2048)
+    overlap: float = Field(default=0.2, ge=0, le=0.5)
 
 
 class ReferenceInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     evaluation_id: str
     model_id: str
+    variant: Literal["full", "tiled"] | None = None
     reviewer: str = Field(min_length=1, max_length=120)
     notes: str = Field(min_length=1, max_length=2000)
     expected_previous_id: str | None
@@ -509,6 +514,16 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/evaluations")
     def evaluations():
         return [evaluation_summary(store, row) for row in store.list("evaluations")]
+
+    @app.post("/api/evaluations/preview")
+    def evaluation_preview(payload: EvaluationInput):
+        require("dataset_versions", payload.dataset_id)
+        try:
+            return preview_evaluation(store, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/evaluations", status_code=202)
     def evaluate(payload: EvaluationInput):

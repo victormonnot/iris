@@ -314,7 +314,7 @@ def test_schema_six_migration_preserves_suggestions_and_revision_links(tmp_path)
     )
     migrated = Store(tmp_path)
     with migrated.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
         assert [
             tuple(row) for row in conn.execute("SELECT * FROM annotation_suggestions ORDER BY id")
         ] == before

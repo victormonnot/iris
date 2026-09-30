@@ -489,8 +489,9 @@
                   <p class="comparison-caveat">
                     Counts and count differences are inspection signals. No
                     validated labels are attached to this visual comparison.
-                    Quality evaluation currently measures full-image inference
-                    against a frozen dataset; it does not score tiled inference.
+                    Quality evaluation measures full-image and tiled detection
+                    against frozen, human-validated labels. Use it to compare
+                    detection quality and processing time on the same images.
                   </p>
                   <div class="comparison-navigation">
                     <button
@@ -1607,6 +1608,25 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <legend>Detectors · choose up to two</legend>
                   <div id="evaluation-models" class="evaluation-models"></div>
                 </fieldset>
+                <div class="comparison-mode-field">
+                  <label for="evaluation-inference-mode">Inference mode</label>
+                  <select id="evaluation-inference-mode" aria-describedby="evaluation-mode-hint">
+                    <option value="full">Full image</option>
+                    <option value="tiled">Tiled image</option>
+                    <option value="paired">Full image vs tiled · one model</option>
+                  </select>
+                  <p id="evaluation-mode-hint" class="field-hint">Evaluate each selected model on the whole image.</p>
+                </div>
+                <div id="evaluation-tiling-fields" class="training-form-grid" hidden>
+                  <div>
+                    <label for="evaluation-tile-size">Tile size · pixels</label>
+                    <input id="evaluation-tile-size" type="number" min="128" max="2048" step="1" value="640" />
+                  </div>
+                  <div>
+                    <label for="evaluation-tile-overlap">Overlap · fraction</label>
+                    <input id="evaluation-tile-overlap" type="number" min="0" max="0.5" step="0.01" value="0.2" />
+                  </div>
+                </div>
                 <div class="training-form-grid evaluation-thresholds">
                   <div>
                     <label for="evaluation-confidence"
@@ -1641,6 +1661,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   scores, at IoU 0.50–0.95. Only person and car are evaluated.
                   Choose thresholds on validation data.
                 </p>
+                <p id="evaluation-plan" class="field-hint" role="status" aria-live="polite"></p>
                 <div class="comparison-launch">
                   <p
                     id="evaluation-selection"
@@ -1729,6 +1750,12 @@ ollama pull qwen3-vl:4b-instruct</pre
                     class="evaluation-table-scroll"
                   ></div>
                   <p id="evaluation-delta" class="field-hint"></p>
+                  <p class="field-hint">
+                    Tiled forward times sum all tile passes. Total includes
+                    image decoding, crops and merging; weight loading and warmup
+                    are excluded. COCO AP keeps its 100-detection limit; the
+                    precision/recall counts use all saved predictions above threshold.
+                  </p>
                   <div
                     id="evaluation-class-metrics"
                     class="evaluation-table-scroll"
@@ -1869,7 +1896,8 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <h3 id="evaluation-audit-title">Final test audit</h3>
                     <p class="field-hint">
                       After making your validation choices, evaluate the same
-                      models and thresholds on the reserved test split. Keep
+                      models, inference modes, tiling settings and thresholds
+                      on the reserved test split. Keep
                       test results for reporting; use validation to select a
                       reference. The configuration is copied unchanged.
                     </p>
@@ -1877,6 +1905,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                       ><input type="checkbox" id="evaluation-audit-confirm" />
                       My validation choices are fixed for this audit.</label
                     >
+                    <p id="evaluation-audit-plan" class="field-hint" role="status" aria-live="polite"></p>
                     <button
                       id="evaluation-audit-start"
                       class="button button-secondary"
@@ -1906,7 +1935,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <div class="training-form-grid">
                       <div>
                         <label for="evaluation-reference-model"
-                          >Evaluated model</label
+                          >Evaluated model and inference mode</label
                         ><select
                           id="evaluation-reference-model"
                           required

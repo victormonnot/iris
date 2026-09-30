@@ -62,8 +62,11 @@ or framework dependency. Frame hashes, tile settings, merge protocol, region
 coordinates and native per-region outputs are persisted. Partial tiled images
 are never published. The preparation endpoint only counts work; it does not load
 weights, read image pixels or create a job. The worker rechecks the frozen plan.
-Held-out evaluations and reference selection currently use full-image inference
-only; their existing metrics must not be attributed to a tiled pipeline.
+Held-out evaluations use the same inference implementation. Each model result
+has a separate full/tiled variant, and predictions refer to that result's ID.
+Reference decisions retain the selected checkpoint and its inference settings;
+test audits must reuse validation's ordered variants, tile and merge settings,
+and timing protocol. Historical evaluations remain full-image results.
 
 The initial taxonomy, `iris-objects-v1`, contains `person` and `car`, with written
 class definitions and an explicit COCO mapping (IDs 1 and 3). People include
