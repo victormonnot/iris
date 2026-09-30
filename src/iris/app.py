@@ -49,6 +49,7 @@ from iris.inference import (
     comparison_detail,
     comparison_summary,
     create_comparison,
+    preview_comparison,
 )
 from iris.jobs import JobManager
 from iris.media import import_asset
@@ -97,11 +98,14 @@ class ExtractionInput(BaseModel):
 
 
 class ComparisonInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     name: str = Field(min_length=1, max_length=160)
     frame_ids: list[str] = Field(min_length=1, max_length=100)
     model_ids: list[str] = Field(min_length=1, max_length=2)
     device: Literal["cpu", "cuda"] = "cpu"
+    inference_mode: Literal["full", "tiled", "paired"] = "full"
+    tile_size: int = Field(default=640, ge=128, le=2048)
+    overlap: float = Field(default=0.2, ge=0, le=0.5)
 
 
 class AnnotationInput(BaseModel):
@@ -193,6 +197,7 @@ class AssistanceBatchPreviewInput(BaseModel):
     source: Literal["annotations", "comparison"] = "annotations"
     comparison_id: str | None = None
     detector_model_id: str | None = None
+    detector_variant: Literal["full", "tiled"] | None = None
     model: str = Field(min_length=1, max_length=160)
     threshold: float = Field(default=0.5, ge=0, le=1)
     instructions: str = Field(default="", max_length=2000)
@@ -552,6 +557,14 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             comparison_summary(store, row)
             for row in store.list("comparisons", session_id=session_id)
         ]
+
+    @app.post("/api/sessions/{session_id}/comparisons/preview")
+    def compare_preview(session_id: str, payload: ComparisonInput):
+        require("sessions", session_id)
+        try:
+            return preview_comparison(store, session_id, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.post("/api/sessions/{session_id}/comparisons", status_code=202)
     def compare(session_id: str, payload: ComparisonInput):

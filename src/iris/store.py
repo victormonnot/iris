@@ -55,14 +55,16 @@ CREATE TABLE IF NOT EXISTS comparisons (
 );
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES comparisons(id),
-    model_id TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL,
-    UNIQUE(comparison_id, model_id)
+    model_id TEXT NOT NULL, variant TEXT NOT NULL DEFAULT 'full'
+    CHECK(variant IN ('full','tiled')), metadata TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(comparison_id, model_id, variant)
 );
 CREATE TABLE IF NOT EXISTS predictions (
     id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES comparisons(id),
     run_id TEXT NOT NULL REFERENCES runs(id), frame_id TEXT NOT NULL REFERENCES frames(id),
     model_id TEXT NOT NULL, detections TEXT NOT NULL, timing TEXT NOT NULL,
-    input_size TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(run_id, frame_id)
+    input_size TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL, UNIQUE(run_id, frame_id)
 );
 CREATE INDEX IF NOT EXISTS comparisons_session ON comparisons(session_id);
 CREATE INDEX IF NOT EXISTS predictions_comparison ON predictions(comparison_id);
@@ -165,6 +167,19 @@ ALTER TABLE annotation_suggestions_v7 RENAME TO annotation_suggestions;
 CREATE INDEX annotation_suggestions_frame ON annotation_suggestions(frame_id);
 """
 
+RUN_VARIANTS_MIGRATION = """
+CREATE TABLE runs_v9 (
+    id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES comparisons(id),
+    model_id TEXT NOT NULL, variant TEXT NOT NULL DEFAULT 'full'
+    CHECK(variant IN ('full','tiled')), metadata TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(comparison_id, model_id, variant)
+);
+INSERT INTO runs_v9 (id,comparison_id,model_id,metadata,created_at)
+SELECT id,comparison_id,model_id,metadata,created_at FROM runs;
+DROP TABLE runs;
+ALTER TABLE runs_v9 RENAME TO runs;
+"""
+
 JSON_FIELDS = {
     "metadata",
     "params",
@@ -242,7 +257,7 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9):
                 raise RuntimeError(f"Unsupported database version: {version}")
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
@@ -254,9 +269,30 @@ class Store:
                 if old_suggestions and "'imported'" not in old_suggestions[0]
                 else ""
             )
-            conn.executescript(
-                "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=8;\nCOMMIT;"
-            )
+            run_columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+            rebuild_runs = bool(run_columns and "variant" not in run_columns)
+            if rebuild_runs:
+                migration += RUN_VARIANTS_MIGRATION
+                # Predictions reference runs. Keep the table name and IDs intact,
+                # then check every foreign key before committing the rebuild.
+                conn.execute("PRAGMA foreign_keys=OFF")
+            prediction_columns = {row[1] for row in conn.execute("PRAGMA table_info(predictions)")}
+            if prediction_columns and "metadata" not in prediction_columns:
+                migration += (
+                    "ALTER TABLE predictions ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';"
+                )
+            try:
+                conn.executescript(
+                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=9;"
+                )
+                if conn.execute("PRAGMA foreign_key_check").fetchone():
+                    raise RuntimeError("Database migration found broken foreign keys")
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            finally:
+                conn.execute("PRAGMA foreign_keys=ON")
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 for table in TABLES

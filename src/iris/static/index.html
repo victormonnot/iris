@@ -361,6 +361,26 @@
                       </select>
                     </div>
                   </div>
+                  <div class="comparison-mode-field">
+                    <label for="comparison-inference-mode">Inference mode</label>
+                    <select id="comparison-inference-mode" aria-describedby="comparison-mode-hint">
+                      <option value="full">Full image</option>
+                      <option value="tiled">Tiled image</option>
+                      <option value="paired">Full image vs tiled · one model</option>
+                    </select>
+                    <p id="comparison-mode-hint" class="field-hint">Run each selected model once on the whole image.</p>
+                  </div>
+                  <div id="comparison-tiling-fields" class="comparison-form-fields" hidden>
+                    <div>
+                      <label for="comparison-tile-size">Tile size · pixels</label>
+                      <input id="comparison-tile-size" type="number" min="128" max="2048" step="1" value="640" />
+                    </div>
+                    <div>
+                      <label for="comparison-tile-overlap">Overlap · fraction</label>
+                      <input id="comparison-tile-overlap" type="number" min="0" max="0.5" step="0.01" value="0.2" />
+                    </div>
+                  </div>
+                  <p id="comparison-plan" class="field-hint" role="status" aria-live="polite"></p>
                   <div class="comparison-launch">
                     <div>
                       <p id="comparison-selection" class="selection-count">
@@ -468,9 +488,9 @@
                   ></div>
                   <p class="comparison-caveat">
                     Counts and count differences are inspection signals. No
-                    validated labels are attached to this visual comparison. Use
-                    Quality evaluation to measure detection quality against a
-                    frozen dataset.
+                    validated labels are attached to this visual comparison.
+                    Quality evaluation currently measures full-image inference
+                    against a frozen dataset; it does not score tiled inference.
                   </p>
                   <div class="comparison-navigation">
                     <button
@@ -505,7 +525,8 @@
                     <p class="field-hint">
                       Configuration recorded when each model ran, including
                       runtime and checkpoint identity. Timing is per frame, with
-                      one warm-up inference excluded.
+                      one warm-up inference per run excluded. Tiled runs also
+                      record their crop layout and duplicate suppression settings.
                     </p>
                     <div id="comparison-provenance"></div>
                   </details>
@@ -537,7 +558,7 @@
                     <div><label for="assistance-batch-source">Candidate boxes</label><select id="assistance-batch-source"><option value="annotations">Saved annotations</option><option value="comparison">Saved detector comparison</option></select></div>
                     <div id="assistance-batch-comparison-settings" class="assistance-batch-comparison-settings" hidden>
                       <div><label for="assistance-batch-comparison">Successful comparison</label><select id="assistance-batch-comparison"><option value="">No successful comparisons</option></select></div>
-                      <div><label for="assistance-batch-detector">Detector in this comparison</label><select id="assistance-batch-detector"><option value="">Choose a comparison</option></select></div>
+                      <div><label for="assistance-batch-detector">Detector / inference mode</label><select id="assistance-batch-detector"><option value="">Choose a comparison</option></select></div>
                       <div><label for="assistance-batch-threshold">Detector confidence ≥</label><input id="assistance-batch-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
                     </div>
                     <div><label for="assistance-batch-instructions">Review instructions <span class="muted">(optional)</span></label><textarea id="assistance-batch-instructions" rows="3" maxlength="2000" placeholder="For example: take particular care with small distant people."></textarea></div>
@@ -578,7 +599,7 @@
                   <option value="source">Source order</option>
                   <option value="disagreement">Model disagreement first</option>
                 </select></div>
-                <div class="review-queue-comparison"><label for="review-queue-comparison">Saved two-model comparison</label><select id="review-queue-comparison"><option value="">No comparison selected</option></select></div>
+                <div class="review-queue-comparison"><label for="review-queue-comparison">Saved two-run comparison</label><select id="review-queue-comparison"><option value="">No comparison selected</option></select></div>
                 <div><label for="review-queue-confidence">Confidence ≥</label><input id="review-queue-confidence" type="number" min="0" max="1" step="any" value="0.5" /></div>
                 <div><label for="review-queue-iou">Matching IoU ≥</label><input id="review-queue-iou" type="number" min="0" max="1" step="any" value="0.5" /></div>
               </div>

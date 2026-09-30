@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from iris.annotations import TAXONOMY, AnnotationConflict
 from iris.assistance import MAX_CANDIDATES, _candidates
 from iris.assistance_provider import ProviderConfig, _config, provider_status
-from iris.inference import _load_verified_frame
+from iris.inference import _load_verified_frame, comparison_lanes
 from iris.jobs import ACTIVE
 from iris.store import Store, _decode, new_id, now
 
@@ -30,6 +30,7 @@ def _configuration(
     source,
     comparison_id,
     detector_model_id,
+    detector_variant,
     model,
     threshold,
     instructions,
@@ -57,7 +58,11 @@ def _configuration(
         raise ValueError("Choose an installed local vision model")
     local = _config({"endpoint": ProviderConfig.from_env().endpoint, "model": model})
     if source == "annotations":
-        if comparison_id is not None or detector_model_id is not None:
+        if (
+            comparison_id is not None
+            or detector_model_id is not None
+            or detector_variant is not None
+        ):
             raise ValueError("Comparison fields are only valid for a comparison source")
     else:
         if not isinstance(comparison_id, str) or not isinstance(detector_model_id, str):
@@ -78,6 +83,17 @@ def _configuration(
             or comparison["config"].get("taxonomy") != "coco-2017-v1"
         ):
             raise ValueError("The source comparison must use the supported COCO taxonomy")
+        variants = [
+            lane["variant"]
+            for lane in comparison_lanes(comparison)
+            if lane["model_id"] == detector_model_id
+        ]
+        if detector_variant is None:
+            if len(variants) != 1:
+                raise ValueError("Choose an explicit detector inference mode: full or tiled")
+            detector_variant = variants[0]
+        elif not isinstance(detector_variant, str) or detector_variant not in variants:
+            raise ValueError("The detector inference mode must belong to the source comparison")
     frames = []
     for frame_id in frame_ids:
         frame = store.get("frames", frame_id)
@@ -91,6 +107,7 @@ def _configuration(
             "source": source,
             "comparison_id": comparison_id,
             "detector_model_id": detector_model_id,
+            "detector_variant": detector_variant,
             "model": local.model,
             "threshold": float(threshold),
             "instructions": instructions.strip(),
@@ -125,7 +142,7 @@ def _snapshot(frame, revision, active):
     }
 
 
-def _comparison_state(conn, comparison_id, detector_model_id, frame_id):
+def _comparison_state(conn, comparison_id, detector_model_id, frame_id, detector_variant):
     if comparison_id is None:
         return None
     comparison = _decode(
@@ -147,16 +164,18 @@ def _comparison_state(conn, comparison_id, detector_model_id, frame_id):
     runs = [
         _decode(row)
         for row in conn.execute(
-            "SELECT * FROM runs WHERE comparison_id=? AND model_id=? ORDER BY id",
-            (comparison_id, detector_model_id),
+            "SELECT * FROM runs WHERE comparison_id=? AND model_id=? AND variant=? ORDER BY id",
+            (comparison_id, detector_model_id, detector_variant),
         )
     ]
     predictions = [
         _decode(row)
         for row in conn.execute(
-            "SELECT * FROM predictions "
-            "WHERE comparison_id=? AND model_id=? AND frame_id=? ORDER BY id",
-            (comparison_id, detector_model_id, frame_id),
+            "SELECT p.* FROM predictions p JOIN runs r ON r.id=p.run_id "
+            "WHERE p.comparison_id=? AND p.model_id=? AND p.frame_id=? "
+            "AND r.comparison_id=p.comparison_id AND r.model_id=p.model_id "
+            "AND r.variant=? ORDER BY p.id",
+            (comparison_id, detector_model_id, frame_id, detector_variant),
         )
     ]
     return {"comparison": comparison, "job": job, "runs": runs, "predictions": predictions}
@@ -171,6 +190,7 @@ def _prepare_batch(
     model,
     comparison_id=None,
     detector_model_id=None,
+    detector_variant=None,
     threshold=0.5,
     instructions="",
 ):
@@ -181,6 +201,7 @@ def _prepare_batch(
         source,
         comparison_id,
         detector_model_id,
+        detector_variant,
         model,
         threshold,
         instructions,
@@ -210,6 +231,7 @@ def _prepare_batch(
                 comparison_id,
                 detector_model_id,
                 requested["id"],
+                config["detector_variant"],
             )
         if frame is None or frame["session_id"] != session_id:
             raise AnnotationConflict("A requested frame changed; preview the batch again")
@@ -346,6 +368,7 @@ def create_batch(
                 config["comparison_id"],
                 config["detector_model_id"],
                 row["frame_id"],
+                config["detector_variant"],
             )
             if current_source != item["comparison_state"]:
                 raise AnnotationConflict("A source prediction changed; preview the batch again")

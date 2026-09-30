@@ -49,6 +49,22 @@ proposals; raw native IDs remain recorded.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
 
+Visual comparisons support full-image and tiled runs. Model IDs always identify
+the original checkpoint; a separate `full` / `tiled` run variant identifies the
+inference pipeline. A paired comparison contains one model and two ordered runs.
+Predictions, annotation sources and disagreement signals are tied to run IDs,
+so two pipelines cannot silently select each other's outputs. Legacy comparisons
+retain their IDs and acquire the full-image variant through SQLite migration.
+
+`tiling.py` plans deterministic, bounded crops over original pixels, invokes the
+existing detector and maps outputs back before class-aware NMS. It adds no model
+or framework dependency. Frame hashes, tile settings, merge protocol, region
+coordinates and native per-region outputs are persisted. Partial tiled images
+are never published. The preparation endpoint only counts work; it does not load
+weights, read image pixels or create a job. The worker rechecks the frozen plan.
+Held-out evaluations and reference selection currently use full-image inference
+only; their existing metrics must not be attributed to a tiled pipeline.
+
 The initial taxonomy, `iris-objects-v1`, contains `person` and `car`, with written
 class definitions and an explicit COCO mapping (IDs 1 and 3). People include
 riders; cars include passenger SUVs/minivans but exclude buses, trucks and

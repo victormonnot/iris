@@ -2,6 +2,7 @@
 
 from iris.annotations import COCO_MAPPING, TAXONOMY, _coordinates, _finite_number, _latest
 from iris.datasets import _reservations
+from iris.inference import comparison_lanes
 from iris.models import COCO_CATEGORIES, get_spec
 from iris.store import Store, _decode
 
@@ -184,14 +185,12 @@ def _comparison(conn, session_id, comparison_id):
     job = conn.execute("SELECT status FROM jobs WHERE id=?", (comparison["job_id"],)).fetchone()
     if job is None or job["status"] != "succeeded":
         raise ValueError("Choose a completed comparison")
-    models = comparison["model_ids"]
-    if (
-        not isinstance(models, list)
-        or len(models) != 2
-        or not all(isinstance(model_id, str) and model_id for model_id in models)
-        or len(set(models)) != 2
-    ):
-        raise ValueError("Choose a comparison of two distinct models")
+    try:
+        lanes = comparison_lanes(comparison)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ValueError("Choose a comparison of two distinct model/inference runs") from exc
+    if len(lanes) != 2:
+        raise ValueError("Choose a comparison of two distinct model/inference runs")
     if not isinstance(comparison["config"], dict) or (
         comparison["config"].get("taxonomy") != "coco-2017-v1"
     ):
@@ -200,12 +199,13 @@ def _comparison(conn, session_id, comparison_id):
         isinstance(frame_id, str) for frame_id in comparison["frame_ids"]
     ):
         raise ValueError("The comparison has an invalid frame selection")
-    runs = {
-        row["model_id"]: _decode(row)
-        for row in conn.execute("SELECT * FROM runs WHERE comparison_id=?", (comparison_id,))
-    }
+    runs = {}
+    for row in conn.execute("SELECT * FROM runs WHERE comparison_id=?", (comparison_id,)):
+        run = _decode(row)
+        runs.setdefault((run["model_id"], run.get("variant", "full")), []).append(run)
     names = []
-    for model_id in models:
+    for lane in lanes:
+        model_id = lane["model_id"]
         trained = conn.execute("SELECT name FROM trained_models WHERE id=?", (model_id,)).fetchone()
         if trained:
             name = trained["name"]
@@ -214,17 +214,27 @@ def _comparison(conn, session_id, comparison_id):
                 name = get_spec(model_id)["name"]
             except ValueError:
                 name = model_id
+        if lane["variant"] == "tiled" or len(comparison["model_ids"]) == 1:
+            name += " · " + ("Tiled" if lane["variant"] == "tiled" else "Full image")
         names.append({"id": model_id, "name": name})
     summary = {
         **{key: comparison[key] for key in ("id", "name", "model_ids", "created_at")},
         "models": names,
+        "lanes": [
+            {
+                **lane,
+                "run_id": matches[0]["id"] if len(matches) == 1 else None,
+            }
+            for lane in lanes
+            for matches in [runs.get((lane["model_id"], lane["variant"]), [])]
+        ],
     }
     predictions = {}
     for row in conn.execute(
         "SELECT * FROM predictions WHERE comparison_id=? ORDER BY created_at,id", (comparison_id,)
     ):
         prediction = _decode(row)
-        predictions.setdefault((prediction["frame_id"], prediction["model_id"]), []).append(
+        predictions.setdefault((prediction["frame_id"], prediction["run_id"]), []).append(
             prediction
         )
     return comparison, summary, runs, predictions
@@ -236,10 +246,22 @@ def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
     hashes = comparison["config"].get("frame_hashes")
     if not isinstance(hashes, dict) or hashes.get(frame["id"]) != frame["sha256"]:
         return _unavailable("The image hash does not match the saved comparison input.")
+    expected_runs = {
+        run["id"]
+        for lane in comparison_lanes(comparison)
+        for run in runs.get((lane["model_id"], lane["variant"]), [])
+    }
+    if any(
+        saved_frame_id == frame["id"] and run_id not in expected_runs
+        for saved_frame_id, run_id in predictions
+    ):
+        return _unavailable("The saved prediction does not match its model run.")
     pair = []
-    for model_id in comparison["model_ids"]:
-        run = runs.get(model_id)
-        records = predictions.get((frame["id"], model_id), [])
+    for lane in comparison_lanes(comparison):
+        model_id, variant = lane["model_id"], lane["variant"]
+        matches = runs.get((model_id, variant), [])
+        run = matches[0] if len(matches) == 1 else None
+        records = predictions.get((frame["id"], run["id"]), []) if run else []
         if run is None or len(records) != 1:
             return _unavailable("A saved model run or prediction is missing or ambiguous.")
         prediction = records[0]
@@ -250,6 +272,9 @@ def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
         metadata = run["metadata"]
         if not isinstance(metadata, dict) or metadata.get("model_id", model_id) != model_id:
             return _unavailable("The saved run metadata does not match its model.")
+        inference = metadata.get("inference", {})
+        if not isinstance(inference, dict) or inference.get("variant", variant) != variant:
+            return _unavailable("The saved run metadata does not match its inference mode.")
         pair.append(prediction)
     try:
         signal = assess_disagreement(
@@ -323,7 +348,7 @@ def review_queue(
                     frame, comparison, runs, predictions, confidence_threshold, iou_threshold
                 )
                 if saved
-                else _unavailable("Choose a completed two-model comparison for a review signal.")
+                else _unavailable("Choose a completed two-run comparison for a review signal.")
             )
             frames.append(
                 {

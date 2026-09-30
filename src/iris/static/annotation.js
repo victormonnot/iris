@@ -439,7 +439,7 @@
     $("#review-queue-method-details").hidden = !comparison;
     $("#review-queue-limits").textContent = (queue.data?.warnings || []).join(" ");
     $("#review-queue-method").textContent = !comparison
-      ? "The queue includes selected frames in source order. Choose a saved, completed two-model comparison to inspect disagreement. Selection for datasets is unchanged."
+      ? "The queue includes selected frames in source order. Choose a saved, completed two-run comparison to inspect disagreement between models or inference modes. Selection for datasets is unchanged."
       : `${modelNames} · confidence ≥ ${queue.data.config.confidence_threshold} · matching IoU ≥ ${queue.data.config.iou_threshold}. ${queue.order === "disagreement" ? "Highest unmatched fraction first, then unavailable, no detections and agreement; test frames keep their source positions. " : "Source order. "}Disagreement is a review hint, not accuracy. All frames still require human inspection.`;
     const list = $("#review-queue-list");
     const scrollTop = list.scrollTop;
@@ -500,7 +500,7 @@
       if (queue.historyDirty) {
         const history = await api(`/api/sessions/${encodeURIComponent(sessionId)}/comparisons`);
         if (!current()) return false;
-        queue.comparisons = history.filter((item) => item.job?.status === "succeeded" && item.model_ids?.length === 2);
+        queue.comparisons = history.filter((item) => item.job?.status === "succeeded" && (item.lanes?.length ?? item.model_ids?.length) === 2);
         queue.historyDirty = false;
         if (queue.comparisonId && !queue.comparisons.some((item) => item.id === queue.comparisonId)) {
           queue.comparisonId = "";
@@ -708,7 +708,7 @@
     for (const prediction of editor.document.prediction_sources || []) {
       selector.append(
         new Option(
-          `${prediction.comparison_name} · ${prediction.model_id} · ${prediction.detection_count} detections`,
+          `${prediction.comparison_name} · ${prediction.model_id} · ${prediction.variant === "tiled" ? "Tiled" : "Full image"} · ${prediction.detection_count} detections`,
           prediction.id,
         ),
       );

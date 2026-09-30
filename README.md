@@ -113,7 +113,8 @@ uv run --extra ml iris --data-dir /path/to/private/iris-data
 ```
 
 1. Select 1–100 frames in **Data intake**, then open **Model comparison**.
-2. Choose one or both ready models, name the comparison, and start it. CPU is the
+2. Choose one or both ready models and an inference mode, inspect the estimated
+   detector passes, name the comparison, and start it. CPU is the
    default. CUDA is available only with a separately provisioned compatible
    runtime; the optional `ml` installation intentionally contains CPU wheels.
 3. Inspect the same frame side by side. Changing the displayed confidence or
@@ -124,13 +125,13 @@ uv run --extra ml iris --data-dir /path/to/private/iris-data
    selection, frame hashes, checkpoint hashes, model configuration, runtime,
    device, and timing protocol. Subsequent selection changes do not change it.
 
-Inference executes in the local job worker. Each completed model/frame result
+Inference executes in the local job worker. Each completed run/frame result
 is saved independently, including an explicit empty detection list. A cancelled
 or failed job keeps its partial outputs; **Not processed** is distinct from
 **No detections**. Start a new comparison to retry. Saved results remain readable
 when weights or the optional runtime are unavailable.
 
-Timings use one excluded warmup per model, batch size one, float32, and at most
+Timings use one excluded warmup per run, batch size one, float32, and at most
 four CPU threads. Decode, tensor preparation, full model forward, and result
 serialization are recorded separately. **Model forward includes Torchvision's
 internal normalization, resizing, proposal filtering, NMS, and coordinate
@@ -140,11 +141,48 @@ CUDA runs synchronize at the measurement boundaries. Inspect the saved metadata
 for the exact resolution, native thresholds, and hardware.
 
 Both models use a native score cutoff of 0.001, NMS IoU 0.5, and at most 100
-detections per image. These settings define what can be saved; lowering the UI
+detections per detector call. These settings define what can be saved; lowering the UI
 threshold cannot recover outputs below that native cutoff. Models still have
 different internal proposal algorithms. Confidence, count differences, and
 runtime are not quality metrics. Use **Evaluation** with a frozen, validated
 dataset to measure precision, recall and mAP separately from visual comparisons.
+
+### Compare full images with tiles
+
+**Full image** runs each chosen checkpoint on the entire frame. **Tiled image**
+runs it on overlapping regions, restores the boxes to the original frame and
+suppresses duplicates. **Full image vs tiled** compares those two pipelines
+side by side with one checkpoint. The source image and checkpoint are identical;
+no camera zoom or retraining is involved. Smaller regions can preserve more of
+a small object's pixels through the detector's internal resize. They cannot
+recover details absent from the recording, and may lose context or cut objects
+at region boundaries.
+
+Tiles default to 640 pixels with 20% overlap. Sizes from 128 to 2048 and overlap
+from 0 to 50% are supported. Edge regions are anchored to the image boundary, so
+their overlap can be larger than requested. Small images produce one region,
+without padding or enlargement. The preview counts all detector calls, including
+one warmup for each run, before anything is queued. Each image is limited to
+64 tiles and each comparison to 512 calls including warmups.
+
+Tiled outputs use an additional, class-aware NMS at IoU greater than 0.5, ordered
+by descending score with stable ties. At most 300 merged boxes are retained;
+the interface reports truncation. All original per-tile outputs, crop coordinates
+and timings remain in each saved prediction's `metadata.tiles`, accessible in
+the comparison API. Run provenance includes the complete tile plan and merge
+settings. Cropping and merging are timed separately; forward time is the sum
+over all tiles. Total excludes warmup, weight loading, progress reporting and
+database writes. These sequential local measurements are not a drone FPS benchmark.
+
+Cancellation is checked between tiles and during merging. Only complete image
+results are published; earlier completed results survive. In **Annotation** and
+**Local review batch**, select the required full-image or tiled source explicitly.
+The disagreement queue also accepts the two variants of the same checkpoint.
+Proposals remain in original-image coordinates and require human review.
+
+This mode currently measures visual outputs and processing time. **Quality
+evaluation still runs full-image inference**: its mAP scores do not evaluate a
+tiled comparison. No measured quality gain from tiling is implied by more boxes.
 
 ## Annotate and review
 
@@ -357,7 +395,8 @@ many still need review. Filter unannotated images, drafts, pending proposals or
 validated frames. New proposals make a previously validated image need review
 again. An explicitly validated empty image counts as reviewed.
 
-Optionally choose a completed comparison of two models and **Model disagreement
+Optionally choose a completed comparison of two models or two inference variants
+of the same model and **Model disagreement
 first**. The queue compares saved person/car boxes by class and overlap at the
 displayed confidence and IoU thresholds. Each image explains its unmatched
 detections or class conflicts. Equal detection counts can still disagree about
@@ -442,6 +481,7 @@ pixel scale, image bounds and local history branching.
 Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
+tiled coverage, coordinate restoration, merging, work limits and variant selection,
 multimodal response validation, exact outgoing previews, explicit API consent,
 local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,

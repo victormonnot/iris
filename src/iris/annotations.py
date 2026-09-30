@@ -108,12 +108,14 @@ def get_annotation(store: Store, frame_id: str) -> dict:
     prediction_sources = []
     for prediction in store.list("predictions", frame_id=frame_id):
         comparison = store.get("comparisons", prediction["comparison_id"])
+        run = store.get("runs", prediction["run_id"])
         if comparison["config"].get("taxonomy") != "coco-2017-v1":
             continue
         prediction_sources.append(
             {
                 "id": prediction["id"],
                 "model_id": prediction["model_id"],
+                "variant": run.get("variant", "full"),
                 "run_id": prediction["run_id"],
                 "comparison_id": prediction["comparison_id"],
                 "comparison_name": comparison["name"],

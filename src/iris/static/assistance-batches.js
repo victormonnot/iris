@@ -38,12 +38,14 @@
 
   function payload() {
     const comparison = field("source").value === "comparison";
+    const detector = field("detector").selectedOptions[0];
     return {
       frame_ids: selectedFrames().filter((frame) => batch.selected.has(frame.id))
         .map((frame) => frame.id),
       source: field("source").value,
       comparison_id: comparison ? field("comparison").value : null,
-      detector_model_id: comparison ? field("detector").value : null,
+      detector_model_id: comparison ? detector?.dataset.modelId || null : null,
+      detector_variant: comparison ? detector?.dataset.variant || null : null,
       model: field("model").value,
       threshold: Number(field("threshold").value),
       instructions: field("instructions").value.trim(),
@@ -166,12 +168,17 @@
   function renderDetectors() {
     const previous = field("detector").value;
     const comparison = batch.comparisons.find((entry) => entry.id === field("comparison").value);
+    const lanes = comparison?.lanes || (comparison?.model_ids || []).map((model_id) => ({ model_id, variant: "full" }));
     field("detector").replaceChildren();
-    for (const id of comparison?.model_ids || [])
-      field("detector").append(new Option(id, id));
-    if (!comparison?.model_ids?.length)
+    for (const lane of lanes) {
+      const option = new Option(`${lane.model_id} · ${lane.variant === "tiled" ? "Tiled" : "Full image"}`, JSON.stringify([lane.model_id, lane.variant]));
+      option.dataset.modelId = lane.model_id;
+      option.dataset.variant = lane.variant;
+      field("detector").append(option);
+    }
+    if (!lanes.length)
       field("detector").append(new Option("Choose a comparison", ""));
-    if (comparison?.model_ids?.includes(previous)) field("detector").value = previous;
+    if ([...field("detector").options].some((option) => option.value === previous)) field("detector").value = previous;
     updateControls();
   }
 
@@ -334,7 +341,7 @@
       field("excluded-frames").append(row);
     }
     field("detail-config").textContent =
-      `${config.model || "Local model"} · ${config.source === "comparison" ? `saved comparison · ${config.detector_model_id}` : "saved annotations"}${excluded ? ` · ${excluded} skipped at preparation` : ""}. Results remain proposals until you review them.`;
+      `${config.model || "Local model"} · ${config.source === "comparison" ? `saved comparison · ${config.detector_model_id} · ${config.detector_variant === "tiled" ? "Tiled" : "Full image"}` : "saved annotations"}${excluded ? ` · ${excluded} skipped at preparation` : ""}. Results remain proposals until you review them.`;
     field("cancel").hidden = !activeBatch(detail);
     field("cancel-hint").hidden = !detail.cancel_requested;
     field("cancel-hint").textContent = "Cancellation requested. An active model request may need to finish before it stops; already saved proposals are kept.";

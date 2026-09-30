@@ -10,8 +10,16 @@ from PIL import Image
 from iris.media import _pixel_hash
 from iris.models import TorchvisionDetector, catalog, get_spec
 from iris.store import Store, new_id, now
+from iris.tiling import (
+    MAX_TILES_PER_FRAME,
+    TiledInferenceCancelled,
+    tile_boxes,
+    tiled_predict,
+    validate_tiling_config,
+)
 
 MAX_COMPARISON_FRAMES = 100
+MAX_FORWARD_PASSES = 512
 PROTOCOL = {
     "version": "torchvision-forward-v1",
     "batch_size": 1,
@@ -27,6 +35,129 @@ PROTOCOL = {
     "quality_metrics": "Not computed: this comparison reports predictions and timings only",
 }
 
+TILED_PROTOCOL = {
+    **PROTOCOL,
+    "version": "torchvision-tiled-v1",
+    "warmup_frames": "One full image or first tile per run, matching the inference variant",
+    "inference_ms": "Sum of model forward times across all tiles (or one full image)",
+    "preprocess_ms": "Sum of detector preprocessing times across all passes",
+    "postprocess_ms": "Sum of detector serialization times across all passes",
+    "crop_ms": "Copy original pixels into each tile; no additional resize or padding",
+    "merge_ms": "Map tile detections to original coordinates and apply class-aware NMS",
+    "total_ms": (
+        "Decode, verification, crops, all detector passes and merge; "
+        "excludes weights, warmup, progress reporting and database writes"
+    ),
+    "merge": "Stable descending-score NMS per COCO class, IoU > 0.5; keep at most 300 boxes",
+    "tile_layout": "Row-major, floor(size * (1 - overlap)) stride, final tile anchored to edge",
+}
+
+
+def comparison_lanes(comparison: dict) -> list[dict]:
+    """Planned run identities; legacy comparisons always used full images."""
+    model_ids = comparison["model_ids"]
+    if (
+        not isinstance(model_ids, list)
+        or not 1 <= len(model_ids) <= 2
+        or any(not isinstance(item, str) or not item for item in model_ids)
+        or len(set(model_ids)) != len(model_ids)
+    ):
+        raise ValueError("Comparison has invalid model identities")
+    config = comparison["config"]
+    if not isinstance(config, dict) or not isinstance(config.get("inference", {}), dict):
+        raise ValueError("Comparison has invalid inference settings")
+    mode = config.get("inference", {}).get("mode", "full")
+    if (
+        not isinstance(mode, str)
+        or mode not in {"full", "tiled", "paired"}
+        or (mode == "paired" and len(model_ids) != 1)
+    ):
+        raise ValueError("Comparison has an invalid inference mode")
+    expected = [
+        {"model_id": model_id, "variant": variant}
+        for model_id in model_ids
+        for variant in (["full", "tiled"] if mode == "paired" else [mode])
+    ]
+    if "lanes" in config and config["lanes"] != expected:
+        raise ValueError("Comparison run variants do not match its inference mode")
+    return expected
+
+
+def _work_plan(frames: list[dict], lanes: list[dict], inference: dict) -> dict:
+    tiled = any(lane["variant"] == "tiled" for lane in lanes)
+    tiles = [
+        {
+            "frame_id": frame["id"],
+            "input_size": [frame["width"], frame["height"]],
+            "tile_count": len(tile_boxes(frame["width"], frame["height"], inference["tiling"]))
+            if tiled
+            else 0,
+        }
+        for frame in frames
+    ]
+    passes = sum(
+        sum(item["tile_count"] for item in tiles) if lane["variant"] == "tiled" else len(frames)
+        for lane in lanes
+    )
+    total = passes + len(lanes)
+    if total > MAX_FORWARD_PASSES:
+        raise ValueError(
+            f"This selection needs {total} detector passes including warmup; "
+            f"the limit is {MAX_FORWARD_PASSES}. Select fewer frames or larger tiles."
+        )
+    return {
+        "frames_total": len(frames),
+        "forward_passes": passes,
+        "warmup_passes": len(lanes),
+        "total_forward_passes": total,
+        "tiles": tiles,
+        "limits": {
+            "max_tiles_per_frame": MAX_TILES_PER_FRAME,
+            "max_forward_passes": MAX_FORWARD_PASSES,
+        },
+    }
+
+
+def _prepare_comparison(
+    store,
+    session_id,
+    *,
+    name,
+    frame_ids,
+    model_ids,
+    device="cpu",
+    inference_mode="full",
+    tile_size=640,
+    overlap=0.2,
+) -> tuple[list[dict], dict]:
+    if not store.get("sessions", session_id):
+        raise ValueError("Session not found")
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 160:
+        raise ValueError("Comparison name must contain between 1 and 160 characters")
+    if not 1 <= len(frame_ids) <= MAX_COMPARISON_FRAMES or len(set(frame_ids)) != len(frame_ids):
+        raise ValueError("Choose between 1 and 100 distinct frames")
+    if device not in {"cpu", "cuda"}:
+        raise ValueError("Device must be cpu or cuda")
+    tiling = validate_tiling_config(tile_size, overlap)
+    inference = {"mode": inference_mode}
+    if inference_mode != "full":
+        inference.update(tiling=tiling, algorithm="iris-tiling-v1")
+    lanes = comparison_lanes({"model_ids": model_ids, "config": {"inference": inference}})
+    frames = []
+    for frame_id in frame_ids:
+        frame = store.get("frames", frame_id)
+        if frame is None or frame["session_id"] != session_id:
+            raise ValueError("Every frame must belong to this flight session")
+        frames.append(frame)
+    for model_id in model_ids:
+        get_spec(model_id, store.root)
+    return frames, {"lanes": lanes, "inference": inference, **_work_plan(frames, lanes, inference)}
+
+
+def preview_comparison(store: Store, session_id: str, **settings) -> dict:
+    """Count bounded detector work without loading weights, decoding images or writing jobs."""
+    return _prepare_comparison(store, session_id, **settings)[1]
+
 
 def create_comparison(
     store: Store,
@@ -37,26 +168,22 @@ def create_comparison(
     frame_ids: list[str],
     model_ids: list[str],
     device: str = "cpu",
+    inference_mode: str = "full",
+    tile_size: int = 640,
+    overlap: float = 0.2,
 ) -> dict:
-    if not store.get("sessions", session_id):
-        raise ValueError("Session not found")
+    frames, plan = _prepare_comparison(
+        store,
+        session_id,
+        name=name,
+        frame_ids=frame_ids,
+        model_ids=model_ids,
+        device=device,
+        inference_mode=inference_mode,
+        tile_size=tile_size,
+        overlap=overlap,
+    )
     name = name.strip()
-    if not name or len(name) > 160:
-        raise ValueError("Comparison name must contain between 1 and 160 characters")
-    if not 1 <= len(frame_ids) <= MAX_COMPARISON_FRAMES or len(set(frame_ids)) != len(frame_ids):
-        raise ValueError("Choose between 1 and 100 distinct frames")
-    if not 1 <= len(model_ids) <= 2 or len(set(model_ids)) != len(model_ids):
-        raise ValueError("Choose one or two distinct models")
-    if device not in {"cpu", "cuda"}:
-        raise ValueError("Device must be cpu or cuda")
-    frames = []
-    for frame_id in frame_ids:
-        frame = store.get("frames", frame_id)
-        if frame is None or frame["session_id"] != session_id:
-            raise ValueError("Every frame must belong to this flight session")
-        frames.append(frame)
-    for model_id in model_ids:
-        get_spec(model_id, store.root)
     available = {model["id"]: model for model in catalog(store.root)}
     for model_id in model_ids:
         model = available.get(model_id)
@@ -75,7 +202,10 @@ def create_comparison(
             for model_id in model_ids
             if available[model_id].get("weight_sha256")
         },
-        "protocol": PROTOCOL,
+        "protocol": PROTOCOL if inference_mode == "full" else TILED_PROTOCOL,
+        "inference": plan["inference"],
+        "lanes": plan["lanes"],
+        "work": {key: value for key, value in plan.items() if key not in {"inference", "lanes"}},
     }
     # Publish the frozen input selection and its queue entry together. A worker
     # can never claim a job whose comparison has not been committed yet.
@@ -110,7 +240,18 @@ def create_comparison(
 
 
 def comparison_summary(store: Store, comparison: dict) -> dict:
-    return {**comparison, "job": store.get("jobs", comparison["job_id"])}
+    runs = {
+        (run["model_id"], run["variant"]): run
+        for run in store.list("runs", comparison_id=comparison["id"])
+    }
+    return {
+        **comparison,
+        "job": store.get("jobs", comparison["job_id"]),
+        "lanes": [
+            {**lane, "run_id": runs.get((lane["model_id"], lane["variant"]), {}).get("id")}
+            for lane in comparison_lanes(comparison)
+        ],
+    }
 
 
 def comparison_detail(store: Store, comparison_id: str) -> dict:
@@ -193,7 +334,21 @@ def run_comparison(
         "predictions_created": 0,
         "cancelled": False,
     }
-    total = len(frame_ids) * len(model_ids)
+    lanes = comparison_lanes(comparison)
+    inference = config.get("inference", {"mode": "full"})
+    if inference["mode"] != "full":
+        tiling = inference.get("tiling", {})
+        if inference.get("algorithm") != "iris-tiling-v1" or tiling != validate_tiling_config(
+            tiling.get("tile_size"), tiling.get("overlap")
+        ):
+            raise ValueError("Unsupported saved tiling protocol")
+    frames = [store.get("frames", frame_id) for frame_id in frame_ids]
+    if any(frame is None or frame["session_id"] != comparison["session_id"] for frame in frames):
+        raise ValueError("The saved comparison contains missing or foreign frames")
+    work = _work_plan(frames, lanes, inference)
+    if "work" in config and work != config["work"]:
+        raise ValueError("The saved inference plan no longer matches the selected frames")
+    total = len(frame_ids) * len(lanes)
     for model_id in model_ids:
         if cancelled():
             result["cancelled"] = True
@@ -207,61 +362,123 @@ def run_comparison(
             expected_hash = config.get("model_hashes", {}).get(model_id)
             if expected_hash and detector.metadata.get("weight_sha256") != expected_hash:
                 raise ValueError("Checkpoint changed since this comparison was created")
-            run = store.insert(
-                "runs",
-                {
-                    "id": new_id(),
-                    "comparison_id": comparison_id,
-                    "model_id": model_id,
-                    "metadata": {**detector.metadata, "protocol": config["protocol"]},
-                    "created_at": now(),
-                },
-            )
-            first_frame = store.get("frames", frame_ids[0])
-            with _load_verified_frame(
-                store, first_frame, config["frame_hashes"][frame_ids[0]]
-            ) as image:
+            for lane in (lane for lane in lanes if lane["model_id"] == model_id):
                 if cancelled():
-                    result["cancelled"] = True
-                    break
-                progress(result["predictions_created"] / total, "Warming up model (not timed)")
-                detector.warmup(image)
-            for frame_id in frame_ids:
-                if cancelled():
-                    result["cancelled"] = True
-                    break
-                frame = store.get("frames", frame_id)
-                started = time.perf_counter()
-                with _load_verified_frame(store, frame, config["frame_hashes"][frame_id]) as image:
-                    decoded = time.perf_counter()
-                    prediction = detector.predict(image)
-                elapsed_ms = (time.perf_counter() - started) * 1000
-                _validate_prediction(prediction, frame)
-                store.insert(
-                    "predictions",
+                    raise TiledInferenceCancelled()
+                variant = lane["variant"]
+                tile_plan = (
+                    {
+                        frame["id"]: tile_boxes(
+                            frame["width"], frame["height"], inference["tiling"]
+                        )
+                        for frame in frames
+                    }
+                    if variant == "tiled"
+                    else {}
+                )
+                metadata = {
+                    **detector.metadata,
+                    "protocol": config["protocol"],
+                    "inference": {"variant": variant},
+                }
+                if variant == "tiled":
+                    metadata["inference"].update(
+                        algorithm=inference["algorithm"],
+                        **inference["tiling"],
+                        tile_boxes=tile_plan,
+                    )
+                run = store.insert(
+                    "runs",
                     {
                         "id": new_id(),
                         "comparison_id": comparison_id,
-                        "run_id": run["id"],
-                        "frame_id": frame_id,
                         "model_id": model_id,
-                        "detections": prediction["detections"],
-                        "input_size": prediction["input_size"],
-                        "timing": {
-                            **prediction["timing"],
-                            "decode_ms": (decoded - started) * 1000,
-                            "total_ms": elapsed_ms,
-                        },
+                        "variant": variant,
+                        "metadata": metadata,
                         "created_at": now(),
                     },
                 )
-                result["predictions_created"] += 1
-                progress(
-                    result["predictions_created"] / total,
-                    f"Saved {result['predictions_created']} / {total} model/frame predictions",
-                )
-            if result["cancelled"]:
-                break
+                with _load_verified_frame(
+                    store, frames[0], config["frame_hashes"][frame_ids[0]]
+                ) as image:
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    progress(
+                        result["predictions_created"] / total,
+                        f"Warming up {variant} run (not timed)",
+                    )
+                    if variant == "tiled":
+                        with image.crop(tuple(tile_plan[frame_ids[0]][0])) as crop:
+                            detector.warmup(crop)
+                    else:
+                        detector.warmup(image)
+                for frame in frames:
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    progress_overhead = 0.0
+
+                    def tile_progress(done, count, frame_id=frame["id"]):
+                        nonlocal progress_overhead
+                        reporting = time.perf_counter()
+                        progress(
+                            (result["predictions_created"] + done / count) / total,
+                            f"Tiled frame {frame_ids.index(frame_id) + 1} / {len(frames)}: "
+                            f"{done} / {count} tiles; merging before saving",
+                        )
+                        progress_overhead += time.perf_counter() - reporting
+
+                    started = time.perf_counter()
+                    with _load_verified_frame(
+                        store, frame, config["frame_hashes"][frame["id"]]
+                    ) as image:
+                        decoded = time.perf_counter()
+                        if variant == "tiled":
+                            prediction = tiled_predict(
+                                detector,
+                                image,
+                                inference["tiling"],
+                                cancelled=cancelled,
+                                progress=tile_progress,
+                            )
+                        else:
+                            prediction = detector.predict(image)
+                            prediction["timing"].update(
+                                forward_passes=1,
+                                tile_count=0,
+                                crop_ms=0.0,
+                                merge_ms=0.0,
+                            )
+                    elapsed_ms = max(0, time.perf_counter() - started - progress_overhead) * 1000
+                    _validate_prediction(prediction, frame)
+                    if cancelled():
+                        raise TiledInferenceCancelled()
+                    store.insert(
+                        "predictions",
+                        {
+                            "id": new_id(),
+                            "comparison_id": comparison_id,
+                            "run_id": run["id"],
+                            "frame_id": frame["id"],
+                            "model_id": model_id,
+                            "detections": prediction["detections"],
+                            "input_size": prediction["input_size"],
+                            "metadata": prediction.get("metadata", {}),
+                            "timing": {
+                                **prediction["timing"],
+                                "decode_ms": (decoded - started) * 1000,
+                                "total_ms": elapsed_ms,
+                            },
+                            "created_at": now(),
+                        },
+                    )
+                    result["predictions_created"] += 1
+                    progress(
+                        result["predictions_created"] / total,
+                        f"Saved {result['predictions_created']} / {total} run/frame predictions",
+                    )
+        except TiledInferenceCancelled:
+            result["cancelled"] = True
+            break
         finally:
             del detector
     return result

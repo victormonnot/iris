@@ -16,6 +16,11 @@
     historyRequest: 0,
     detailRequest: 0,
     submitting: false,
+    previewKey: null,
+    previewRequest: 0,
+    previewPending: false,
+    preview: null,
+    previewError: null,
   };
   const svgNamespace = "http://www.w3.org/2000/svg";
 
@@ -85,10 +90,100 @@
     return state.frames.filter((frame) => frame.selected);
   }
 
+  function inferenceMode() {
+    return $("#comparison-inference-mode").value;
+  }
+
+  function comparisonPayload(preview = false) {
+    return {
+      name: preview
+        ? "Comparison preview"
+        : $("#comparison-name").value.trim() ||
+          `Comparison ${comparison.history.length + 1}`,
+      frame_ids: selectedFrames().map((frame) => frame.id),
+      model_ids: [...comparison.chosenModels],
+      device: $("#comparison-device").value,
+      inference_mode: inferenceMode(),
+      tile_size: inferenceMode() === "full" ? 640 : Number($("#comparison-tile-size").value),
+      overlap: inferenceMode() === "full" ? 0.2 : Number($("#comparison-tile-overlap").value),
+    };
+  }
+
+  function modeName(variant) {
+    return variant === "tiled" ? "Tiled" : "Full image";
+  }
+
+  function lanes() {
+    const detail = comparison.detail;
+    return detail.lanes || detail.model_ids.map((modelId) => ({
+      model_id: modelId,
+      variant: "full",
+      run_id: detail.runs.find((run) => run.model_id === modelId)?.id || null,
+    }));
+  }
+
+  function laneName(lane) {
+    return `${modelName(lane.model_id)} · ${modeName(lane.variant)}`;
+  }
+
+  function belongsToLane(prediction, lane) {
+    if (lane.run_id) return prediction.run_id === lane.run_id;
+    const run = comparison.detail.runs.find((item) =>
+      item.model_id === lane.model_id &&
+      (item.variant || "full") === lane.variant,
+    );
+    if (run) return prediction.run_id === run.id;
+    return !comparison.detail.lanes && prediction.model_id === lane.model_id;
+  }
+
+  async function requestPreview(payload, key) {
+    const request = ++comparison.previewRequest;
+    const sessionId = state.sessionId;
+    comparison.previewKey = key;
+    comparison.previewPending = true;
+    comparison.preview = null;
+    comparison.previewError = null;
+    try {
+      const preview = await api(
+        `/api/sessions/${encodeURIComponent(sessionId)}/comparisons/preview`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      if (request !== comparison.previewRequest || sessionId !== state.sessionId)
+        return;
+      comparison.preview = preview;
+    } catch (error) {
+      if (request !== comparison.previewRequest || sessionId !== state.sessionId)
+        return;
+      comparison.previewError = error;
+    } finally {
+      if (request === comparison.previewRequest && sessionId === state.sessionId) {
+        comparison.previewPending = false;
+        updateLaunch();
+      }
+    }
+  }
+
   function updateLaunch() {
     const count = selectedFrames().length;
     const saving = state.bulkSelecting || state.pendingSelections.size > 0;
     const modelCount = comparison.chosenModels.size;
+    const mode = inferenceMode();
+    const tiled = mode !== "full";
+    const tileSize = Number($("#comparison-tile-size").value);
+    const overlapText = $("#comparison-tile-overlap").value;
+    const overlap = Number(overlapText);
+    const validTiles = !tiled || (
+      Number.isInteger(tileSize) && tileSize >= 128 && tileSize <= 2048 &&
+      overlapText !== "" && Number.isFinite(overlap) && overlap >= 0 && overlap <= 0.5
+    );
+    $("#comparison-tiling-fields").hidden = !tiled;
+    $("#comparison-tile-size").disabled = !tiled;
+    $("#comparison-tile-overlap").disabled = !tiled;
+    $("#comparison-mode-hint").textContent = mode === "paired"
+      ? "Choose one model to compare the same checkpoint on the whole image and on overlapping crops. Boxes return to the original image, with duplicates suppressed per class."
+      : tiled
+        ? "Run each model on overlapping crops, then merge boxes in the original image. This uses the pixels already captured; it does not add detail."
+        : "Run each selected model once on the whole image.";
     $("#comparison-selection").textContent =
       `${count} selected frame${count === 1 ? "" : "s"} · ${modelCount} model${modelCount === 1 ? "" : "s"}`;
     let hint =
@@ -99,17 +194,45 @@
       hint =
         "Select at most 100 frames for a comparison. Your current selection is too large.";
     else if (!modelCount) hint = "Choose at least one ready model above.";
+    else if (modelCount > (mode === "paired" ? 1 : 2))
+      hint = mode === "paired" ? "Choose one model for full image vs tiled." : "Choose at most two models.";
+    else if (!validTiles)
+      hint = "Choose a whole tile size from 128 to 2048 pixels and an overlap from 0 to 0.5.";
     else if ($("#comparison-device").value === "cuda")
       hint =
         "CUDA availability has not been verified. A compatible GPU and CUDA-enabled PyTorch are required.";
     $("#comparison-selection-hint").textContent = hint;
+    const valid = Boolean(state.sessionId) && !saving && count > 0 && count <= 100 &&
+      modelCount > 0 && modelCount <= (mode === "paired" ? 1 : 2) && validTiles;
+    if (valid) {
+      const payload = comparisonPayload(true);
+      const key = JSON.stringify([state.sessionId, payload]);
+      if (key !== comparison.previewKey) requestPreview(payload, key);
+    } else if (comparison.previewKey !== null) {
+      comparison.previewRequest++;
+      comparison.previewKey = null;
+      comparison.previewPending = false;
+      comparison.preview = null;
+      comparison.previewError = null;
+    }
+    const plan = $("#comparison-plan");
+    plan.classList.toggle("inline-error", Boolean(comparison.previewError));
+    if (comparison.previewPending) plan.textContent = "Checking the number of model passes…";
+    else if (comparison.previewError) plan.textContent = comparison.previewError.message;
+    else if (comparison.preview) {
+      const preview = comparison.preview;
+      const tileCounts = (preview.tiles || []).map((item) => item.tile_count);
+      const low = Math.min(...tileCounts);
+      const high = Math.max(...tileCounts);
+      const tileHint = tiled && tileCounts.length
+        ? ` · ${low === high ? low : `${low}–${high}`} tiles per image`
+        : "";
+      const tileLimit = tiled ? `${preview.limits.max_tiles_per_frame} tiles per image, ` : "";
+      plan.textContent = `${preview.forward_passes} model passes + ${preview.warmup_passes} warm-up passes${tileHint}. Limit: ${tileLimit}${preview.limits.max_forward_passes} passes per comparison. All processing stays local.`;
+    } else plan.textContent = "";
     $("#run-comparison").disabled =
-      comparison.submitting ||
-      saving ||
-      !count ||
-      count > 100 ||
-      !modelCount ||
-      modelCount > 2;
+      comparison.submitting || !valid || comparison.previewPending ||
+      !comparison.preview || Boolean(comparison.previewError);
   }
 
   function renderModels() {
@@ -123,13 +246,19 @@
       );
       const checkbox = node("input");
       checkbox.type = "checkbox";
+      checkbox.value = model.id;
       checkbox.checked = comparison.chosenModels.has(model.id);
       checkbox.disabled = !ready;
       checkbox.setAttribute("aria-label", `Use ${model.name}`);
       checkbox.addEventListener("change", () => {
         comparison.choicesTouched = true;
-        if (checkbox.checked) comparison.chosenModels.add(model.id);
+        if (checkbox.checked) {
+          if (inferenceMode() === "paired") comparison.chosenModels.clear();
+          comparison.chosenModels.add(model.id);
+        }
         else comparison.chosenModels.delete(model.id);
+        for (const input of catalog.querySelectorAll("input"))
+          input.checked = comparison.chosenModels.has(input.value);
         updateLaunch();
       });
       const content = node("span", "model-card-content");
@@ -194,9 +323,14 @@
               !comparison.choicesTouched ||
               comparison.chosenModels.has(model.id),
           )
-          .slice(0, 2)
+          .slice(0, inferenceMode() === "paired" ? 1 : 2)
           .map((model) => model.id),
       );
+      comparison.previewRequest++;
+      comparison.previewKey = null;
+      comparison.previewPending = false;
+      comparison.preview = null;
+      comparison.previewError = null;
       renderModels();
     } catch (error) {
       if (request !== comparison.catalogRequest) return;
@@ -308,8 +442,10 @@
     $("#comparison-empty").hidden = true;
     $("#comparison-detail").hidden = false;
     $("#comparison-run-name").textContent = detail.name;
+    const mode = detail.config.inference?.mode || "full";
+    const modeLabel = mode === "paired" ? "Full image vs tiled" : modeName(mode);
     $("#comparison-run-context").textContent =
-      `${detail.frame_ids.length} saved frames · ${detail.config.device.toUpperCase()} · ${new Date(detail.created_at).toLocaleString()}`;
+      `${detail.frame_ids.length} saved frames · ${modeLabel} · ${detail.config.device.toUpperCase()} · ${new Date(detail.created_at).toLocaleString()}`;
     const job = detail.job;
     const badge = $("#comparison-run-status");
     badge.className = `job-status ${job?.status || ""}`;
@@ -334,10 +470,10 @@
     );
   }
 
-  function predictionFor(frameId, modelId) {
+  function predictionFor(frameId, lane) {
     return comparison.detail.predictions.find(
       (prediction) =>
-        prediction.frame_id === frameId && prediction.model_id === modelId,
+        prediction.frame_id === frameId && belongsToLane(prediction, lane),
     );
   }
 
@@ -345,9 +481,10 @@
     const detail = comparison.detail;
     const container = $("#comparison-signals");
     container.replaceChildren();
-    for (const modelId of detail.model_ids) {
+    const runLanes = lanes();
+    for (const lane of runLanes) {
       const predictions = detail.predictions.filter(
-        (item) => item.model_id === modelId,
+        (item) => belongsToLane(item, lane),
       );
       const count = predictions.reduce(
         (sum, prediction) => sum + displayedDetections(prediction).length,
@@ -355,7 +492,7 @@
       );
       const signal = node("div", "comparison-signal");
       signal.append(
-        node("span", "", modelName(modelId)),
+        node("span", "", laneName(lane)),
         node("strong", "", String(count)),
         node(
           "span",
@@ -365,12 +502,12 @@
       );
       container.append(signal);
     }
-    if (detail.model_ids.length === 2) {
+    if (runLanes.length === 2) {
       let pairs = 0;
       let differences = 0;
       for (const frameId of detail.frame_ids) {
-        const left = predictionFor(frameId, detail.model_ids[0]);
-        const right = predictionFor(frameId, detail.model_ids[1]);
+        const left = predictionFor(frameId, runLanes[0]);
+        const right = predictionFor(frameId, runLanes[1]);
         if (!left || !right) continue;
         pairs++;
         if (
@@ -478,14 +615,15 @@
       : "Frame source unavailable";
     const container = $("#comparison-canvases");
     container.replaceChildren();
-    container.classList.toggle("single-model", detail.model_ids.length === 1);
-    detail.model_ids.forEach((modelId, index) => {
-      const prediction = predictionFor(frameId, modelId);
+    const runLanes = lanes();
+    container.classList.toggle("single-model", runLanes.length === 1);
+    runLanes.forEach((lane, index) => {
+      const prediction = predictionFor(frameId, lane);
       const detections = displayedDetections(prediction);
       const card = node("article", "prediction-card");
       const heading = node("div", "prediction-heading");
       heading.append(
-        node("h3", "", modelName(modelId)),
+        node("h3", "", laneName(lane)),
         node(
           "span",
           "prediction-count",
@@ -518,7 +656,7 @@
           node(
             "span",
             "",
-            `Model forward ${formatMilliseconds(prediction.timing?.inference_ms)}`,
+            `${lane.variant === "tiled" ? "Summed model forwards" : "Model forward"} ${formatMilliseconds(prediction.timing?.inference_ms)}`,
           ),
           node(
             "span",
@@ -526,21 +664,28 @@
             `Total ${formatMilliseconds(prediction.timing?.total_ms)}`,
           ),
         );
+        if (lane.variant === "tiled")
+          timing.append(node("span", "", `${prediction.timing?.tile_count ?? "—"} tiles · ${prediction.timing?.forward_passes ?? "—"} model passes`));
         const details = node("details", "prediction-data");
         details.append(node("summary", "", "Detections and timing details"));
         const timingNote = node(
           "p",
           "field-hint",
-          "Model forward includes internal resize, normalization, suppression and coordinate restoration. Total includes decoding, tensor preparation and output serialization. These are local wall-clock timings, not an accuracy score.",
+          lane.variant === "tiled"
+            ? "Model forward is summed across all tiles. Total includes image decoding, cropping, tensor preparation, model forwards, output serialization and merging. The warm-up is excluded. These are local wall-clock timings, not an accuracy score."
+            : "Model forward includes internal resize, normalization, suppression and coordinate restoration. Total includes decoding, tensor preparation and output serialization. The warm-up is excluded. These are local wall-clock timings, not an accuracy score.",
         );
         const timingList = node("dl", "timing-list");
-        for (const [label, key] of [
+        const timingEntries = [
           ["Decode", "decode_ms"],
+          ...(lane.variant === "tiled" ? [["Crop tiles", "crop_ms"]] : []),
           ["Prepare tensor / device", "preprocess_ms"],
-          ["Model forward", "inference_ms"],
+          [lane.variant === "tiled" ? "Summed model forwards" : "Model forward", "inference_ms"],
           ["Transfer / serialize output", "postprocess_ms"],
+          ...(lane.variant === "tiled" ? [["Merge / suppress duplicates", "merge_ms"]] : []),
           ["Total", "total_ms"],
-        ]) {
+        ];
+        for (const [label, key] of timingEntries) {
           const entry = node("div");
           entry.append(
             node("dt", "", label),
@@ -561,13 +706,20 @@
             );
           details.append(list);
         }
-        card.append(timing, details);
+        card.append(timing);
+        if (lane.variant === "tiled" && prediction.timing?.truncated_detection_count > 0)
+          card.append(node(
+            "p",
+            "prediction-note",
+            `The saved-output limit kept ${prediction.timing.kept_detection_count} boxes after duplicate suppression; ${prediction.timing.truncated_detection_count} lower-scored boxes were discarded.`,
+          ));
+        card.append(details);
       } else {
         card.append(
           node(
             "p",
             "prediction-note",
-            "No saved prediction for this model and frame.",
+            "No saved prediction for this run and frame.",
           ),
         );
       }
@@ -581,7 +733,7 @@
     for (const run of comparison.detail.runs) {
       const item = node("div", "run-metadata");
       item.append(
-        node("h3", "", modelName(run.model_id)),
+        node("h3", "", laneName(run)),
         node("pre", "", JSON.stringify(run.metadata, null, 2)),
       );
       container.append(item);
@@ -630,6 +782,15 @@
   );
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);
+  $("#comparison-inference-mode").addEventListener("change", () => {
+    if (inferenceMode() === "paired" && comparison.chosenModels.size > 1) {
+      comparison.chosenModels = new Set([...comparison.chosenModels].slice(0, 1));
+      notify("Full image vs tiled uses one checkpoint. The first selected model has been kept.");
+    }
+    renderModels();
+  });
+  for (const selector of ["#comparison-tile-size", "#comparison-tile-overlap"])
+    $(selector).addEventListener("input", updateLaunch);
   $("#comparison-history").addEventListener("change", (event) => {
     comparison.activeId = event.target.value;
     comparison.detail = null;
@@ -659,14 +820,7 @@
     event.preventDefault();
     if ($("#run-comparison").disabled) return;
     const sessionId = state.sessionId;
-    const payload = {
-      name:
-        $("#comparison-name").value.trim() ||
-        `Comparison ${comparison.history.length + 1}`,
-      frame_ids: selectedFrames().map((frame) => frame.id),
-      model_ids: [...comparison.chosenModels],
-      device: $("#comparison-device").value,
-    };
+    const payload = comparisonPayload();
     comparison.submitting = true;
     updateLaunch();
     showError("#comparison-error", null);
@@ -704,7 +858,7 @@
   window.addEventListener("iris:models", async (event) => {
     if (event.detail?.model_ids) {
       comparison.choicesTouched = true;
-      comparison.chosenModels = new Set(event.detail.model_ids.slice(0, 2));
+      comparison.chosenModels = new Set(event.detail.model_ids.slice(0, inferenceMode() === "paired" ? 1 : 2));
     }
     await refreshModels();
     if (event.detail?.openComparison) setWorkspace("comparison");

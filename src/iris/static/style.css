@@ -2051,6 +2051,10 @@ select:focus-visible {
   margin-top: 22px;
 }
 
+.comparison-mode-field {
+  margin-top: 20px;
+}
+
 .comparison-launch {
   margin-top: 20px;
   padding-top: 19px;
