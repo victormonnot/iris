@@ -11,6 +11,7 @@
     <title>IRIS · Vision workbench</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/experiments.css" />
     <script src="/static/app.js" defer></script>
     <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison.js" defer></script>
@@ -19,6 +20,7 @@
     <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
+    <script src="/static/experiments.js" defer></script>
     <script src="/static/dataset-import.js" defer></script>
   </head>
   <body>
@@ -211,6 +213,10 @@
               aria-controls="evaluation-workspace"
             >
               <span>05</span> Quality evaluation
+            </button>
+            <button id="workspace-experiments" class="workspace-tab" type="button"
+              aria-pressed="false" aria-controls="experiments-workspace">
+              <span>06</span> Experiments
             </button>
           </nav>
           <div id="intake-workspace">
@@ -1797,6 +1803,10 @@ ollama pull qwen3-vl:4b-instruct</pre
                     id="evaluation-completeness"
                     class="evaluation-completeness"
                   ></p>
+                  <button id="evaluation-save-experiment" type="button"
+                    class="button button-secondary" hidden disabled>
+                    Create experiment report <span aria-hidden="true">↗</span>
+                  </button>
                   <div id="evaluation-warnings" class="dataset-warnings"></div>
                   <div
                     id="evaluation-metrics"
@@ -2061,6 +2071,213 @@ ollama pull qwen3-vl:4b-instruct</pre
               </div>
             </section>
           </section>
+          <section id="experiments-workspace" hidden aria-label="Experiment reports">
+            <div class="experiments-toolbar">
+              <div class="experiments-search">
+                <label for="experiments-search" class="sr-only"
+                  >Search saved experiments</label
+                >
+                <input
+                  id="experiments-search"
+                  type="search"
+                  placeholder="Search experiments, datasets or models…"
+                  autocomplete="off"
+                />
+              </div>
+              <button id="experiments-refresh" type="button" class="text-button">
+                Refresh
+              </button>
+              <button id="experiments-new" type="button" class="button button-primary">
+                New experiment <span aria-hidden="true">+</span>
+              </button>
+            </div>
+            <p
+              id="experiments-status"
+              class="field-hint"
+              role="status"
+              aria-live="polite"
+            ></p>
+            <p id="experiments-error" class="inline-error" role="alert" hidden></p>
+            <div id="experiments-empty" class="experiments-empty panel" hidden>
+              <span class="experiments-empty-mark" aria-hidden="true">06</span>
+              <div class="eyebrow">From results to a decision</div>
+              <h2>Your next experiment deserves a record.</h2>
+              <p>
+                Bring together a frozen dataset, its models and a completed evaluation.
+                Add what you set out to test, choose a few examples and write your own
+                conclusion.
+              </p>
+              <button
+                id="experiments-empty-create"
+                type="button"
+                class="button button-primary"
+              >
+                Create your first report <span aria-hidden="true">→</span>
+              </button>
+              <span class="field-hint"
+                >Uses saved results. No training or inference is started.</span
+              >
+            </div>
+            <div id="experiments-layout" class="experiments-layout" hidden>
+              <aside class="experiments-library" aria-label="Saved experiment reports">
+                <div class="experiments-library-heading">
+                  <h2>Saved reports</h2>
+                  <span id="experiments-count" class="count">0</span>
+                </div>
+                <div id="experiments-list" class="experiments-list"></div>
+                <p id="experiments-no-matches" class="field-hint" hidden>
+                  No reports match this search.
+                </p>
+              </aside>
+              <div class="experiments-reading">
+                <p
+                  id="experiments-detail-status"
+                  class="field-hint"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <article id="experiments-detail" class="experiments-report" hidden>
+                  <header class="experiments-report-header">
+                    <div class="experiments-kicker">
+                      <span id="experiments-report-split" class="experiments-badge"></span
+                      ><span id="experiments-report-date"></span>
+                    </div>
+                    <h2 id="experiments-report-title" tabindex="-1"></h2>
+                    <p id="experiments-report-context"></p>
+                    <div class="experiments-report-actions">
+                      <button
+                        id="experiments-edit"
+                        type="button"
+                        class="button button-secondary"
+                      >
+                        Edit notes</button
+                      ><span id="experiments-revision" class="field-hint"></span>
+                    </div>
+                  </header>
+                  <section class="experiments-narrative" aria-label="Experiment notes">
+                    <div>
+                      <h3>The question</h3>
+                      <p id="experiments-objective" class="experiments-prose"></p>
+                    </div>
+                    <div class="experiments-conclusion">
+                      <h3>Your conclusion</h3>
+                      <p id="experiments-conclusion" class="experiments-prose"></p>
+                      <span class="experiments-caption"
+                        >Written by the reviewer. Metrics do not select a winner
+                        automatically.</span
+                      >
+                    </div>
+                  </section>
+                  <section
+                    class="experiments-section"
+                    aria-labelledby="experiments-lineage-title"
+                  >
+                    <div class="experiments-section-heading">
+                      <h3 id="experiments-lineage-title">The experiment at a glance</h3>
+                      <span class="experiments-caption"
+                        >Frozen when this report was created</span
+                      >
+                    </div>
+                    <div id="experiments-lineage" class="experiments-lineage"></div>
+                  </section>
+                  <section
+                    class="experiments-section"
+                    aria-labelledby="experiments-metrics-title"
+                  >
+                    <div class="experiments-section-heading">
+                      <h3 id="experiments-metrics-title">What the evaluation measured</h3>
+                      <span id="experiments-frame-count" class="experiments-badge"></span>
+                    </div>
+                    <div id="experiments-lane-key" class="experiments-lane-key"></div>
+                    <div id="experiments-metrics" class="experiments-metrics"></div>
+                    <p id="experiments-metric-context" class="field-hint"></p>
+                    <div
+                      id="experiments-class-table"
+                      class="experiments-table-wrap"
+                    ></div>
+                    <p id="experiments-timing" class="field-hint"></p>
+                    <div id="experiments-warnings" class="experiments-warnings"></div>
+                  </section>
+                  <section
+                    class="experiments-section"
+                    aria-labelledby="experiments-examples-title"
+                  >
+                    <div class="experiments-section-heading">
+                      <h3 id="experiments-examples-title">Examples behind the numbers</h3>
+                      <span id="experiments-example-count" class="count"></span>
+                    </div>
+                    <p class="field-hint">
+                      Examples were chosen by the report author. They do not represent the
+                      whole dataset. Dashed white boxes are reviewed labels; solid colored
+                      boxes are saved predictions above the evaluation threshold.
+                    </p>
+                    <p
+                      id="experiments-no-examples"
+                      class="experiments-empty-examples"
+                      hidden
+                    >
+                      No example images were included in this report. The metrics still
+                      cover the complete evaluated split.
+                    </p>
+                    <div id="experiments-examples" class="experiments-examples"></div>
+                  </section>
+                  <section
+                    class="experiments-export"
+                    aria-labelledby="experiments-export-title"
+                  >
+                    <div>
+                      <h3 id="experiments-export-title">Take the report with you</h3>
+                      <p>
+                        A standalone HTML file with the frozen results and your current
+                        notes.
+                      </p>
+                    </div>
+                    <label class="checkbox-label" for="experiments-export-images"
+                      ><input id="experiments-export-images" type="checkbox" />Include
+                      selected example images</label
+                    >
+                    <p class="field-hint">
+                      Unchecked: metrics and notes only. Images are embedded only when you
+                      choose to include them. No data is sent to an external service.
+                    </p>
+                    <div class="experiments-export-actions">
+                      <button
+                        id="experiments-export"
+                        type="button"
+                        class="button button-primary"
+                      >
+                        Download report <span aria-hidden="true">↓</span></button
+                      ><button
+                        id="experiments-export-cancel"
+                        type="button"
+                        class="text-button"
+                        hidden
+                      >
+                        Cancel download
+                      </button>
+                    </div>
+                    <p
+                      id="experiments-export-status"
+                      class="field-hint"
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                    <p
+                      id="experiments-export-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
+                  </section>
+                  <details class="experiments-provenance">
+                    <summary>Reproducibility and recorded reference decisions</summary>
+                    <p id="experiments-reference-note" class="field-hint"></p>
+                    <pre id="experiments-provenance"></pre>
+                  </details>
+                </article>
+              </div>
+            </div>
+          </section>
         </div>
         <section
           id="jobs-section"
@@ -2082,11 +2299,178 @@ ollama pull qwen3-vl:4b-instruct</pre
         <footer class="page-footer">
           <span>IRIS / Computer vision for flight data</span
           ><span
-            >Data intake / Comparison / Annotation / Training / Evaluation</span
+            >Data intake / Comparison / Annotation / Training / Evaluation / Experiments</span
           >
         </footer>
       </main>
     </div>
+    <dialog
+      id="experiments-compose-dialog"
+      class="modal experiments-compose"
+      aria-labelledby="experiments-compose-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">Experiment record</div>
+          <h2 id="experiments-compose-title">Create a report</h2>
+        </div>
+        <button
+          id="experiments-compose-close"
+          type="button"
+          class="icon-button"
+          aria-label="Close report creation"
+        >
+          ×
+        </button>
+      </div>
+      <p class="field-hint">
+        Start from one completed evaluation. Its results and selected examples will
+        be frozen; your notes can be revised later.
+      </p>
+      <form id="experiments-compose-form">
+        <label for="experiments-evaluation">Completed evaluation</label>
+        <select id="experiments-evaluation" required>
+          <option value="">Loading completed evaluations…</option>
+        </select>
+        <p id="experiments-evaluation-status" class="field-hint" role="status"></p>
+        <div id="experiments-compose-fields" hidden>
+          <label for="experiments-title">Report title</label
+          ><input
+            id="experiments-title"
+            maxlength="160"
+            required
+            autocomplete="off"
+            placeholder="e.g. Analog camera · partial adaptation"
+          />
+          <label for="experiments-objective-input"
+            >What did you want to test? <span class="muted">Optional</span></label
+          ><textarea
+            id="experiments-objective-input"
+            maxlength="4000"
+            rows="2"
+            placeholder="The hypothesis, camera conditions or trade-off you investigated"
+          ></textarea>
+          <label for="experiments-conclusion-input"
+            >Your conclusion <span class="muted">Optional</span></label
+          ><textarea
+            id="experiments-conclusion-input"
+            maxlength="4000"
+            rows="3"
+            placeholder="What the evidence supports, what remains uncertain and what you would try next"
+          ></textarea>
+          <div class="experiments-example-picker">
+            <div class="experiments-section-heading">
+              <h3>Choose a few examples</h3>
+              <span id="experiments-picked-count" class="count">0 / 6</span>
+            </div>
+            <p class="field-hint">
+              Optional · up to six images. Nothing is selected automatically.
+              Include useful successes and failures; these images will be fixed when
+              you save.
+            </p>
+            <label for="experiments-example-filter" class="sr-only"
+              >Filter example images</label
+            ><input
+              id="experiments-example-filter"
+              type="search"
+              placeholder="Filter by source file or scene group…"
+            />
+            <div
+              id="experiments-example-picker"
+              class="experiments-picker-grid"
+            ></div>
+            <p id="experiments-picker-empty" class="field-hint" hidden>
+              No images match this filter.
+            </p>
+            <button
+              id="experiments-more-examples"
+              type="button"
+              class="text-button"
+              hidden
+            >
+              Show more images
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button
+              id="experiments-create"
+              type="submit"
+              class="button button-primary"
+            >
+              Save experiment <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </div>
+        <p
+          id="experiments-compose-error"
+          class="inline-error"
+          role="alert"
+          hidden
+        ></p>
+      </form>
+    </dialog>
+    <dialog
+      id="experiments-edit-dialog"
+      class="modal experiments-edit"
+      aria-labelledby="experiments-edit-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">Reviewer notes</div>
+          <h2 id="experiments-edit-title">Edit this experiment</h2>
+        </div>
+        <button
+          id="experiments-edit-close"
+          type="button"
+          class="icon-button"
+          aria-label="Close note editor"
+        >
+          ×
+        </button>
+      </div>
+      <p class="field-hint">
+        The evaluation results and selected images stay frozen. Saving updates only
+        the title, objective and conclusion.
+      </p>
+      <form id="experiments-edit-form">
+        <label for="experiments-edit-name">Title</label
+        ><input
+          id="experiments-edit-name"
+          maxlength="160"
+          required
+          autocomplete="off"
+        />
+        <label for="experiments-edit-objective">Objective</label
+        ><textarea
+          id="experiments-edit-objective"
+          maxlength="4000"
+          rows="3"
+        ></textarea>
+        <label for="experiments-edit-conclusion">Conclusion</label
+        ><textarea
+          id="experiments-edit-conclusion"
+          maxlength="4000"
+          rows="5"
+        ></textarea>
+        <p id="experiments-edit-error" class="inline-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button
+            id="experiments-edit-reload"
+            type="button"
+            class="button button-secondary"
+            hidden
+          >
+            Reload latest notes</button
+          ><button
+            id="experiments-edit-save"
+            type="submit"
+            class="button button-primary"
+          >
+            Save notes
+          </button>
+        </div>
+      </form>
+    </dialog>
     <dialog
       id="extract-dialog"
       class="modal extract-modal"

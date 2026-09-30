@@ -976,6 +976,8 @@
   }
   function renderActions(changed) {
     const finished = complete();
+    $("#evaluation-save-experiment").hidden = !finished;
+    $("#evaluation-save-experiment").disabled = !finished;
     $("#evaluation-reference-form").hidden = !finished || split() !== "val";
     const select = $("#evaluation-reference-model");
     const previous = changed ? "" : select.value;
@@ -1238,6 +1240,12 @@
   $("#evaluation-inference-mode").addEventListener("change", updateLaunch);
   for (const selector of ["tile-size", "tile-overlap", "confidence", "iou"])
     $(`#evaluation-${selector}`).addEventListener("input", updateLaunch);
+  $("#evaluation-save-experiment").addEventListener("click", () => {
+    if (!complete()) return;
+    window.dispatchEvent(new CustomEvent("iris:experiment-create", {
+      detail: { evaluation_id: view.detail.id },
+    }));
+  });
   $("#evaluation-history").addEventListener("change", (event) => {
     view.activeId = event.target.value;
     view.detail = null;

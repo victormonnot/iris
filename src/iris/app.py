@@ -45,6 +45,16 @@ from iris.evaluation import (
     reference_history,
 )
 from iris.evaluation_analysis import analyze_evaluation
+from iris.experiment_export import ExperimentExportLimitError, render_experiment_html
+from iris.experiments import (
+    ExperimentConflict,
+    create_experiment,
+    experiment_detail,
+    list_experiments,
+    preview_experiment,
+    read_experiment_image,
+    update_experiment,
+)
 from iris.inference import (
     _load_verified_frame,
     comparison_detail,
@@ -185,6 +195,23 @@ class ReferenceInput(BaseModel):
     expected_previous_id: str | None
 
 
+class ExperimentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    evaluation_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=160)
+    objective: str = Field(default="", max_length=4000)
+    conclusion: str = Field(default="", max_length=4000)
+    example_frame_ids: list[str] = Field(default_factory=list, max_length=6)
+
+
+class ExperimentUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_revision: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=160)
+    objective: str = Field(default="", max_length=4000)
+    conclusion: str = Field(default="", max_length=4000)
+
+
 class SuggestionsInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     expected_revision: int = Field(ge=0)
@@ -294,6 +321,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     jobs = JobManager(store)
     import_lock = threading.Lock()
     export_lock = threading.Lock()
+    experiment_export_lock = threading.Lock()
     video_preview_lock = threading.Lock()
 
     @asynccontextmanager
@@ -341,10 +369,13 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; "
-            "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; "
+                "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            ),
         )
         return response
 
@@ -372,6 +403,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "dataset_versions": True,
                 "dataset_export": True,
                 "evaluation_analysis": True,
+                "experiment_reports": True,
                 "coco_import": True,
                 "training": True,
                 "evaluation": True,
@@ -605,6 +637,96 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             return evaluation_detail(store, evaluation_id)
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    def experiment_action(action, *, invalid_status: int = 409):
+        try:
+            return action()
+        except KeyError as exc:
+            raise HTTPException(404, "Experiment or source record not found") from exc
+        except ExperimentConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ExperimentExportLimitError as exc:
+            raise HTTPException(413, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(invalid_status, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(
+                409,
+                "Could not access the experiment artifacts. Check local files and disk space.",
+            ) from exc
+
+    @app.get("/api/evaluations/{evaluation_id}/experiment-preview")
+    def experiment_preview(evaluation_id: str):
+        require("evaluations", evaluation_id)
+        return experiment_action(lambda: preview_experiment(store, evaluation_id))
+
+    @app.get("/api/experiments")
+    def experiments():
+        return experiment_action(lambda: list_experiments(store))
+
+    @app.post("/api/experiments", status_code=201)
+    def experiment_create(payload: ExperimentInput):
+        require("evaluations", payload.evaluation_id)
+        return experiment_action(
+            lambda: create_experiment(store, **payload.model_dump()), invalid_status=422
+        )
+
+    @app.get("/api/experiments/{experiment_id}")
+    def experiment(experiment_id: str):
+        require("experiment_reports", experiment_id)
+        return experiment_action(lambda: experiment_detail(store, experiment_id))
+
+    @app.patch("/api/experiments/{experiment_id}")
+    def experiment_update(experiment_id: str, payload: ExperimentUpdateInput):
+        require("experiment_reports", experiment_id)
+        return experiment_action(
+            lambda: update_experiment(store, experiment_id, **payload.model_dump()),
+            invalid_status=422,
+        )
+
+    @app.get("/api/experiments/{experiment_id}/images/{frame_id}")
+    def experiment_image(experiment_id: str, frame_id: str):
+        require("experiment_reports", experiment_id)
+        content = experiment_action(lambda: read_experiment_image(store, experiment_id, frame_id))
+        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/experiments/{experiment_id}/export")
+    def experiment_export(
+        experiment_id: str,
+        expected_revision: int = Query(ge=1),
+        include_images: bool = Query(default=False),
+    ):
+        require("experiment_reports", experiment_id)
+        if not experiment_export_lock.acquire(blocking=False):
+            raise HTTPException(
+                409, "Another experiment export is being prepared. Try again shortly."
+            )
+        try:
+            content = experiment_action(
+                lambda: render_experiment_html(
+                    store,
+                    experiment_id,
+                    include_images=include_images,
+                    expected_revision=expected_revision,
+                )
+            )
+            return Response(
+                content,
+                media_type="text/html",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="iris-experiment-{experiment_id}.html"'
+                    ),
+                    "Cache-Control": "no-store",
+                    "Content-Security-Policy": (
+                        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+                        "script-src 'none'; connect-src 'none'; base-uri 'none'; "
+                        "form-action 'none'; object-src 'none'; frame-ancestors 'none'"
+                    ),
+                },
+            )
+        finally:
+            experiment_export_lock.release()
 
     @app.get("/api/model-references")
     def references():

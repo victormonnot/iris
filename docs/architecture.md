@@ -171,6 +171,16 @@ ancestor training groups/hashes and refuses parents that have consumed a new
 dataset's held-out data. This cannot establish independence from the official
 parent's pretraining corpus.
 
+Experiment reports capture one successfully completed evaluation and its dataset,
+checkpoint and available training lineage in a versioned, checksummed snapshot.
+They reuse saved metrics and error matches without loading model weights or
+recalculating quality scores. Selected examples are copied into bounded local
+JPEG previews, retaining the original coordinate space for overlays. The snapshot
+and examples stay fixed; title, objective and conclusion use optimistic revision
+checks. An additive SQLite table stores report metadata. Standalone HTML exports
+use explicit public fields, escaped text and embedded styles, with optional
+images and no scripts or network dependencies. See [experiment reports](experiments.md).
+
 Evaluations are separate from session-based visual comparisons. They consume the
 whole validation or test split of one immutable release, including frames from
 multiple sessions. They freeze checkpoint hashes, ancestry, dataset hash and

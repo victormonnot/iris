@@ -6,7 +6,7 @@ human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
-and explicit model reference selection**, with a review queue for tracking
+explicit model reference selection, and saved experiment reports**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
 [the architecture and V1 plan](docs/architecture.md).
@@ -526,6 +526,32 @@ shown, not the saved metrics or thresholds. No inference is rerun. Incomplete or
 inconsistent results are shown as unavailable, and test audits remain for
 reporting rather than model selection.
 
+## Keep an experiment report
+
+Open **Experiments**, or start a report from a completed **Quality evaluation**.
+Choose a saved evaluation, name the experiment, record its objective and your
+conclusion, and optionally select up to six example images. Creating a report
+does not run a model, train a checkpoint, recalculate metrics or change the reference.
+
+The report brings together the frozen dataset, checkpoint identities, available
+training settings, evaluation scores, per-class results and saved error changes.
+Examples illustrate the results; scores still cover the entire evaluated split.
+One-model reports do not imply a before/after comparison. Full-image and tiled
+runs remain separate even when they use the same checkpoint.
+
+Results and selected examples are fixed when the report is created. You can
+revise the title, objective and conclusion; simultaneous edits are checked to
+avoid overwriting a newer revision. Selected images are saved as bounded JPEG
+copies, so an existing report remains readable independently of source images
+and model weights.
+
+Download a standalone **HTML report** to read offline or print. Images are
+excluded by default; explicitly include the selected examples when needed.
+The document embeds its styles and any included images, with no scripts,
+external requests or required IRIS server. Text-only exports still contain
+your written notes and the recorded experiment context. Exporting does not
+publish or upload the report. See [the report format and limits](docs/experiments.md).
+
 ## Development and verification
 
 ```sh
@@ -552,6 +578,7 @@ frozen COCO exports, negative images, checksums and interrupted-download cleanup
 review progress, saved-prediction disagreement and read-only queue persistence,
 COCO metrics, error matching, fixed test audits, reference history,
 saved error analysis, class filters and paired recovered/newly missed objects,
+experiment snapshots, note revisions, saved images and standalone HTML reports,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not

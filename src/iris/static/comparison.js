@@ -63,6 +63,12 @@
       "Measure gains and regressions.",
       "Evaluate frozen labels, inspect detection errors and choose a reference model with evidence.",
     ];
+    workspaces.experiments = [
+      "06",
+      "Experiments",
+      "Keep the evidence together.",
+      "Turn a completed evaluation into a clear experiment record, add your conclusions and share a self-contained report.",
+    ];
     const info = workspaces[name];
     if (!info) return;
     for (const workspace of Object.keys(workspaces)) {
@@ -779,6 +785,9 @@
   );
   $("#workspace-evaluation").addEventListener("click", () =>
     setWorkspace("evaluation"),
+  );
+  $("#workspace-experiments").addEventListener("click", () =>
+    setWorkspace("experiments"),
   );
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);

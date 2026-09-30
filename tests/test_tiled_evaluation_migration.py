@@ -109,7 +109,7 @@ def test_migration_keeps_ids_metrics_predictions_reference_and_legacy_analysis(s
     }
     assert reference_history(store)["current"] == before["model_references"][0]
     with store.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE evaluation_predictions SET evaluation_model_id='missing'")
