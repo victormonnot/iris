@@ -214,6 +214,15 @@ helps order inspection without using reference labels as scoring input. The
 queue preserves selection and split reservations; disagreement never validates
 an image. See [the matching protocol and review behavior](review-queue.md).
 
+Local annotation batches group up to 25 explicit frame requests into durable
+`assist` child jobs. An eligibility preview fingerprints saved revisions, source
+predictions, image hashes and the local model digest. SQLite schema 8 adds an
+`assistance_batches` table; batch creation rechecks inputs and queues all eligible
+children in one transaction. The existing sequential worker, per-frame provenance
+and publication checks remain shared with single-image assistance. Aggregate
+status is derived from persisted child jobs, so partial results, cancellation and
+server interruption remain visible after reopening. See [batch behavior](annotation-batches.md).
+
 All five increments are implemented on the initial person/car detection scope,
 including quantitative evaluation and explicit reference selection. Live model verification depends on
 explicit runtime provisioning. The README records setup commands and verification limits.

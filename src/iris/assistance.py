@@ -36,21 +36,33 @@ def _candidates(
     if prediction is None or prediction["frame_id"] != frame["id"]:
         raise ValueError("The saved prediction must belong to this frame")
     comparison = store.get("comparisons", prediction["comparison_id"])
-    if comparison["config"]["frame_hashes"][frame["id"]] != frame["sha256"]:
+    if (
+        comparison is None
+        or not isinstance(comparison["config"], dict)
+        or not isinstance(comparison["config"].get("frame_hashes"), dict)
+        or comparison["config"]["frame_hashes"].get(frame["id"]) != frame["sha256"]
+    ):
         raise ValueError("The prediction was produced from a different frame revision")
     mapping = {item["coco_id"]: item["id"] for item in TAXONOMY["classes"]}
     run = store.get("runs", prediction["run_id"])
     if (
         comparison["config"].get("taxonomy") != "coco-2017-v1"
         or prediction["input_size"] != [frame["width"], frame["height"]]
+        or not isinstance(comparison["frame_ids"], list)
         or frame["id"] not in comparison["frame_ids"]
+        or run is None
+        or not isinstance(run["metadata"], dict)
         or run["comparison_id"] != comparison["id"]
         or run["model_id"] != prediction["model_id"]
     ):
         raise ValueError(
             "The prediction's taxonomy, image dimensions or provenance is incompatible"
         )
+    if not isinstance(prediction["detections"], list):
+        raise ValueError("The prediction must contain a list of detections")
     for detection in prediction["detections"]:
+        if not isinstance(detection, dict):
+            raise ValueError("The prediction contains an invalid detection")
         if type(detection.get("label_id")) is not int:
             raise ValueError("The prediction contains an invalid category")
         score = detection.get("score")

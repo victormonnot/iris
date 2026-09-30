@@ -88,6 +88,11 @@ CREATE TABLE IF NOT EXISTS assistance_records (
 CREATE INDEX IF NOT EXISTS annotation_revisions_frame ON annotation_revisions(frame_id,revision);
 CREATE INDEX IF NOT EXISTS annotation_suggestions_frame ON annotation_suggestions(frame_id);
 CREATE INDEX IF NOT EXISTS assistance_records_frame ON assistance_records(frame_id);
+CREATE TABLE IF NOT EXISTS assistance_batches (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), name TEXT NOT NULL,
+    frame_ids TEXT NOT NULL, job_ids TEXT NOT NULL, config TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS assistance_batches_session ON assistance_batches(session_id);
 CREATE TABLE IF NOT EXISTS assistance_previews (
     id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id), config TEXT NOT NULL,
     candidates TEXT NOT NULL, images TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -167,6 +172,7 @@ JSON_FIELDS = {
     "logs",
     "extraction",
     "frame_ids",
+    "job_ids",
     "model_ids",
     "config",
     "detections",
@@ -194,6 +200,7 @@ TABLES = {
     "annotation_revisions",
     "annotation_suggestions",
     "assistance_records",
+    "assistance_batches",
     "assistance_previews",
     "dataset_versions",
     "training_runs",
@@ -235,7 +242,7 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8):
                 raise RuntimeError(f"Unsupported database version: {version}")
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
@@ -248,7 +255,7 @@ class Store:
                 else ""
             )
             conn.executescript(
-                "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=7;\nCOMMIT;"
+                "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=8;\nCOMMIT;"
             )
             self.columns = {
                 table: {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}

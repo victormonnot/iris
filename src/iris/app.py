@@ -23,6 +23,13 @@ from iris.annotations import (
     save_annotation,
 )
 from iris.assistance import request_assistance
+from iris.assistance_batches import (
+    batch_detail,
+    cancel_batch,
+    create_batch,
+    list_batches,
+    preview_batch,
+)
 from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
@@ -180,6 +187,30 @@ class AssistanceInput(AssistancePreviewInput):
     max_cost_usd: float | None = Field(default=None, ge=0, le=100)
 
 
+class AssistanceBatchPreviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    frame_ids: list[str] = Field(min_length=1, max_length=25)
+    source: Literal["annotations", "comparison"] = "annotations"
+    comparison_id: str | None = None
+    detector_model_id: str | None = None
+    model: str = Field(min_length=1, max_length=160)
+    threshold: float = Field(default=0.5, ge=0, le=1)
+    instructions: str = Field(default="", max_length=2000)
+
+
+class AssistanceBatchInput(AssistanceBatchPreviewInput):
+    name: str = Field(min_length=1, max_length=160)
+    expected_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("Batch name cannot be blank")
+        return value
+
+
 def public(record: dict) -> dict:
     return {key: value for key, value in record.items() if key != "path"}
 
@@ -282,6 +313,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "inference": True,
                 "annotation": True,
                 "assisted_annotation": True,
+                "local_batch_assistance": True,
                 "dataset_versions": True,
                 "dataset_export": True,
                 "evaluation_analysis": True,
@@ -696,6 +728,41 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             {**record, "job": store.get("jobs", record["job_id"])}
             for record in store.list("assistance_records", frame_id=frame_id)
         ]
+
+    def batch_action(function):
+        try:
+            return function()
+        except KeyError as exc:
+            raise HTTPException(404, "Assistance batch or session not found") from exc
+        except (AnnotationConflict, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(409, "The source image is missing or unreadable") from exc
+
+    @app.post("/api/sessions/{session_id}/assistance-batches/preview")
+    def batch_preview(session_id: str, payload: AssistanceBatchPreviewInput):
+        require("sessions", session_id)
+        return batch_action(lambda: preview_batch(store, session_id, **payload.model_dump()))
+
+    @app.post("/api/sessions/{session_id}/assistance-batches", status_code=202)
+    def batch_create(session_id: str, payload: AssistanceBatchInput):
+        require("sessions", session_id)
+        return batch_action(lambda: create_batch(store, jobs, session_id, **payload.model_dump()))
+
+    @app.get("/api/sessions/{session_id}/assistance-batches")
+    def batch_list(session_id: str):
+        require("sessions", session_id)
+        return batch_action(lambda: list_batches(store, session_id))
+
+    @app.get("/api/assistance-batches/{batch_id}")
+    def batch_get(batch_id: str):
+        return batch_action(lambda: batch_detail(store, batch_id))
+
+    @app.post("/api/assistance-batches/{batch_id}/cancel")
+    def batch_cancel(batch_id: str):
+        return batch_action(lambda: cancel_batch(store, jobs, batch_id))
 
     @app.get("/api/assets/{asset_id}/media")
     def asset_media(asset_id: str):

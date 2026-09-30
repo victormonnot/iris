@@ -15,6 +15,7 @@
     <script src="/static/comparison.js" defer></script>
     <script src="/static/annotation-tools.js" defer></script>
     <script src="/static/annotation.js" defer></script>
+    <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
     <script src="/static/dataset-import.js" defer></script>
@@ -513,6 +514,47 @@
             </section>
           </section>
           <section id="annotation-workspace" aria-label="Annotation" hidden>
+            <details id="assistance-batches" class="panel assistance-batches">
+              <summary>Local batch review <span class="muted small">· Prepare proposals for several frames</span></summary>
+              <div class="assistance-batch-body">
+                <p class="field-hint">Review 1–8 existing boxes per frame with a local vision model. Choose saved annotations or a saved detector run; this review classifies candidate boxes and does not discover new objects. Every proposal still needs your correction and validation.</p>
+                <div class="assistance-batch-setup">
+                  <fieldset class="assistance-batch-selection">
+                    <legend>Frames in this batch</legend>
+                    <div class="assistance-batch-selection-actions">
+                      <span id="assistance-batch-selection-count" class="small muted">0 chosen · maximum 25</span>
+                      <button id="assistance-batch-select-all" type="button" class="text-button">Select all</button>
+                      <button id="assistance-batch-clear" type="button" class="text-button">Clear</button>
+                    </div>
+                    <p class="field-hint">Choose from the frames selected in Data intake. This checklist does not change dataset selection.</p>
+                    <div id="assistance-batch-frames" class="assistance-batch-frames"></div>
+                  </fieldset>
+                  <div class="assistance-batch-settings">
+                    <div><label for="assistance-batch-name">Batch name</label><input id="assistance-batch-name" maxlength="160" value="Local review" /></div>
+                    <div><label for="assistance-batch-model">Local vision model · Ollama</label><select id="assistance-batch-model"><option value="">Loading models…</option></select>
+                      <div class="assistance-batch-provider"><p id="assistance-batch-provider-status" class="field-hint" role="status"></p><button id="assistance-batch-refresh-models" class="text-button" type="button">Refresh models</button></div>
+                    </div>
+                    <div><label for="assistance-batch-source">Candidate boxes</label><select id="assistance-batch-source"><option value="annotations">Saved annotations</option><option value="comparison">Saved detector comparison</option></select></div>
+                    <div id="assistance-batch-comparison-settings" class="assistance-batch-comparison-settings" hidden>
+                      <div><label for="assistance-batch-comparison">Successful comparison</label><select id="assistance-batch-comparison"><option value="">No successful comparisons</option></select></div>
+                      <div><label for="assistance-batch-detector">Detector in this comparison</label><select id="assistance-batch-detector"><option value="">Choose a comparison</option></select></div>
+                      <div><label for="assistance-batch-threshold">Detector confidence ≥</label><input id="assistance-batch-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
+                    </div>
+                    <div><label for="assistance-batch-instructions">Review instructions <span class="muted">(optional)</span></label><textarea id="assistance-batch-instructions" rows="3" maxlength="2000" placeholder="For example: take particular care with small distant people."></textarea></div>
+                  </div>
+                </div>
+                <p id="assistance-batch-error" class="inline-error" role="alert" hidden></p>
+                <div class="assistance-batch-actions"><button id="assistance-batch-preview" type="button" class="button button-secondary" disabled>Check eligible frames</button><button id="assistance-batch-start" type="button" class="button" disabled>Start local review</button></div>
+                <p class="field-hint">Checking eligibility runs no inference. Starting queues the eligible frames for local processing; images stay on this machine. Unsaved editor changes are never included.</p>
+                <div id="assistance-batch-preview-result" class="assistance-batch-preview-result" hidden><p id="assistance-batch-preview-summary" class="small" role="status"></p><ul id="assistance-batch-preview-frames" class="assistance-batch-results"></ul></div>
+                <div class="assistance-batch-history">
+                  <div class="assistance-batch-history-heading"><h3>Batch history</h3><button id="assistance-batch-refresh-history" type="button" class="text-button">Refresh history</button></div>
+                  <label class="sr-only" for="assistance-batch-history">Saved local review batch</label><select id="assistance-batch-history"><option value="">No batches in this session</option></select>
+                  <p id="assistance-batch-history-error" class="inline-error" role="alert" hidden></p>
+                  <div id="assistance-batch-detail" hidden><p id="assistance-batch-detail-summary" class="small" role="status"></p><progress id="assistance-batch-progress" max="1" value="0" aria-label="Batch progress"></progress><p id="assistance-batch-detail-config" class="field-hint"></p><button id="assistance-batch-cancel" type="button" class="button button-secondary" hidden>Cancel remaining frames</button><p id="assistance-batch-cancel-hint" class="field-hint" hidden></p><ul id="assistance-batch-detail-frames" class="assistance-batch-results"></ul><details id="assistance-batch-excluded" class="assistance-batch-excluded" hidden><summary id="assistance-batch-excluded-summary"></summary><ul id="assistance-batch-excluded-frames" class="assistance-batch-results"></ul></details></div>
+                </div>
+              </div>
+            </details>
             <section class="panel review-queue" aria-labelledby="review-queue-title">
               <div class="panel-heading">
                 <div>

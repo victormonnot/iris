@@ -2052,6 +2052,26 @@
   window.addEventListener("iris:before-session", (event) => {
     if (!discardAllowed()) event.preventDefault();
   });
+  window.addEventListener("iris:before-assistance-batch", (event) => {
+    if (!event.detail?.frame_ids?.includes(editor.frameId)) return;
+    if (editor.dirty || editor.busy || editor.advancing || editor.loading || editor.drag) {
+      event.preventDefault();
+      notify(
+        "Save or discard the current frame's edits and finish its pending action before preparing a batch that includes it.",
+        true,
+      );
+    }
+  });
+  window.addEventListener("iris:annotation-open-frame", async (event) => {
+    const id = event.detail?.frame_id;
+    if (!queue.active || !state.frames.some((frame) => frame.id === id && frame.selected)) return;
+    if (editor.frameId !== id) {
+      if (!discardAllowed()) return;
+      await loadFrame(id);
+    }
+    if (editor.document?.frame.id === id)
+      $("#annotation-editor").scrollIntoView({ block: "start" });
+  });
   window.addEventListener("iris:session", () => {
     if (editor.sessionId === state.sessionId) return;
     invalidatePreview();

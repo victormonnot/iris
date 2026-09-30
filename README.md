@@ -171,6 +171,24 @@ Every save creates a revision with provenance. Concurrent edits produce a reload
 conflict instead of silently replacing another revision. Editing a validated frame
 requires a fresh human validation.
 
+### Local review batches
+
+Expand **Local batch review** in Annotation to choose up to 25 selected frames
+from the current session. Choose an installed local vision model and use either
+saved labels or one detector's results from a completed comparison as candidates.
+Preview the batch to see which images contain 1–8 eligible person/car boxes and
+why other images will be skipped, then explicitly start the eligible reviews.
+
+Images run sequentially through the existing local worker. The batch records
+progress, errors and proposal counts for each image, survives reopening the app,
+and can be cancelled while retaining proposals already saved. A failed image does
+not stop the other queued images. Open each result in the review queue to accept,
+correct or reject its proposals; a batch never validates labels.
+
+This batch workflow uses **local Ollama models only**. It does not download models
+or run a new detector, and it does not locate objects in an image without candidate
+boxes. See [batch controls, sources and recovery](docs/annotation-batches.md).
+
 ### Local multimodal assistance
 
 Install [Ollama](https://docs.ollama.com/linux) separately to use a local vision
@@ -425,6 +443,7 @@ Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
 multimodal response validation, exact outgoing previews, explicit API consent,
+local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
 COCO archive validation, imported-label review and source split preservation,
 frozen COCO exports, negative images, checksums and interrupted-download cleanup,
