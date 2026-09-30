@@ -374,10 +374,13 @@ API keys are read only by the server/worker and are never returned to the UI.
    manifest. Download the manifest or inspect it in the interface. Later label
    edits and selection changes leave that version intact.
 4. Choose this dataset and a ready **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
-   either the official checkpoint or a previous IRIS checkpoint. Start a bounded
-   CPU run: 20 optimizer steps by default, configurable from 1 to 200, batch size
-   one, with a recorded learning rate and seed. Runtime depends on the CPU and
-   images; these limits bound steps, not wall-clock time. No weights are downloaded.
+   either the official checkpoint or a previous IRIS checkpoint. Choose a training
+   depth and preview the plan before starting a CPU run: 20 optimizer steps by
+   default, configurable from 1 to 200, batch size one, with an explicit learning
+   rate and seed. The preview shows the train image count, visits and complete
+   passes. Editing a setting requires a new preview. Runtime depends on the CPU,
+   images and depth; these limits bound steps, not wall-clock time. No weights
+   are downloaded.
 5. Follow progress, individual loss components and logs. A completed run registers
    its checkpoint and SHA-256, parent, dataset version and settings. Use it in
    **Model comparison** alongside its parent on the same held-out frames.
@@ -391,14 +394,25 @@ retire or reassign a reserved test group. A new version contains a full snapshot
 linking a parent does not automatically add its images. A version holds at most
 1,000 images and makes its own image copies, so allow additional disk space.
 
-The first training engine adapts only the final classification and box regression
-layers. It initializes background/person/car from the parent, freezes feature
-extraction and proposal layers, and uses SGD on the frozen **train** split only.
+Each run chooses its own depth; a trained checkpoint can be continued at another
+depth without changing its parent:
+
+| Depth | Parameters updated | Intended experiment |
+| --- | --- | --- |
+| Light (default) | Final classification and box regression layers | A small first adaptation with the feature extractor fixed. |
+| Partial | Last MobileNet feature stage, feature pyramid, proposal network and detection heads | Adapt later visual features, for example when trying footage from a different camera. Earlier feature stages stay fixed. |
+| Full | All learnable detector parameters | Also adapt early visual features; requires more computation and can overfit a small dataset. |
+
+The official parent's background/person/car rows initialize the three-class
+head; an IRIS parent's head is retained. All depths keep the pretrained frozen
+batch-normalization statistics fixed and use SGD on the frozen **train** split only.
+The selected depth never silently changes the learning rate. Run metadata records
+the exact trainable modules and parameter counts, plus which modules changed.
 Validation and test images are not opened by the training worker. Negative
 training images are supported, but at least one positive annotation is required.
 With fewer steps than training images, only part of the training set is visited.
-This small scope makes a CPU experiment practical; it may be insufficient for
-small distant objects or substantial domain changes.
+Deeper training is an option to measure, not a guarantee of better results on
+analog imagery or small distant objects. It does not change inference resolution.
 
 Loss measures optimization on training examples, **not detection quality**.
 Use the separate evaluation workflow on independent, reviewed imagery to measure
@@ -532,6 +546,7 @@ tiled coverage, coordinate restoration, merging, work limits and variant selecti
 multimodal response validation, exact outgoing previews, explicit API consent,
 local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
+training-depth contracts, read-only workload previews and frozen-layer preservation,
 COCO archive validation, imported-label review and source split preservation,
 frozen COCO exports, negative images, checksums and interrupted-download cleanup,
 review progress, saved-prediction disagreement and read-only queue persistence,
@@ -560,12 +575,14 @@ IRIS_TEST_TRAINING=1 IRIS_TEST_MODEL_DIR=/absolute/path/to/iris-data \
   uv run --extra ml pytest tests/test_training_live.py
 ```
 
-It performs three CPU optimizer steps across two generations, verifies changed
-prediction-head weights and unchanged frozen layers, reloads the checkpoint into
-a comparison with its parent, evaluates both on frozen validation and test
-splits, records an explicit reference, and checks persistence after restart. All images
+The scope checks perform a few CPU optimizer steps across all three depths and
+a continuation at a different depth. They inspect gradients, changed parameters,
+unchanged frozen layers and normalization buffers, then reload the checkpoints.
+The worker check performs three more steps across two generations, compares the
+checkpoint with its parent, evaluates both on frozen validation and test splits,
+records an explicit reference, and checks persistence after restart. All images
 and review records are generated fixtures, not human-validated flight data. It
-downloads nothing. Without `IRIS_TEST_TRAINING=1`, this test is skipped.
+downloads nothing. Without `IRIS_TEST_TRAINING=1`, these tests are skipped.
 
 After separately provisioning and starting local Ollama, opt into a real
 multimodal protocol check on a generated image:

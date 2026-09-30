@@ -1373,7 +1373,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <div>
                     <h2 id="training-create-title">Train a local detector</h2>
                     <p>
-                      Fine-tune a Faster R-CNN detection head on a frozen
+                      Choose how deeply to fine-tune Faster R-CNN on a frozen
                       release.
                     </p>
                   </div>
@@ -1401,6 +1401,24 @@ ollama pull qwen3-vl:4b-instruct</pre
                     class="field-hint"
                     role="status"
                   ></p>
+                  <label for="training-scope">Training depth for this run</label>
+                  <select
+                    id="training-scope"
+                    required
+                    aria-describedby="training-scope-description training-scope-cost"
+                  >
+                    <option value="prediction_head_only">
+                      Light · prediction head
+                    </option>
+                    <option value="partial_backbone">
+                      Partial · late features and detection heads
+                    </option>
+                    <option value="full_model">
+                      Full · all trainable layers
+                    </option>
+                  </select>
+                  <p id="training-scope-description" class="field-hint"></p>
+                  <p id="training-scope-cost" class="field-hint"></p>
                   <div class="training-settings">
                     <div>
                       <label for="training-steps">Optimizer steps</label
@@ -1440,9 +1458,14 @@ ollama pull qwen3-vl:4b-instruct</pre
                     </div>
                   </div>
                   <p class="field-hint">
-                    Batch size 1 · person / car · frozen feature extractor. Only
-                    training frames update the model. Validation and test frames
-                    are preserved for evaluation.
+                    Changing depth keeps your learning rate unchanged. Choose
+                    it explicitly for each run; deeper training does not
+                    guarantee a better detector.
+                  </p>
+                  <p class="field-hint">
+                    Batch size 1 · person / car. FrozenBatchNorm statistics stay
+                    fixed at every depth. Only training frames update the model;
+                    validation and test frames are preserved for evaluation.
                   </p>
                   <p class="field-hint">
                     Starting a run uses local CPU and disk space. The step limit
@@ -1450,13 +1473,41 @@ ollama pull qwen3-vl:4b-instruct</pre
                     model download or API call starts here.
                   </p>
                   <button
-                    id="training-start"
+                    id="training-preview"
                     type="submit"
-                    class="button button-primary"
+                    class="button button-secondary"
                     disabled
                   >
-                    Start CPU training <span aria-hidden="true">→</span>
+                    Preview training plan
                   </button>
+                  <p class="field-hint">
+                    Previewing checks the frozen release and local checkpoint
+                    without loading a training model, downloading weights or
+                    starting optimization.
+                  </p>
+                  <div
+                    id="training-preview-result"
+                    class="training-preview"
+                    hidden
+                  >
+                    <h3 id="training-preview-scope"></h3>
+                    <p id="training-preview-summary" class="field-hint"></p>
+                    <div id="training-preview-counts" class="dataset-counts"></div>
+                    <p id="training-preview-workload" class="field-hint"></p>
+                    <details class="training-preview-modules">
+                      <summary>Layers included in this run</summary>
+                      <p id="training-preview-modules" class="field-hint"></p>
+                    </details>
+                    <div id="training-preview-notes"></div>
+                    <button
+                      id="training-start"
+                      type="button"
+                      class="button button-primary"
+                      disabled
+                    >
+                      Start CPU training <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
                   <p
                     id="training-error"
                     class="inline-error"
@@ -1500,6 +1551,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <div>
                       <h3 id="training-detail-name"></h3>
                       <p id="training-detail-context" class="field-hint"></p>
+                      <p id="training-detail-scope" class="field-hint"></p>
                     </div>
                     <span id="training-detail-status" class="job-status"></span>
                   </div>

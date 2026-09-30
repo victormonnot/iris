@@ -57,7 +57,7 @@ from iris.media import import_asset, preview_extraction
 from iris.models import catalog
 from iris.review_queue import review_queue
 from iris.store import Store, new_id, now
-from iris.training import create_training, training_detail
+from iris.training import create_training, preview_training, training_detail
 from iris.video_reviews import (
     get_review,
     list_reviews,
@@ -152,6 +152,9 @@ class TrainingInput(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     dataset_id: str
     parent_model_id: str
+    scope: Literal["prediction_head_only", "partial_backbone", "full_model"] = (
+        "prediction_head_only"
+    )
     steps: int = Field(default=20, ge=1, le=200)
     learning_rate: float = Field(default=0.001, gt=0, le=0.1)
     seed: int = Field(default=0, ge=0, le=2147483647)
@@ -543,6 +546,16 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         require("dataset_versions", payload.dataset_id)
         try:
             return create_training(store, jobs, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/trainings/preview")
+    def training_preview(payload: TrainingInput):
+        require("dataset_versions", payload.dataset_id)
+        try:
+            return preview_training(store, **payload.model_dump())
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except (OSError, RuntimeError) as exc:

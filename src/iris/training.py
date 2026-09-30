@@ -1,4 +1,4 @@
-"""Bounded, offline CPU fine-tuning of a detector's prediction head.
+"""Bounded, offline CPU fine-tuning with an explicit per-run training depth.
 
 Only frozen training images are opened. Validation and test examples remain
 reserved for a separate quality evaluation; training loss is not an accuracy metric.
@@ -14,6 +14,7 @@ import random
 import tempfile
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 
 from PIL import Image
@@ -29,6 +30,60 @@ from iris.store import Store, new_id, now
 
 MAX_STEPS = 200
 CLASS_MAPPING = {"person": 1, "car": 2}
+SCOPE_VERSION = 1
+TRAINING_SCOPES = {
+    "prediction_head_only": {
+        "id": "prediction_head_only",
+        "label": "Prediction head only",
+        "description": "Adjust the person/car prediction head while keeping visual features fixed.",
+        "trainable_modules": ["roi_heads.box_predictor"],
+    },
+    "partial_backbone": {
+        "id": "partial_backbone",
+        "label": "Last backbone stage and detector",
+        "description": (
+            "Adapt the final visual feature stage, feature pyramid, proposals and ROI heads."
+        ),
+        "trainable_modules": [
+            "backbone.body.13",
+            "backbone.body.14",
+            "backbone.body.15",
+            "backbone.body.16",
+            "backbone.fpn",
+            "rpn",
+            "roi_heads",
+        ],
+    },
+    "full_model": {
+        "id": "full_model",
+        "label": "All detector layers",
+        "description": (
+            "Adapt all visual features and detection layers, including early image features."
+        ),
+        "trainable_modules": ["backbone", "rpn", "roi_heads"],
+    },
+}
+
+
+def training_scope(scope: str) -> dict:
+    if not isinstance(scope, str) or scope not in TRAINING_SCOPES:
+        raise ValueError("Choose prediction_head_only, partial_backbone or full_model")
+    return deepcopy(TRAINING_SCOPES[scope])
+
+
+def _scope_from_config(config: dict) -> dict:
+    scope = training_scope(config.get("scope", "prediction_head_only"))
+    if "scope_version" not in config:
+        if scope["id"] != "prediction_head_only" or "trainable_modules" in config:
+            raise ValueError("Unsupported legacy training scope contract; create a new run")
+    elif (
+        config.get("scope") != scope["id"]
+        or type(config["scope_version"]) is not int
+        or config["scope_version"] != SCOPE_VERSION
+        or config.get("trainable_modules") != scope["trainable_modules"]
+    ):
+        raise ValueError("Training scope contract changed; create a new run")
+    return scope
 
 
 def _manifest(store: Store, dataset_id: str) -> dict:
@@ -69,9 +124,8 @@ def _check_holdouts(manifest: dict, parent: dict) -> None:
         )
 
 
-def create_training(
+def _prepare_training(
     store: Store,
-    jobs,
     *,
     name: str,
     dataset_id: str,
@@ -79,7 +133,11 @@ def create_training(
     steps: int = 20,
     learning_rate: float = 0.001,
     seed: int = 0,
-) -> dict:
+    scope: str = "prediction_head_only",
+) -> tuple:
+    selected_scope = training_scope(scope)
+    if not isinstance(name, str):
+        raise ValueError("Training name must contain between 1 and 160 characters")
     name = name.strip()
     if not 1 <= len(name) <= 160:
         raise ValueError("Training name must contain between 1 and 160 characters")
@@ -88,7 +146,7 @@ def create_training(
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2147483647:
         raise ValueError("Seed must be an integer between 0 and 2147483647")
     if (
-        isinstance(learning_rate, bool)
+        type(learning_rate) not in (int, float)
         or not math.isfinite(learning_rate)
         or not 0 < learning_rate <= 0.1
     ):
@@ -109,7 +167,9 @@ def create_training(
         "learning_rate": float(learning_rate),
         "seed": seed,
         "device": "cpu",
-        "scope": "prediction_head_only",
+        "scope": selected_scope["id"],
+        "scope_version": SCOPE_VERSION,
+        "trainable_modules": selected_scope["trainable_modules"],
         "batch_size": 1,
         "optimizer": "SGD",
         "momentum": 0.9,
@@ -120,6 +180,91 @@ def create_training(
         "class_mapping": CLASS_MAPPING,
         "quality_metrics": "Not computed; training loss does not measure detection quality",
     }
+    return name, config, dataset, parent, training_frames
+
+
+def preview_training(
+    store: Store,
+    *,
+    name: str,
+    dataset_id: str,
+    parent_model_id: str,
+    steps: int = 20,
+    learning_rate: float = 0.001,
+    seed: int = 0,
+    scope: str = "prediction_head_only",
+) -> dict:
+    """Validate a run and describe its bounded work without loading model parameters."""
+    _, config, dataset, parent, frames = _prepare_training(
+        store,
+        name=name,
+        dataset_id=dataset_id,
+        parent_model_id=parent_model_id,
+        steps=steps,
+        learning_rate=learning_rate,
+        seed=seed,
+        scope=scope,
+    )
+    return {
+        "config": config,
+        "scope": training_scope(scope),
+        "dataset": {
+            "id": dataset["id"],
+            "name": dataset["name"],
+            "train_images": len(frames),
+            "positive_train_images": sum(bool(frame["boxes"]) for frame in frames),
+            "annotation_count": sum(len(frame["boxes"]) for frame in frames),
+        },
+        "workload": {
+            "steps": steps,
+            "batch_size": 1,
+            "image_visits": steps,
+            "unique_images_min": min(steps, len(frames)),
+            "full_passes": steps // len(frames),
+            "remainder_images": steps % len(frames),
+            "device": "cpu",
+        },
+        "parent": {key: parent[key] for key in ("id", "name", "weight_sha256")},
+        "notes": [
+            "Only frozen training images are consumed; validation and test images stay reserved.",
+            "Training loss does not measure detection quality; compare the resulting "
+            "checkpoint on validation data.",
+            "Frozen batch-normalization statistics remain unchanged for every training depth.",
+            "Exact parameter counts are recorded after the worker loads the checkpoint.",
+            *(
+                [
+                    "Deeper adaptation needs more CPU memory and computation; "
+                    "use a small learning rate and a short first run."
+                ]
+                if scope != "prediction_head_only"
+                else []
+            ),
+        ],
+    }
+
+
+def create_training(
+    store: Store,
+    jobs,
+    *,
+    name: str,
+    dataset_id: str,
+    parent_model_id: str,
+    steps: int = 20,
+    learning_rate: float = 0.001,
+    seed: int = 0,
+    scope: str = "prediction_head_only",
+) -> dict:
+    name, config, _, _, _ = _prepare_training(
+        store,
+        name=name,
+        dataset_id=dataset_id,
+        parent_model_id=parent_model_id,
+        steps=steps,
+        learning_rate=learning_rate,
+        seed=seed,
+        scope=scope,
+    )
     training_id, job_id, created_at = new_id(), new_id(), now()
     with jobs.guard, store.connect() as connection:
         connection.execute(
@@ -178,18 +323,36 @@ def _read_training_image(store: Store, frame: dict) -> Image.Image:
     return image
 
 
+def _matches_module(name: str, prefix: str) -> bool:
+    return name == prefix or name.startswith(prefix + ".")
+
+
+def _tensor_digest(tensor) -> str:
+    return hashlib.sha256(tensor.detach().cpu().contiguous().numpy().tobytes()).hexdigest()
+
+
 class _HeadTrainer:
+    """Train the chosen scope; retain the original private class name for compatibility."""
+
     def __init__(self, root: Path, parent_id: str, config: dict):
         import torch
         import torchvision
 
         self.torch = torch
+        self.scope = _scope_from_config(config)
         torch.manual_seed(config["seed"])
         torch.use_deterministic_algorithms(True)
         self.detector = TorchvisionDetector(root, parent_id, device="cpu")
         if self.detector.metadata["weight_sha256"] != config["parent_weight_sha256"]:
             raise ValueError("Parent checkpoint changed since training was queued")
         self.model = self.detector.model
+        inference_proposal_threshold = self.model.rpn.score_thresh
+        # The MobileNet320 inference preset drops RPN proposals below 0.05.
+        # A negative image can then contain no sampled ROIs, making both ROI
+        # losses undefined. Keep background proposals during optimization;
+        # loading the saved weights through the inference adapter keeps its
+        # original filtering settings, independent of this training-only change.
+        self.model.rpn.score_thresh = 0.0
         if self.detector.spec.get("origin") != "trained":
             previous = self.model.roi_heads.box_predictor
             predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
@@ -206,14 +369,58 @@ class _HeadTrainer:
                 predictor.bbox_pred.weight.copy_(previous.bbox_pred.weight[box_rows])
                 predictor.bbox_pred.bias.copy_(previous.bbox_pred.bias[box_rows])
             self.model.roi_heads.box_predictor = predictor
-        for parameter in self.model.parameters():
-            parameter.requires_grad_(False)
-        self.parameters = list(self.model.roi_heads.box_predictor.parameters())
-        for parameter in self.parameters:
-            parameter.requires_grad_(True)
-        self.initial = [parameter.detach().clone() for parameter in self.parameters]
+        modules = dict(self.model.named_modules())
+        selected_modules = self.scope["trainable_modules"]
+        if any(prefix not in modules for prefix in selected_modules):
+            raise ValueError("Detector module layout does not match the selected training scope")
+        if self.scope["id"] == "partial_backbone" and list(self.model.backbone.body._modules) != [
+            str(index) for index in range(17)
+        ]:
+            raise ValueError("The partial scope requires the supported 17-block MobileNet backbone")
+        if any(
+            isinstance(module, torch.nn.modules.batchnorm._BatchNorm) for module in modules.values()
+        ):
+            raise ValueError("The training detector must retain frozen batch normalization")
+        self.named_parameters = dict(self.model.named_parameters())
+        self.selected_parameters = {}
+        self.frozen_parameters = {}
+        for name, parameter in self.named_parameters.items():
+            selected = any(_matches_module(name, prefix) for prefix in selected_modules)
+            parameter.requires_grad_(selected)
+            if selected:
+                self.selected_parameters[name] = parameter
+            else:
+                self.frozen_parameters[name] = parameter
+        if any(
+            not any(_matches_module(name, prefix) for name in self.selected_parameters)
+            for prefix in selected_modules
+        ) or (self.scope["id"] == "full_model" and self.frozen_parameters):
+            raise ValueError("The selected scope contains missing or unsupported model parameters")
+        self.parameters = list(self.selected_parameters.values())
+        if any(not torch.isfinite(parameter).all().item() for parameter in self.parameters):
+            raise ValueError("Parent checkpoint contains nonfinite trainable weights")
+        self.initial = {
+            name: parameter.detach().clone() for name, parameter in self.selected_parameters.items()
+        }
+        self.frozen_initial = {
+            name: _tensor_digest(parameter) for name, parameter in self.frozen_parameters.items()
+        }
+        self.initial_buffers = {
+            name: value.detach().clone() for name, value in self.model.named_buffers()
+        }
+        self.frozen_batchnorm_modules = [
+            name
+            for name, module in modules.items()
+            if isinstance(module, torchvision.ops.misc.FrozenBatchNorm2d)
+        ]
+        self.gradient_modules = set()
         self.model.train()
-        self.model.backbone.eval()
+        if self.scope["id"] == "prediction_head_only":
+            self.model.backbone.eval()
+        # FrozenBatchNorm forwards do not update statistics even in train mode;
+        # keep the module mode explicit and verify all buffers before publication.
+        for name in self.frozen_batchnorm_modules:
+            modules[name].eval()
         self.optimizer = torch.optim.SGD(
             self.parameters,
             lr=config["learning_rate"],
@@ -223,11 +430,27 @@ class _HeadTrainer:
         self.metadata = {
             **self.detector.metadata,
             "trainable_parameters": sum(parameter.numel() for parameter in self.parameters),
+            "frozen_parameters": sum(
+                parameter.numel() for parameter in self.frozen_parameters.values()
+            ),
             "total_parameters": sum(parameter.numel() for parameter in self.model.parameters()),
-            "trainable_modules": ["roi_heads.box_predictor"],
+            "scope": self.scope["id"],
+            "scope_version": config.get("scope_version", 0),
+            "trainable_modules": selected_modules,
+            "frozen_batchnorm_modules": self.frozen_batchnorm_modules,
+            "training_proposal_filtering": {
+                "rpn_score_threshold": self.model.rpn.score_thresh,
+                "parent_inference_rpn_score_threshold": inference_proposal_threshold,
+                "rpn_nms_iou_threshold": self.model.rpn.nms_thresh,
+                "pre_nms_top_n": self.model.rpn.pre_nms_top_n(),
+                "post_nms_top_n": self.model.rpn.post_nms_top_n(),
+                "reason": "Retain background proposals for negative training images",
+            },
             "deterministic_algorithms": True,
             "head_initialization": (
-                "Copied parent background/person/car classifier and box regression rows"
+                "Preserved the trained parent's three-class prediction head"
+                if self.detector.spec.get("origin") == "trained"
+                else "Copied parent background/person/car classifier and box regression rows"
             ),
             "head_class_slots": 3,
             "native_to_coco": IRIS_NATIVE_TO_COCO,
@@ -248,28 +471,67 @@ class _HeadTrainer:
         if not torch.isfinite(loss).item():
             raise ValueError("Nonfinite training loss; no checkpoint was published")
         loss.backward()
-        if any(
-            parameter.grad is None or not torch.isfinite(parameter.grad).all().item()
-            for parameter in self.parameters
-        ):
-            raise ValueError("Missing or nonfinite prediction-head gradients")
+        for name, parameter in self.selected_parameters.items():
+            if parameter.grad is None or not torch.isfinite(parameter.grad).all().item():
+                raise ValueError(f"Missing or nonfinite trainable gradient: {name}")
+            if torch.any(parameter.grad != 0).item():
+                self.gradient_modules.update(
+                    prefix
+                    for prefix in self.scope["trainable_modules"]
+                    if _matches_module(name, prefix)
+                )
+        if any(parameter.grad is not None for parameter in self.frozen_parameters.values()):
+            raise ValueError("A frozen parameter unexpectedly received a gradient")
         self.optimizer.step()
         if any(not torch.isfinite(parameter).all().item() for parameter in self.parameters):
-            raise ValueError("Nonfinite prediction-head weights; no checkpoint was published")
+            raise ValueError("Nonfinite trainable weights; no checkpoint was published")
         return {
             "loss": float(loss.detach()),
             "losses": {name: float(value.detach()) for name, value in losses.items()},
         }
 
     def write_checkpoint(self, path: Path) -> dict:
-        changed = any(
-            not self.torch.equal(before, parameter.detach())
-            for before, parameter in zip(self.initial, self.parameters, strict=True)
-        )
-        if not changed:
-            raise ValueError("No prediction-head weights changed; no checkpoint was published")
+        if any(not self.torch.isfinite(parameter).all().item() for parameter in self.parameters):
+            raise ValueError("Nonfinite trainable weights; no checkpoint was published")
+        changes = {
+            name: not self.torch.equal(self.initial[name], parameter.detach())
+            for name, parameter in self.selected_parameters.items()
+        }
+        if not any(changes.values()):
+            raise ValueError("No trainable weights changed; no checkpoint was published")
+        if any(
+            _tensor_digest(parameter) != self.frozen_initial[name]
+            for name, parameter in self.frozen_parameters.items()
+        ):
+            raise ValueError("Frozen model weights changed; no checkpoint was published")
+        current_buffers = dict(self.model.named_buffers())
+        if current_buffers.keys() != self.initial_buffers.keys() or any(
+            not self.torch.equal(before, current_buffers[name])
+            for name, before in self.initial_buffers.items()
+        ):
+            raise ValueError("Frozen model buffers changed; no checkpoint was published")
+        module_changes = {
+            prefix: any(
+                changed and _matches_module(name, prefix) for name, changed in changes.items()
+            )
+            for prefix in self.scope["trainable_modules"]
+        }
         self.torch.save(self.model.eval().state_dict(), path)
-        return {"head_weights_changed": True}
+        return {
+            "head_weights_changed": any(
+                changed and _matches_module(name, "roi_heads.box_predictor")
+                for name, changed in changes.items()
+            ),
+            "trainable_weights_changed": True,
+            "changed_trainable_modules": [
+                prefix for prefix, changed in module_changes.items() if changed
+            ],
+            "trainable_module_changes": module_changes,
+            "modules_with_nonzero_gradients": sorted(self.gradient_modules),
+            "frozen_parameters_unchanged": True,
+            "frozen_batchnorm_buffers_unchanged": True,
+            "model_buffers_unchanged": True,
+        }
 
 
 def run_training(
@@ -293,6 +555,7 @@ def run_training(
     if cancelled():
         return {**result, "cancelled": True}
     config = training["config"]
+    selected_scope = _scope_from_config(config)
     dataset = store.get("dataset_versions", training["dataset_id"])
     if dataset is None or dataset["manifest_sha256"] != config["dataset_manifest_sha256"]:
         raise ValueError("Dataset changed since training was queued")
@@ -302,7 +565,7 @@ def run_training(
         raise ValueError("Parent checkpoint changed since training was queued")
     _check_holdouts(manifest, parent)
     frames = [frame for frame in manifest["frames"] if frame["split"] == "train"]
-    progress(0, "Loading the local parent checkpoint; freezing backbone and proposal network")
+    progress(0, f"Loading the local parent checkpoint; scope: {selected_scope['label']}")
     trainer = (trainer_factory or _HeadTrainer)(store.root, training["parent_model_id"], config)
     metadata = {
         **trainer.metadata,
@@ -319,6 +582,9 @@ def run_training(
             | {frame["sha256"] for frame in frames}
         ),
         "config": config,
+        "scope": selected_scope["id"],
+        "scope_version": config.get("scope_version", 0),
+        "trainable_modules": selected_scope["trainable_modules"],
         "quality_metrics": None,
     }
     store.update("training_runs", training_id, {"metadata": metadata})
@@ -347,7 +613,7 @@ def run_training(
         result["steps_completed"] = step
         progress(
             step / config["steps"],
-            f"CPU head fine-tuning: step {step}/{config['steps']}, "
+            f"CPU fine-tuning ({selected_scope['label']}): step {step}/{config['steps']}, "
             f"training loss {measurement['loss']:.4f}",
         )
     if cancelled():

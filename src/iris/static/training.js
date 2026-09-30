@@ -22,10 +22,41 @@
     trainingDetail: null,
     trainingRequest: 0,
     trainingBusy: false,
+    trainingOperation: null,
+    trainingPreview: null,
+    trainingPreviewKey: null,
+    trainingPreviewRequest: 0,
+    trainingModelsRequest: 0,
+    trainingModelsLoading: false,
     historyRequest: 0,
     jobStatuses: new Map(),
   };
   const splitNames = { train: "Train", val: "Validation", test: "Test" };
+  const trainingScopes = {
+    prediction_head_only: {
+      label: "Light · prediction head",
+      description:
+        "Update the final classification and box prediction layer. Keep visual features frozen for a small baseline run.",
+      cost:
+        "The light scope updates the fewest parameters. The detector still processes each training image on CPU.",
+    },
+    partial_backbone: {
+      label: "Partial · late features and detection heads",
+      description:
+        "Update late visual features and the detection heads. This is an option when adapting to a different camera or image appearance, including analog footage.",
+      cost:
+        "Updating features and detection heads requires more CPU work and memory than the light scope. No duration estimate is available.",
+    },
+    full_model: {
+      label: "Full · all trainable layers",
+      description:
+        "Update all trainable layers for the broadest adaptation. This can overfit a small dataset; use held-out evaluation to check the result.",
+      cost:
+        "Updating all trainable layers requires more CPU work and memory than the light scope. No duration estimate is available.",
+    },
+  };
+  const scopeLabel = (scope) =>
+    trainingScopes[scope || "prediction_head_only"]?.label || scope;
 
   function showError(selector, error) {
     $(selector).textContent = error?.message || "";
@@ -212,7 +243,8 @@
     if (workspace.datasets.some((item) => item.id === oldTraining))
       training.value = oldTraining;
     training.disabled = !workspace.datasets.length || workspace.trainingBusy;
-    updateTrainingLaunch();
+    if (training.value !== oldTraining) invalidateTrainingPreview();
+    else updateTrainingLaunch();
   }
 
   function renderDatasetHistory() {
@@ -401,25 +433,156 @@
     }
   }
 
+  function trainingPayload() {
+    return {
+      name: $("#training-name").value.trim(),
+      dataset_id: $("#training-dataset").value,
+      parent_model_id: $("#training-parent").value,
+      steps: Number($("#training-steps").value),
+      learning_rate: Number($("#training-rate").value),
+      seed: Number($("#training-seed").value),
+      scope: $("#training-scope").value,
+    };
+  }
+
+  function invalidateTrainingPreview() {
+    ++workspace.trainingPreviewRequest;
+    workspace.trainingPreview = null;
+    workspace.trainingPreviewKey = null;
+    $("#training-preview-result").hidden = true;
+    $("#training-preview-summary").textContent = "";
+    $("#training-preview-counts").replaceChildren();
+    $("#training-preview-notes").replaceChildren();
+    updateTrainingLaunch();
+  }
+
   function updateTrainingLaunch() {
     const model = workspace.models.find(
       (item) => item.id === $("#training-parent").value,
     );
-    $("#training-start").disabled =
+    const unavailable =
       workspace.trainingBusy ||
+      workspace.trainingModelsLoading ||
       !$("#training-dataset").value ||
       model?.status !== "ready" ||
       !model.training;
-    $("#training-start").textContent = workspace.trainingBusy
-      ? "Queuing training…"
-      : "Start CPU training →";
+    for (const field of $("#training-form").querySelectorAll("input, select"))
+      field.disabled = workspace.trainingBusy;
+    $("#training-dataset").disabled =
+      workspace.trainingBusy || !workspace.datasets.length;
+    $("#training-parent").disabled =
+      workspace.trainingBusy ||
+      workspace.trainingModelsLoading ||
+      !workspace.models.some((item) => item.training && item.status === "ready");
+    $("#training-preview").disabled = unavailable;
+    $("#training-preview").textContent =
+      workspace.trainingOperation === "preview"
+        ? "Checking training plan…"
+        : "Preview training plan";
+    $("#training-start").disabled =
+      unavailable ||
+      !workspace.trainingPreview ||
+      workspace.trainingPreviewKey !== JSON.stringify(trainingPayload());
+    $("#training-start").textContent =
+      workspace.trainingOperation === "start"
+        ? "Queuing training…"
+        : "Start CPU training →";
+    const selected = trainingScopes[$("#training-scope").value];
+    $("#training-scope-description").textContent =
+      selected?.description || "Choose a training depth.";
+    $("#training-scope-cost").textContent = selected?.cost || "";
+  }
+
+  function renderTrainingPreview(preview, payload) {
+    if (
+      preview.config?.scope !== payload.scope ||
+      preview.scope?.id !== payload.scope ||
+      preview.dataset?.id !== payload.dataset_id ||
+      preview.parent?.id !== payload.parent_model_id ||
+      preview.workload?.steps !== payload.steps ||
+      preview.workload?.device !== "cpu"
+    )
+      throw new Error(
+        "The training preview does not match these settings. Preview the plan again.",
+      );
+    workspace.trainingPreview = preview;
+    workspace.trainingPreviewKey = JSON.stringify(payload);
+    $("#training-preview-result").hidden = false;
+    $("#training-preview-scope").textContent = scopeLabel(preview.scope.id);
+    $("#training-preview-summary").textContent =
+      `${preview.dataset.name} · starting from ${preview.parent.name} · learning rate ${payload.learning_rate} · seed ${payload.seed}`;
+    const counts = $("#training-preview-counts");
+    counts.replaceChildren();
+    for (const [label, count] of [
+      ["Training images", preview.dataset.train_images],
+      ["Image visits / optimizer steps", preview.workload.image_visits],
+      [
+        "Distinct images reached by the plan",
+        preview.workload.unique_images_min,
+      ],
+    ]) {
+      const item = node("div");
+      item.append(node("strong", "", String(count)), node("span", "", label));
+      counts.append(item);
+    }
+    $("#training-preview-workload").textContent = [
+      `CPU · batch size ${preview.workload.batch_size} · ${preview.workload.steps} optimizer steps maximum`,
+      `${preview.workload.full_passes} complete pass(es) through the training images + ${preview.workload.remainder_images} additional image visits.`,
+      `${preview.dataset.positive_train_images} training images contain target boxes; ${preview.dataset.annotation_count} training annotations.`,
+    ].join(" · ");
+    $("#training-preview-modules").textContent =
+      `Layers to update: ${(preview.scope.trainable_modules || []).join(", ")}. Parameter counts are recorded when the training model is loaded.`;
+    warnings("#training-preview-notes", preview.notes);
+    updateTrainingLaunch();
+  }
+
+  async function previewTraining(event) {
+    event.preventDefault();
+    if (
+      $("#training-preview").disabled ||
+      !$("#training-form").reportValidity()
+    )
+      return;
+    const payload = trainingPayload();
+    if (!payload.name) return $("#training-name").focus();
+    invalidateTrainingPreview();
+    const request = workspace.trainingPreviewRequest;
+    workspace.trainingBusy = true;
+    workspace.trainingOperation = "preview";
+    updateTrainingLaunch();
+    showError("#training-error", null);
+    try {
+      const preview = await api("/api/trainings/preview", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (
+        request !== workspace.trainingPreviewRequest ||
+        !workspace.visible ||
+        JSON.stringify(payload) !== JSON.stringify(trainingPayload())
+      )
+        return;
+      renderTrainingPreview(preview, payload);
+    } catch (error) {
+      if (request === workspace.trainingPreviewRequest && workspace.visible)
+        showError("#training-error", error);
+    } finally {
+      workspace.trainingBusy = false;
+      workspace.trainingOperation = null;
+      updateTrainingLaunch();
+    }
   }
 
   async function refreshTrainingModels() {
+    const request = ++workspace.trainingModelsRequest;
     const select = $("#training-parent");
     const previous = select.value;
+    workspace.trainingModelsLoading = true;
+    invalidateTrainingPreview();
     try {
-      workspace.models = await api("/api/models");
+      const models = await api("/api/models");
+      if (request !== workspace.trainingModelsRequest) return;
+      workspace.models = models;
       const eligible = workspace.models.filter((model) => model.training);
       select.replaceChildren();
       for (const model of eligible) {
@@ -442,11 +605,16 @@
         : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional CPU runtime are required. Check Model comparison for setup instructions.";
       updateTrainingLaunch();
     } catch (error) {
+      if (request !== workspace.trainingModelsRequest) return;
       workspace.models = [];
       select.replaceChildren(new Option("Model availability unavailable", ""));
       select.disabled = true;
       $("#training-model-status").textContent = error.message;
-      updateTrainingLaunch();
+    } finally {
+      if (request === workspace.trainingModelsRequest) {
+        workspace.trainingModelsLoading = false;
+        updateTrainingLaunch();
+      }
     }
   }
 
@@ -465,7 +633,7 @@
     for (const run of workspace.trainings)
       select.append(
         new Option(
-          `${run.name} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
+          `${run.name} · ${scopeLabel(run.config?.scope)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
           run.id,
         ),
       );
@@ -549,7 +717,23 @@
         (item) => item.id === detail.dataset_id,
       );
       $("#training-detail-context").textContent =
-        `${dataset?.name || detail.dataset_id} · CPU · ${detail.history.length}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · CPU · ${detail.history.length}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+      const trained = detail.metadata?.trainable_parameters;
+      const total = detail.metadata?.total_parameters;
+      const modules =
+        detail.metadata?.trainable_modules ||
+        detail.config.trainable_modules ||
+        (detail.config.scope === undefined ||
+        detail.config.scope === "prediction_head_only"
+          ? ["roi_heads.box_predictor"]
+          : []);
+      const counts =
+        Number.isFinite(trained) && Number.isFinite(total)
+          ? `${trained.toLocaleString()} of ${total.toLocaleString()} parameters trainable. `
+          : "Parameter counts become available when the training model is loaded. ";
+      $("#training-detail-scope").textContent =
+        counts +
+        (modules.length ? `Trainable layers: ${modules.join(", ")}.` : "");
       const badge = $("#training-detail-status");
       badge.textContent = detail.job?.status || "Unknown status";
       badge.className = `job-status ${detail.job?.status || ""}`;
@@ -591,8 +775,8 @@
     $("#training-detail").hidden = true;
     loadTraining(workspace.trainingId);
   });
-  $("#training-parent").addEventListener("change", updateTrainingLaunch);
-  $("#training-dataset").addEventListener("change", updateTrainingLaunch);
+  $("#training-form").addEventListener("input", invalidateTrainingPreview);
+  $("#training-form").addEventListener("change", invalidateTrainingPreview);
   $("#dataset-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if ($("#dataset-create").disabled) return;
@@ -624,7 +808,7 @@
       await Promise.all([refreshDatasets(), refreshCandidates()]);
       $("#training-dataset").value = dataset.id;
       $("#dataset-parent").value = dataset.id;
-      updateTrainingLaunch();
+      invalidateTrainingPreview();
       notify(
         `Dataset release “${dataset.name}” saved with frozen labels and split assignments.`,
       );
@@ -635,19 +819,18 @@
       renderCandidates();
     }
   });
-  $("#training-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if ($("#training-start").disabled) return;
-    const payload = {
-      name: $("#training-name").value.trim(),
-      dataset_id: $("#training-dataset").value,
-      parent_model_id: $("#training-parent").value,
-      steps: Number($("#training-steps").value),
-      learning_rate: Number($("#training-rate").value),
-      seed: Number($("#training-seed").value),
-    };
+  $("#training-form").addEventListener("submit", previewTraining);
+  $("#training-start").addEventListener("click", async () => {
+    updateTrainingLaunch();
+    if (
+      $("#training-start").disabled ||
+      !$("#training-form").reportValidity()
+    )
+      return;
+    const payload = trainingPayload();
     if (!payload.name) return $("#training-name").focus();
     workspace.trainingBusy = true;
+    workspace.trainingOperation = "start";
     updateTrainingLaunch();
     showError("#training-error", null);
     try {
@@ -657,15 +840,18 @@
       });
       workspace.trainingId = detail.id;
       $("#training-name").value = "";
+      invalidateTrainingPreview();
       await refreshTrainings();
       await refreshJobs();
       notify(
         `Training “${detail.name}” queued for ${payload.steps} CPU steps. Follow progress or cancel in Processing jobs.`,
       );
     } catch (error) {
+      invalidateTrainingPreview();
       showError("#training-error", error);
     } finally {
       workspace.trainingBusy = false;
+      workspace.trainingOperation = null;
       updateTrainingLaunch();
     }
   });
@@ -691,10 +877,14 @@
       refreshDatasets();
       refreshTrainingModels();
       refreshTrainings();
-    } else resetDatasetExport();
+    } else {
+      resetDatasetExport();
+      invalidateTrainingPreview();
+    }
   });
   window.addEventListener("pagehide", () => {
     ++workspace.datasetRequest;
+    invalidateTrainingPreview();
     resetDatasetExport();
     for (const url of workspace.exportUrls.keys()) releaseExportUrl(url);
   });

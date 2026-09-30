@@ -42,8 +42,12 @@ Torchvision supports a [standard detection fine-tuning workflow](https://docs.py
 The training integration replaces the Faster R-CNN prediction head for the
 project classes and records the frozen layers and optimizer configuration.
 It copies the parent's background/person/car rows, optimizes only the final
-classifier and box regressor, and preserves the feature extractor and proposal
-network. Trained descendants can become parents of subsequent runs. Native
+classifier and box regressor by default, and preserves the feature extractor and
+proposal network in this light mode. Each run can instead select partial or full
+adaptation. Partial training unfreezes the last MobileNet stage (`backbone.body`
+blocks 13–16), the FPN, RPN and ROI heads; full training unfreezes all learnable
+parameters. Frozen batch-normalization statistics remain fixed in all modes.
+Trained descendants can become parents of subsequent runs at any depth. Native
 labels 1/2 map explicitly to COCO IDs 1/3 for saved comparisons and annotation
 proposals; raw native IDs remain recorded.
 Checkpoints store model state and explicit architecture metadata. Installation
@@ -146,7 +150,18 @@ to 256 MiB and removed after the response, including interrupted downloads. No
 dataset revision, job or model is created. See [the export contract](dataset-export.md).
 
 Training snapshots the dataset and parent checkpoint hashes before queueing and
-checks them again in the worker. CPU SGD runs for a bounded number of steps with
+checks them again in the worker. A read-only preview validates the same inputs
+and reports train images, planned visits and complete passes without loading a
+model or creating a job. The interface requires another preview after an edit.
+The scope and its versioned module contract are frozen in each run; the worker
+rejects unsupported or changed contracts. Existing head-only runs remain valid.
+Actual trainable/frozen parameter counts and changed modules are recorded with
+the checkpoint; parameter and normalization checks preserve frozen model state.
+Training uses a zero RPN score threshold so negative images still supply
+background proposals; the inference preset's threshold can discard every
+proposal on such images. Training proposal filtering is recorded separately
+from inference filtering, which remains unchanged when loading a checkpoint.
+CPU SGD runs for a bounded number of steps with
 batch size one and a recorded seed; only train images are read. Loss components
 and visited frame IDs are persisted each step. Completed state dictionaries are
 published atomically with the model registry entry and loaded with `weights_only`.

@@ -58,6 +58,56 @@
   margin: 16px 0;
 }
 
+.training-preview {
+  padding: 16px;
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9f4;
+}
+
+.training-preview h3 {
+  font-size: 13px;
+}
+
+.training-preview > .field-hint,
+.training-preview > .button {
+  margin-top: 13px;
+}
+
+.training-preview .dataset-counts {
+  margin: 15px 0;
+}
+
+.training-preview .dataset-counts > div {
+  padding: 10px;
+}
+
+.training-preview .dataset-counts strong {
+  font-size: 21px;
+}
+
+.training-preview-modules {
+  font-size: 11px;
+  margin: 14px 0;
+}
+
+.training-preview-modules summary {
+  cursor: pointer;
+  color: var(--green);
+}
+
+.training-preview .field-hint,
+#training-detail-scope {
+  overflow-wrap: anywhere;
+}
+
+#training-form input:disabled,
+#training-form select:disabled {
+  background: #f2f4f0;
+  color: #879281;
+}
+
 .dataset-panel-body > label,
 .dataset-panel-body > .field-hint,
 .dataset-panel-body > .button,
@@ -255,6 +305,14 @@
 
   .dataset-panel-body {
     padding: 15px;
+  }
+
+  .training-preview {
+    padding: 12px;
+  }
+
+  .training-preview .dataset-counts {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dataset-group,
