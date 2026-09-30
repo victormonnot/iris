@@ -9,7 +9,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -58,6 +58,14 @@ from iris.models import catalog
 from iris.review_queue import review_queue
 from iris.store import Store, new_id, now
 from iris.training import create_training, training_detail
+from iris.video_reviews import (
+    get_review,
+    list_reviews,
+    prepare_review,
+    preview_passage_extraction,
+    queue_review,
+    read_review_images,
+)
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 2 * 1024**3
@@ -197,6 +205,36 @@ class AssistanceInput(AssistancePreviewInput):
     max_cost_usd: float | None = Field(default=None, ge=0, le=100)
 
 
+class VideoReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    provider: Literal["ollama", "alibaba"] = "ollama"
+    model: str | None = Field(default=None, max_length=160)
+    start_seconds: float = Field(default=0, ge=0)
+    end_seconds: float | None = Field(default=None, gt=0)
+    sample_count: int = Field(default=8, ge=2, le=12)
+    instructions: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def check_range(self):
+        if self.end_seconds is not None and self.end_seconds <= self.start_seconds:
+            raise ValueError("End time must be greater than start time")
+        return self
+
+
+class VideoReviewRunInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    allow_external: bool = False
+    max_cost_usd: float | None = Field(default=None, ge=0, le=100)
+
+
+class PassageExtractionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    passage_ids: list[str] = Field(min_length=1, max_length=6)
+    frames_per_passage: int = Field(default=8, ge=1, le=50)
+    context_seconds: float = Field(default=2, ge=0, le=30)
+    coverage_frames: int = Field(default=8, ge=0, le=32)
+
+
 class AssistanceBatchPreviewInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     frame_ids: list[str] = Field(min_length=1, max_length=25)
@@ -322,6 +360,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "media_import": True,
                 "frame_extraction": True,
                 "video_sampling_preview": True,
+                "video_passage_review": True,
                 "frame_selection": True,
                 "inference": True,
                 "annotation": True,
@@ -858,6 +897,73 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         extraction_preview(asset_id, payload)
         try:
             return jobs.submit(asset_id, extraction_config(payload))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    def video_review_action(action):
+        try:
+            return action()
+        except KeyError as exc:
+            raise HTTPException(404, "Video review not found") from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/video-reviews/preview", status_code=201)
+    def video_review_preview(asset_id: str, payload: VideoReviewInput):
+        require("assets", asset_id)
+        if not video_preview_lock.acquire(blocking=False):
+            raise HTTPException(409, "A video preview is already being decoded. Try again shortly.")
+        try:
+            return video_review_action(
+                lambda: prepare_review(store, asset_id, **payload.model_dump())
+            )
+        finally:
+            video_preview_lock.release()
+
+    @app.get("/api/assets/{asset_id}/video-reviews")
+    def video_review_history(asset_id: str):
+        require("assets", asset_id)
+        return video_review_action(lambda: list_reviews(store, asset_id))
+
+    @app.get("/api/video-reviews/{review_id}")
+    def video_review_detail(review_id: str):
+        require("video_reviews", review_id)
+        return video_review_action(lambda: get_review(store, review_id))
+
+    @app.get("/api/video-reviews/{review_id}/images/{index}")
+    def video_review_image(review_id: str, index: int):
+        record = require("video_reviews", review_id)
+        if not 0 <= index < len(record["images"]):
+            raise HTTPException(404, "Preview image not found")
+        content = video_review_action(lambda: read_review_images(store, record)[index])
+        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/video-reviews/{review_id}/run", status_code=202)
+    def video_review_run(review_id: str, payload: VideoReviewRunInput):
+        require("video_reviews", review_id)
+        return video_review_action(
+            lambda: queue_review(store, jobs, review_id, **payload.model_dump())
+        )
+
+    @app.post("/api/video-reviews/{review_id}/extract/preview")
+    def passage_extraction_preview(review_id: str, payload: PassageExtractionInput):
+        require("video_reviews", review_id)
+        return video_review_action(
+            lambda: preview_passage_extraction(store, review_id, **payload.model_dump())
+        )
+
+    @app.post("/api/video-reviews/{review_id}/extract", status_code=202)
+    def passage_extract(review_id: str, payload: PassageExtractionInput):
+        require("video_reviews", review_id)
+        plan = video_review_action(
+            lambda: preview_passage_extraction(store, review_id, **payload.model_dump())
+        )
+        try:
+            return jobs.submit(
+                plan["asset_id"], {"sampling_mode": "passages", "passages_plan": plan}
+            )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

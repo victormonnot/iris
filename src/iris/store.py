@@ -152,6 +152,13 @@ CREATE TABLE IF NOT EXISTS dataset_imports (
     summary TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', result TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS video_reviews (
+    id TEXT PRIMARY KEY, asset_id TEXT NOT NULL REFERENCES assets(id), config TEXT NOT NULL,
+    images TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+    job_id TEXT UNIQUE REFERENCES jobs(id), prompt TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}', raw_response TEXT, result TEXT, error TEXT
+);
+CREATE INDEX IF NOT EXISTS video_reviews_asset ON video_reviews(asset_id);
 """
 
 IMPORTED_SUGGESTIONS_MIGRATION = """
@@ -240,6 +247,7 @@ TABLES = {
     "evaluation_predictions",
     "model_references",
     "dataset_imports",
+    "video_reviews",
 }
 
 
@@ -272,7 +280,7 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11):
                 raise RuntimeError(f"Unsupported database version: {version}")
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
@@ -312,7 +320,7 @@ class Store:
                 )
             try:
                 conn.executescript(
-                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=10;"
+                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=11;"
                 )
                 if conn.execute("PRAGMA foreign_key_check").fetchone():
                     raise RuntimeError("Database migration found broken foreign keys")

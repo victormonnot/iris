@@ -12,6 +12,7 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
+    <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison.js" defer></script>
     <script src="/static/annotation-tools.js" defer></script>
     <script src="/static/annotation.js" defer></script>
@@ -2163,6 +2164,79 @@ ollama pull qwen3-vl:4b-instruct</pre
           </button>
         </div>
       </form>
+    </dialog>
+    <dialog id="video-review-dialog" class="modal video-review-modal" aria-labelledby="video-review-title">
+      <div class="modal-heading">
+        <div><div class="eyebrow">Assisted video review</div><h2 id="video-review-title">Suggest passages</h2></div>
+        <button id="video-review-close" class="icon-button" type="button" aria-label="Close passage review">×</button>
+      </div>
+      <p id="video-review-source" class="small muted"></p>
+      <p class="video-review-notice">A multimodal model reviews a small set of sampled images, not the full video. Brief events and details between samples can be missed. You choose which proposed passages to extract; annotations still require human review.</p>
+      <form id="video-review-form">
+        <div class="form-grid">
+          <div><label for="video-review-provider">Execution and provider</label><select id="video-review-provider" required></select></div>
+          <div><label for="video-review-model">Model</label><select id="video-review-model" required></select></div>
+          <div><label for="video-review-start">Start time (seconds)</label><input id="video-review-start" type="number" min="0" step="any" value="0" required /></div>
+          <div><label for="video-review-end">End time (seconds)</label><input id="video-review-end" type="number" min="0.001" step="any" placeholder="End of video" /></div>
+          <div><label for="video-review-samples">Images to show the model</label><input id="video-review-samples" type="number" min="2" max="12" step="1" value="8" required /></div>
+          <div class="video-review-wide"><label for="video-review-instructions">What should the model look for? (optional)</label><textarea id="video-review-instructions" rows="2" maxlength="2000" placeholder="e.g. People or cars that are small, blurred or partly hidden"></textarea></div>
+        </div>
+        <p id="video-review-provider-status" class="field-hint" role="status"></p>
+        <div class="video-review-actions">
+          <button id="video-review-refresh-models" type="button" class="text-button">Refresh models</button>
+          <button id="video-review-preview" type="submit" class="button button-secondary">Prepare image preview</button>
+        </div>
+        <p class="field-hint">Preparing the preview stores up to 12 JPEG images locally. It does not call a model or send images to an API.</p>
+      </form>
+      <div class="video-review-history-row">
+        <div><label for="video-review-history">Saved reviews and previews</label><select id="video-review-history"><option value="">Choose a saved review…</option></select></div>
+        <button id="video-review-refresh-history" type="button" class="text-button">Refresh history</button>
+      </div>
+      <p id="video-review-status" class="field-hint" role="status" aria-live="polite"></p>
+      <p id="video-review-error" class="inline-error" role="alert" hidden></p>
+      <section id="video-review-detail" hidden aria-label="Saved passage review">
+        <div class="video-review-section-heading"><h3>Images prepared for review</h3><span id="video-review-record-status" class="small muted"></span></div>
+        <p id="video-review-preview-summary" class="field-hint"></p>
+        <div id="video-review-images" class="video-review-images"></div>
+        <p id="video-review-image-status" class="field-hint" role="status"></p>
+        <div id="video-review-run-actions">
+          <p id="video-review-expiry" class="field-hint"></p>
+          <div id="video-review-external" class="video-review-notice" hidden>
+            <p id="video-review-destination"></p>
+            <p>These exact images and your instructions will leave this computer. Alibaba Cloud Model Studio uses Frankfurt API access with Global inference deployment.</p>
+            <p id="video-review-cost"></p>
+            <label class="checkbox-label" for="video-review-consent"><input id="video-review-consent" type="checkbox" /><span id="video-review-consent-label"></span></label>
+          </div>
+          <button id="video-review-run" type="button" class="button button-primary">Analyze locally</button>
+        </div>
+        <div id="video-review-job" class="video-review-job" hidden>
+          <p id="video-review-job-status" class="small" role="status"></p>
+          <progress id="video-review-progress" max="1" value="0" aria-label="Passage review progress"></progress>
+          <button id="video-review-cancel-job" type="button" class="text-button">Cancel review</button>
+        </div>
+        <section id="video-review-result" hidden aria-label="Proposed passages">
+          <h3>Choose passages to extract</h3>
+          <p id="video-review-summary" class="small"></p>
+          <p class="field-hint">These are proposals based only on the images above. Uncertainty is reported by the model and is not a calibrated confidence score. No passage is selected automatically.</p>
+          <div id="video-review-passages" class="video-review-passages"></div>
+          <p id="video-review-empty" class="video-review-notice" hidden>The model proposed no passages. This does not prove that the video contains no useful events. Review the source or use regular frame extraction.</p>
+          <form id="video-review-extract-form">
+            <div class="form-grid">
+              <div><label for="video-review-frames">Frames per selected passage</label><input id="video-review-frames" type="number" min="1" max="50" step="1" value="8" required /></div>
+              <div><label for="video-review-context">Context before and after (seconds)</label><input id="video-review-context" type="number" min="0" max="30" step="any" value="2" required /></div>
+              <div><label for="video-review-coverage">Extra images across the original range</label><input id="video-review-coverage" type="number" min="0" max="32" step="1" value="8" required /></div>
+            </div>
+            <p class="field-hint">Keep some regular coverage to include moments the model did not flag. Overlapping positions are merged; existing frames and duplicate images may reduce the number added. Extracted frames remain unselected.</p>
+            <button id="video-review-plan" type="submit" class="button button-secondary">Preview extraction plan</button>
+          </form>
+          <div id="video-review-extraction-plan" class="video-review-notice" hidden>
+            <p id="video-review-plan-summary" class="small"></p>
+            <ul id="video-review-plan-ranges"></ul>
+            <button id="video-review-extract" type="button" class="button button-primary">Extract chosen passages</button>
+          </div>
+        </section>
+        <details class="video-review-provenance"><summary>Review provenance</summary><pre id="video-review-provenance"></pre></details>
+      </section>
     </dialog>
     <dialog
       id="frame-dialog"

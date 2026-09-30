@@ -202,7 +202,15 @@ Model files, datasets, private media, and credentials stay outside Git.
   thumbnails or extraction. Completed jobs retain the plan and skip counts;
   cancellation preserves completed frames and retries reuse the same indices.
   Duplicate filtering may reduce temporal coverage. All extracted frames remain
-  unselected until human selection; no semantic video analysis is implied.
+  unselected until human selection; temporal sampling itself implies no semantic
+  analysis. A separate [video passage review](video-review.md) prepares immutable
+  JPEG storyboards and queues a single multimodal request. Model outputs identify
+  observed sample IDs; the server resolves their timestamps. Passage extraction
+  requires a separate human choice and recomputes the frozen extraction plan.
+  Exact images, provider identity, prompts and raw responses remain recorded;
+  external processing requires approval and a per-request budget. Review jobs
+  never create frames, annotations or selection changes. Their result and final
+  success state publish atomically, and interrupted requests are never retried.
 - Every frame retains its source hash, session, extraction configuration, decoded
   dimensions, and source timestamp when available. Exact duplicates are detected
   using content hashes; related scenes need human grouping as well.

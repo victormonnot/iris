@@ -68,8 +68,12 @@ The timeline uses metadata; thumbnail preview decodes at most 12 planned
 positions after checking the source checksum. A thumbnail preview shows only a
 subset when more positions are planned. The worker checks the same source
 checksum before extraction and records the sampling method and resolved plan.
-This is temporal sampling, not a model judging which events are interesting.
-Multimodal proposals of video passages are not implemented yet.
+This sampling preview distributes positions in time; it does not judge which
+events are interesting. For model-assisted selection, use **Suggest passages**
+on a video: prepare a timestamped storyboard, review the exact images, and
+explicitly start one local or API model request. Select the proposed passages
+you want to extract, optionally keeping extra samples across the full range.
+See [video passage review](docs/video-review.md) for the workflow and limits.
 
 Exact duplicate frames are skipped within each video. Optional perceptual
 deduplication is disabled by default and is only a heuristic: it can conflate

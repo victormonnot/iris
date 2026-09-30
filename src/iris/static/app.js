@@ -245,7 +245,15 @@ function renderAssets() {
         `Extract frames from ${asset.filename}`,
       );
       button.addEventListener("click", () => openExtraction(asset));
-      row.append(button);
+      const actions = node("div", "asset-video-actions");
+      const review = node("button", "button button-secondary asset-action", "Suggest passages");
+      review.type = "button";
+      review.setAttribute("aria-label", `Suggest passages from ${asset.filename}`);
+      review.addEventListener("click", () => window.dispatchEvent(new CustomEvent(
+        "iris:video-review", { detail: { asset } },
+      )));
+      actions.append(button, review);
+      row.append(actions);
     } else {
       row.append(node("span", "asset-image-note", "Image imported"));
     }
@@ -666,7 +674,18 @@ function renderInspection() {
     ["Frame pixels · SHA-256", frame.sha256],
     ["Source file · SHA-256", source?.sha256 || "Unavailable"],
   ];
-  if (frame.extraction?.sampling_mode || frame.extraction?.interval_seconds != null) {
+  if (frame.extraction?.sampling_mode === "passages") {
+    const config = frame.extraction;
+    const plan = config.passages_plan;
+    metadata.splice(4, 0,
+      ["Extraction settings", `Human-chosen passages · ${plan?.frames_per_passage ?? config.frames_per_passage} frames per passage · ${plan?.context_seconds ?? config.context_seconds}s context`],
+      ["Regular coverage", `${plan?.coverage_frames ?? config.coverage_frames ?? 0} extra images requested across the original range`],
+      ["Source review", config.video_review_id],
+      ["Chosen passages", (config.passage_ids || []).join(", ")],
+      ["Sampling method", config.sampling_algorithm || plan?.algorithm || "iris-video-passages-v1"],
+      ["Similarity filtering", "Exact duplicates only"],
+    );
+  } else if (frame.extraction?.sampling_mode || frame.extraction?.interval_seconds != null) {
     const config = frame.extraction;
     const sampling = config.sampling_plan;
     const method = config.sampling_mode === "uniform"
@@ -760,7 +779,7 @@ function renderJobs() {
         "h3",
         "job-name",
         asset?.filename ||
-          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : job.kind === "train" ? "Detector training" : job.kind === "evaluate" ? "Quality evaluation" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
+          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : job.kind === "train" ? "Detector training" : job.kind === "evaluate" ? "Quality evaluation" : job.kind === "video_review" ? "Video passage review" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
       ),
       node("span", `job-status ${job.status}`, job.status),
     );

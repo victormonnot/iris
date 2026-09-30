@@ -321,6 +321,8 @@ def extract_frames(
     config: dict,
     progress: Callable[[float, str], None],
     cancelled: Callable[[], bool],
+    *,
+    plan: dict | None = None,
 ) -> dict:
     """Sample a bounded set of video positions; keep completed work on cancellation.
 
@@ -331,11 +333,24 @@ def extract_frames(
     asset = store.get("assets", asset_id)
     if asset is None or asset["kind"] != "video":
         raise ValueError("Extraction requires an imported video.")
-    plan = plan_extraction(asset["metadata"], config)
+    if plan is None:
+        plan = plan_extraction(asset["metadata"], config)
+    else:
+        # A passage plan must be reproduced from saved model proposals and an
+        # explicit human choice, never accepted as arbitrary frame indices.
+        from iris.video_reviews import validate_passage_extraction
+
+        plan = validate_passage_extraction(store, plan)
+        if plan["asset_id"] != asset_id or plan["source_sha256"] != asset["sha256"]:
+            raise ValueError("The extraction plan does not match this video source.")
     targets = [position["frame_index"] for position in plan["positions"]]
     fps = plan["fps"]
     dedup = config.get("dedup_hamming")
     provenance = dict(config)
+    if plan["sampling_mode"] == "passages":
+        provenance["sampling_algorithm"] = plan["algorithm"]
+        provenance["video_review_id"] = plan["video_review_id"]
+        provenance["passage_ids"] = plan["passage_ids"]
     if plan["sampling_mode"] == "uniform":
         provenance["sampling_algorithm"] = ALGORITHM
         provenance["sampling_plan"] = {

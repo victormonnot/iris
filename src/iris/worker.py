@@ -13,6 +13,7 @@ from iris.inference import run_comparison
 from iris.media import extract_frames
 from iris.store import Store, now
 from iris.training import run_training
+from iris.video_reviews import run_video_review
 
 
 def run(root: Path, job_id: str, parent_pid: int):
@@ -61,6 +62,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                 {**job["params"]["config"], "job_id": job_id},
                 progress,
                 cancelled,
+                plan=job["params"]["config"].get("passages_plan"),
             )
         elif job["kind"] == "infer":
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
@@ -70,6 +72,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_training(store, job["params"]["training_id"], progress, cancelled)
         elif job["kind"] == "evaluate":
             result = run_evaluation(store, job["params"]["evaluation_id"], progress, cancelled)
+        elif job["kind"] == "video_review":
+            result = run_video_review(store, job["params"]["video_review_id"], progress, cancelled)
         else:
             raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
@@ -95,6 +99,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "assist": "Annotation proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
                         "evaluate": "Evaluation complete; metrics and predictions saved",
+                        "video_review": "Video passages ready for human selection",
                     }[job["kind"]]
                 )
                 if status == "succeeded"

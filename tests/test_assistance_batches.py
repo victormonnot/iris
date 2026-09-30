@@ -752,6 +752,6 @@ def test_schema_seven_migration_preserves_existing_data(workspace):
         conn.execute("PRAGMA user_version=7")
     reopened = Store(store.root)
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
     assert reopened.list("assistance_batches") == []
     assert {table: reopened.list(table) for table in before} == before
