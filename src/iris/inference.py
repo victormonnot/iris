@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from PIL import Image
 
+from iris.comparison_replay import comparison_replay
 from iris.media import _pixel_hash
 from iris.models import TorchvisionDetector, catalog, get_spec
 from iris.store import Store, new_id, now
@@ -264,11 +265,13 @@ def comparison_detail(store: Store, comparison_id: str) -> dict:
     comparison = store.get("comparisons", comparison_id)
     if comparison is None:
         raise KeyError(comparison_id)
-    frames = []
+    frames, saved_frames, assets = [], [], {}
     session = store.get("sessions", comparison["session_id"])
     for frame_id in comparison["frame_ids"]:
         frame = store.get("frames", frame_id)
         asset = store.get("assets", frame["asset_id"])
+        saved_frames.append(frame)
+        assets[asset["id"]] = asset
         frames.append(
             {
                 **{key: value for key, value in frame.items() if key != "path"},
@@ -277,11 +280,14 @@ def comparison_detail(store: Store, comparison_id: str) -> dict:
                 "scene_group": session["scene_group"],
             }
         )
+    summary = comparison_summary(store, comparison)
+    predictions = store.list("predictions", comparison_id=comparison_id)
     return {
-        **comparison_summary(store, comparison),
+        **summary,
         "frames": frames,
         "runs": store.list("runs", comparison_id=comparison_id),
-        "predictions": store.list("predictions", comparison_id=comparison_id),
+        "predictions": predictions,
+        "replay": comparison_replay(store, saved_frames, assets, summary["lanes"], predictions),
     }
 
 

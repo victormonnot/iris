@@ -23,6 +23,14 @@
     previewError: null,
   };
   const svgNamespace = "http://www.w3.org/2000/svg";
+  const replay = window.IRISComparisonReplay.create($("#comparison-replay"), {
+    onSelectFrame(frameId) {
+      const position = comparison.detail?.frame_ids.indexOf(frameId) ?? -1;
+      if (position < 0 || position === comparison.position) return;
+      comparison.position = position;
+      renderFrame();
+    },
+  });
 
   function showError(selector, error) {
     const element = $(selector);
@@ -356,6 +364,7 @@
     $("#comparison-history-count").textContent = comparison.history.length;
     select.disabled = !comparison.history.length;
     if (!comparison.history.length) {
+      replay.reset();
       select.append(new Option("No comparisons yet", ""));
       $("#comparison-empty").hidden = false;
       $("#comparison-detail").hidden = true;
@@ -389,6 +398,7 @@
         comparison.activeId = history[0]?.id || null;
         comparison.detail = null;
         comparison.position = 0;
+        replay.reset();
       }
       renderHistory();
       showError("#comparison-history-error", null);
@@ -464,6 +474,8 @@
     populateClasses(resetFilters);
     renderSignals();
     renderFrame();
+    replay.update(detail, detail.frame_ids[comparison.position]);
+    if ($("#comparison-workspace").hidden || document.hidden) replay.deactivate();
     renderProvenance();
   }
 
@@ -611,13 +623,21 @@
     );
     const frameId = detail.frame_ids[comparison.position];
     const frame = detail.frames.find((item) => item.id === frameId);
+    const replaySample = detail.replay?.sources.flatMap((source) => source.samples)
+      .find((sample) => sample.frame_id === frameId);
+    const imageAvailable = Boolean(frame) && replaySample?.image_available !== false;
+    const sourcePosition = replaySample
+      ? Number.isFinite(replaySample.timestamp_seconds)
+        ? `≈ ${timestamp(replaySample.timestamp_seconds)}`
+        : "Video timestamp unavailable"
+      : timestamp(frame?.timestamp_seconds);
     $("#comparison-position").textContent =
       `Frame ${comparison.position + 1} / ${detail.frame_ids.length}`;
     $("#comparison-previous").disabled = comparison.position === 0;
     $("#comparison-next").disabled =
       comparison.position >= detail.frame_ids.length - 1;
     $("#comparison-frame-source").textContent = frame
-      ? `${frame.source_filename || frame.asset_id} · ${timestamp(frame.timestamp_seconds)} · ${frame.width} × ${frame.height}`
+      ? `${frame.source_filename || frame.asset_id} · ${sourcePosition} · ${frame.width} × ${frame.height}`
       : "Frame source unavailable";
     const container = $("#comparison-canvases");
     container.replaceChildren();
@@ -637,7 +657,7 @@
         ),
       );
       const visual = node("div", "prediction-visual");
-      if (frame)
+      if (imageAvailable)
         visual.append(
           predictionVisual(
             frame,
@@ -645,12 +665,14 @@
             index === 0 ? "#b1ee88" : "#80d4ff",
           ),
         );
-      if (!prediction || !detections.length)
+      if (!imageAvailable || !prediction || !detections.length)
         visual.append(
           node(
             "span",
             "prediction-empty",
-            !prediction
+            !imageAvailable
+              ? "Saved image unavailable. Prediction data is retained below."
+              : !prediction
               ? "Not processed"
               : `No detections at this display threshold${$("#comparison-class").value ? " for this class" : ""}`,
           ),
@@ -756,6 +778,7 @@
 
   function sessionChanged() {
     if (comparison.sessionId === state.sessionId) return;
+    replay.reset();
     comparison.sessionId = state.sessionId;
     comparison.history = [];
     comparison.activeId = null;
@@ -801,6 +824,7 @@
   for (const selector of ["#comparison-tile-size", "#comparison-tile-overlap"])
     $(selector).addEventListener("input", updateLaunch);
   $("#comparison-history").addEventListener("change", (event) => {
+    replay.reset();
     comparison.activeId = event.target.value;
     comparison.detail = null;
     $("#comparison-detail").hidden = true;
@@ -813,6 +837,7 @@
     $(selector).addEventListener("click", () => {
       comparison.position += step;
       renderFrame();
+      replay.selectFrame(comparison.detail.frame_ids[comparison.position], { seek: true });
     });
   }
   for (const selector of ["#comparison-confidence", "#comparison-class"]) {
@@ -842,6 +867,7 @@
         },
       );
       if (state.sessionId === sessionId) {
+        replay.reset();
         comparison.activeId = result.id;
         comparison.detail = null;
         $("#comparison-name").value = "";
@@ -860,6 +886,17 @@
     }
   });
   window.addEventListener("iris:session", sessionChanged);
+  window.addEventListener("iris:workspace", (event) => {
+    if (event.detail?.name !== "comparison") replay.deactivate();
+    else if (comparison.detail)
+      replay.update(comparison.detail, comparison.detail.frame_ids[comparison.position]);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) replay.deactivate();
+    else if (!$("#comparison-workspace").hidden && comparison.detail)
+      replay.update(comparison.detail, comparison.detail.frame_ids[comparison.position]);
+  });
+  window.addEventListener("pagehide", () => replay.deactivate());
   window.addEventListener("iris:frames", updateLaunch);
   window.addEventListener("iris:jobs", () => {
     if (state.sessionId) refreshHistory();

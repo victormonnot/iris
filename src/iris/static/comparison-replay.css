@@ -1,0 +1,324 @@
+.comparison-replay {
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid #dfe7d9;
+  background: #fafcf7;
+  border-radius: 9px;
+}
+.comparison-replay-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.comparison-replay-heading h3 {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.3px;
+}
+.comparison-replay-intro {
+  margin: 10px 0 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.comparison-replay-badge {
+  font-size: 10px;
+  padding: 6px 9px;
+  background: #edf3e5;
+  color: #667e55;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.comparison-replay-source {
+  max-width: 520px;
+  margin-bottom: 17px;
+}
+.comparison-replay-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.comparison-replay-media {
+  position: relative;
+  background: #1d2823;
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 150px;
+}
+.comparison-replay-media video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+}
+.comparison-replay-media video[hidden] {
+  display: none;
+}
+.comparison-replay-media-fallback {
+  display: flex;
+  min-height: 210px;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px;
+  gap: 14px;
+  text-align: center;
+}
+.comparison-replay-media-fallback[hidden] {
+  display: none;
+}
+.comparison-replay-media-fallback p {
+  max-width: 350px;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #d1ddc8;
+}
+.comparison-replay-unavailable-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #607159;
+  color: #adc49b;
+  border-radius: 6px;
+  font-size: 18px;
+}
+.comparison-replay-controls {
+  min-width: 0;
+}
+.comparison-replay-controls-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 18px;
+}
+.comparison-replay-caption {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.comparison-replay-navigation {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+.comparison-replay-navigation .button {
+  flex: 1;
+  min-height: 40px;
+  font-size: 12px;
+  padding: 8px 9px;
+}
+.comparison-replay-follow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 17px 0 6px;
+  line-height: 1.6;
+}
+.comparison-replay-follow input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  accent-color: var(--green);
+}
+.comparison-replay-timeline {
+  margin: 22px 0 12px;
+}
+.comparison-replay-timeline-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  color: #65785d;
+  font-size: 11px;
+}
+.comparison-replay-track {
+  position: relative;
+  height: 50px;
+  margin: 6px 10px 0;
+}
+.comparison-replay-track::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #dce5d3;
+}
+.comparison-replay-playhead {
+  position: absolute;
+  width: 1px;
+  top: 7px;
+  bottom: 4px;
+  background: #576859;
+  z-index: 2;
+  pointer-events: none;
+}
+.comparison-replay-playhead::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  width: 7px;
+  height: 7px;
+  background: #576859;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.comparison-replay-marker {
+  position: absolute;
+  top: calc(12px + var(--replay-marker-row) * 9px);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-left: -9px;
+  border: 2px solid #e7eee0;
+  border-radius: 50%;
+  background: #71995b;
+  z-index: 3;
+}
+.comparison-replay-marker.partial {
+  background: #c69c51;
+}
+.comparison-replay-marker.empty {
+  background: #f9fbf6;
+  border-color: #8a9681;
+}
+.comparison-replay-marker.selected {
+  outline: 2px solid #285f47;
+  outline-offset: 2px;
+  z-index: 4;
+}
+.comparison-replay-marker:hover {
+  filter: brightness(0.9);
+  z-index: 5;
+}
+.comparison-replay-marker:focus-visible {
+  outline: 3px solid #203e30;
+  outline-offset: 3px;
+  z-index: 6;
+}
+.comparison-replay-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.comparison-replay-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #76836c;
+  font-size: 11px;
+}
+.comparison-replay-legend i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #71995b;
+}
+.comparison-replay-legend i.partial {
+  background: #c69c51;
+}
+.comparison-replay-legend i.empty {
+  background: #fff;
+  border: 1px solid #8a9681;
+}
+.comparison-replay-timestamp-note {
+  margin: 15px 0;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #7f8875;
+}
+.comparison-replay-context {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 18px;
+  padding: 15px 17px;
+  border-left: 3px solid #96ae81;
+  background: #f0f5e9;
+  border-radius: 0 5px 5px 0;
+}
+.comparison-replay-context > div {
+  min-width: 0;
+}
+.comparison-replay-context span {
+  display: block;
+  font-size: 11px;
+  color: #708267;
+  margin-bottom: 5px;
+}
+.comparison-replay-context strong {
+  font-size: 13px;
+  color: #37583f;
+  font-weight: 550;
+}
+.comparison-replay-context > p {
+  grid-column: 1/-1;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #6e7d64;
+  margin-top: 4px;
+}
+.comparison-replay-notice {
+  padding: 13px 16px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #718064;
+  background: #eff4e8;
+  border-radius: 6px;
+}
+@media (max-width: 1100px) {
+  .comparison-replay-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .comparison-replay-media video {
+    max-height: 300px;
+  }
+  .comparison-replay-controls-heading {
+    margin-top: 0;
+  }
+}
+@media (max-width: 600px) {
+  .comparison-replay {
+    padding: 16px 13px;
+  }
+  .comparison-replay-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .comparison-replay-heading h3 {
+    font-size: 16px;
+  }
+  .comparison-replay-body {
+    gap: 16px;
+  }
+  .comparison-replay-context {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+    padding: 13px;
+  }
+  .comparison-replay-legend {
+    gap: 10px;
+  }
+  .comparison-replay-timeline-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .comparison-replay-caption,
+  .comparison-replay-legend > span,
+  .comparison-replay-timestamp-note {
+    font-size: 12px;
+  }
+  .comparison-replay-navigation .button {
+    padding: 8px 5px;
+    min-height: 44px;
+  }
+}

@@ -35,6 +35,7 @@ from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
 from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
+from iris.comparison_replay import VIDEO_TYPES, local_media_file
 from iris.dataset_export import ExportLimitError, build_coco_export
 from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
 from iris.evaluation import (
@@ -480,6 +481,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "video_passage_review": True,
                 "frame_selection": True,
                 "inference": True,
+                "comparison_replay": True,
                 "annotation": True,
                 "assisted_annotation": True,
                 "local_batch_assistance": True,
@@ -1119,6 +1121,13 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/assets/{asset_id}/media")
     def asset_media(asset_id: str):
         record = require("assets", asset_id)
+        status, path = local_media_file(store, record["path"], size_bytes=record["size_bytes"])
+        if status == "unsafe":
+            raise HTTPException(422, "The original media path is unsafe")
+        if status == "size_mismatch":
+            raise HTTPException(409, "The original media size changed since import")
+        if status != "available":
+            raise HTTPException(404, "The original media is missing or unreadable")
         image_types = {
             "JPEG": "image/jpeg",
             "PNG": "image/png",
@@ -1126,11 +1135,22 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             "BMP": "image/bmp",
             "TIFF": "image/tiff",
         }
-        media_type = image_types.get(record["metadata"].get("format"), "application/octet-stream")
+        metadata = record["metadata"] if isinstance(record["metadata"], dict) else {}
+        image_format = metadata.get("format")
+        media_type = (
+            image_types.get(image_format, "application/octet-stream")
+            if isinstance(image_format, str)
+            else "application/octet-stream"
+        )
         if record["kind"] == "video":
-            media_type = record["metadata"].get("media_type", "application/octet-stream")
+            video_type = metadata.get("media_type")
+            media_type = (
+                video_type
+                if isinstance(video_type, str) and video_type in VIDEO_TYPES
+                else "application/octet-stream"
+            )
         return FileResponse(
-            store.artifact_path(record["path"]),
+            path,
             filename=record["filename"],
             media_type=media_type,
             content_disposition_type="inline",

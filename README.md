@@ -181,6 +181,30 @@ different internal proposal algorithms. Confidence, count differences, and
 runtime are not quality metrics. Use **Evaluation** with a frozen, validated
 dataset to measure precision, recall and mAP separately from visual comparisons.
 
+### Replay a video comparison
+
+Open a saved comparison containing video frames to review the original footage
+alongside its saved model outputs. Choose a source video, use the timeline or the
+sample selector to jump to an analysed image, and play the surrounding passage.
+Playback follows the saved samples; the result cards always show the extracted
+image and its own timestamp. Class and confidence filters still apply to saved
+detections without running a model again.
+
+Timeline markers distinguish samples processed by all runs, partial results and
+samples with no saved prediction. The spaces between markers have no inference
+results. A held image is explicitly labelled; its boxes are never drawn onto a
+different video frame. An empty detection list is a processed result, whereas a
+missing prediction remains **Not processed**. Full-image and tiled runs retain
+separate results even when they use the same checkpoint.
+
+Video positions are approximate: extraction records frame index divided by
+nominal frame rate, so variable-frame-rate footage may not align exactly with
+the browser's video clock. The extracted image is the reference for inspecting
+boxes. Missing footage or an unsupported browser codec leaves saved images and
+predictions available for review. No transcoding, model download or inference is
+started by replay. Comparisons containing only still images keep their existing
+image navigation.
+
 ### Compare full images with tiles
 
 **Full image** runs each chosen checkpoint on the entire frame. **Tiled image**
@@ -594,7 +618,7 @@ storage limits and verification details.
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-node --test tests/js/annotation-tools.test.cjs
+node --test tests/js/*.test.cjs
 ```
 
 The JavaScript tests use Node's built-in test runner; Node is only needed for

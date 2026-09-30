@@ -69,6 +69,21 @@ Predictions, annotation sources and disagreement signals are tied to run IDs,
 so two pipelines cannot silently select each other's outputs. Legacy comparisons
 retain their IDs and acquire the full-image variant through SQLite migration.
 
+Comparison details also expose a read-only replay projection of their saved
+frames, grouped by video source and ordered by recorded timestamp. The browser
+uses the existing local media endpoint and byte-range responses for playback.
+Sample coverage counts expected run identities, including separate full/tiled
+variants; a saved empty prediction counts as processed. No database migration,
+inference job, generated video or interpolated detection is involved.
+
+The replay player and result cards have separate clocks: source-video position
+and the timestamp of the extracted image currently displayed. Sparse coverage
+is explicit between samples. Recorded positions use nominal FPS and are
+approximate, especially for variable-frame-rate sources. Playback does not
+certify frame-accurate alignment. Media availability checks the workspace path,
+file type and recorded byte size; it does not rehash entire videos on each
+comparison refresh or certify that same-sized files have not changed.
+
 `tiling.py` plans deterministic, bounded crops over original pixels, invokes the
 existing detector and maps outputs back before class-aware NMS. It adds no model
 or framework dependency. Frame hashes, tile settings, merge protocol, region
