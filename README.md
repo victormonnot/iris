@@ -6,7 +6,7 @@ human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
-explicit model reference selection, and saved experiment reports**, with a review queue for tracking
+explicit model reference selection, saved experiment reports, and workspace backup/restoration**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
 [the architecture and V1 plan](docs/architecture.md).
@@ -32,7 +32,7 @@ uv run iris --port 8001 --data-dir /path/to/private/iris-data
 By default, media, the SQLite database, and worker logs stay in `.iris/`, which
 is excluded from Git. `IRIS_DATA_DIR` also sets the data location. Original
 files are copied into this workspace; keep enough disk space for both originals
-and extracted PNGs. Back up the whole data directory while the server is stopped.
+and extracted PNGs. Use **Workspace backup** to create and restore verified archives.
 
 ## First workflow
 
@@ -552,6 +552,42 @@ external requests or required IRIS server. Text-only exports still contain
 your written notes and the recorded experiment context. Exporting does not
 publish or upload the report. See [the report format and limits](docs/experiments.md).
 
+## Back up or restore a workspace
+
+Open **Workspace backup** under **Storage** in the sidebar. Review the included
+data, installed model weights and disk space, then create a local ZIP archive.
+Save pending edits first and wait for queued or running jobs to finish. IRIS
+temporarily blocks changes while saving; reading saved results remains available.
+Close and reopen the dialog to follow the operation or download its archive.
+Downloads use the browser's normal file download mechanism.
+
+The archive preserves original media, annotations, frozen datasets, checkpoints,
+predictions, experiment reports and histories. It also includes detector and
+Ollama model files stored inside the workspace. Temporary files, previous backups
+and software environments are excluded. Environment-based API credentials must
+be configured separately on another machine.
+
+In **Restore**, choose an IRIS workspace ZIP and wait for its integrity check.
+Review the contents, choose a new folder name and confirm restoration. The new
+workspace is created beside the current one; an existing folder is never replaced.
+IRIS shows its location and a command to open it separately. Restoring neither
+switches the current app nor resumes training or other model jobs.
+
+Command-line recovery also works with the web app stopped:
+
+```sh
+uv run iris workspace backup /path/to/iris-backup.zip --data-dir /path/to/workspace
+uv run iris workspace inspect /path/to/iris-backup.zip
+uv run iris workspace restore /path/to/iris-backup.zip --to /path/to/new-workspace
+uv run iris --data-dir /path/to/new-workspace --port 8011
+```
+
+Stop the source workspace's server before using the backup CLI, or use the UI
+while it is open. Archives contain private media, prompts and reviewer notes;
+they are different from a shareable report or a COCO dataset export.
+See [workspace backup and recovery](docs/workspace-backup.md) for compatibility,
+storage limits and verification details.
+
 ## Development and verification
 
 ```sh
@@ -579,6 +615,7 @@ review progress, saved-prediction disagreement and read-only queue persistence,
 COCO metrics, error matching, fixed test audits, reference history,
 saved error analysis, class filters and paired recovered/newly missed objects,
 experiment snapshots, note revisions, saved images and standalone HTML reports,
+workspace archive integrity, restoration, interrupted transfers and write admission,
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not

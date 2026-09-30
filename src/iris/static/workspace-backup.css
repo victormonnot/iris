@@ -1,0 +1,392 @@
+.workspace-backup-launch {
+  margin-top: 16px;
+  text-align: left;
+}
+#workspace-backup-open-state {
+  display: block;
+  color: var(--green);
+  margin-top: 7px;
+  font-size: 10px;
+}
+.workspace-backup-modal {
+  width: min(780px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 30px;
+}
+.workspace-backup-intro {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: -4px 0 22px;
+  max-width: 600px;
+}
+.workspace-backup-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.workspace-backup-tabs button {
+  padding: 0 0 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+}
+.workspace-backup-tabs button[aria-selected="true"] {
+  border-color: var(--green);
+  color: var(--green);
+  font-weight: 600;
+}
+.workspace-backup-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.workspace-backup-toolbar .field-hint {
+  margin: 0;
+}
+.workspace-backup-volume {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px;
+  background: #f3f6ed;
+  border-radius: 8px;
+  margin: 14px 0 18px;
+}
+.workspace-backup-volume strong {
+  display: block;
+  font-size: 30px;
+  font-weight: 450;
+  letter-spacing: -0.7px;
+  margin: 5px 0;
+}
+.workspace-backup-volume p {
+  max-width: 260px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.workspace-backup-counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.workspace-backup-count {
+  background: #f7f9f4;
+  border-radius: 5px;
+  padding: 12px;
+}
+.workspace-backup-count strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--green);
+}
+.workspace-backup-count span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.workspace-backup-path {
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  color: #63705e;
+  margin-top: 6px;
+}
+.workspace-backup-categories {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 16px 0;
+}
+.workspace-backup-category {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 11px 0;
+  font-size: 11px;
+}
+.workspace-backup-category + .workspace-backup-category {
+  border-top: 1px solid #edf1e7;
+}
+.workspace-backup-category span:nth-child(2) {
+  font-size: 10px;
+  color: var(--muted);
+}
+.workspace-backup-category strong {
+  min-width: 70px;
+  text-align: right;
+  font-weight: 500;
+}
+.workspace-backup-details {
+  margin: 16px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.workspace-backup-details summary {
+  cursor: pointer;
+}
+.workspace-backup-details ul {
+  padding-left: 18px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.workspace-backup-warning {
+  background: #faf5e9;
+  border-left: 3px solid #cba865;
+  padding: 12px 14px;
+  color: #786135;
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 14px 0;
+}
+.workspace-backup-warning p + p {
+  margin-top: 7px;
+}
+.workspace-backup-actions {
+  margin: 20px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.workspace-backup-actions .field-hint {
+  max-width: 390px;
+  margin: 0;
+}
+.workspace-backup-step {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  margin: 22px 0 12px;
+}
+.workspace-backup-step span {
+  background: #edf3e6;
+  color: #799866;
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.workspace-backup-upload {
+  padding: 18px;
+  border: 1px dashed #cbd7c0;
+  border-radius: 7px;
+  margin: 14px 0;
+  background: #fcfdf9;
+}
+.workspace-backup-upload input {
+  max-width: 100%;
+  font-size: 11px;
+}
+.workspace-backup-upload .button {
+  margin-top: 14px;
+}
+.workspace-backup-upload-progress {
+  margin-top: 16px;
+}
+.workspace-backup-upload-progress p {
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.workspace-backup-modal progress {
+  display: block;
+  width: 100%;
+  height: 7px;
+  margin: 12px 0;
+  accent-color: var(--green);
+  border: 0;
+}
+.workspace-backup-inspection {
+  padding: 17px;
+  border-radius: 7px;
+  background: #f4f7ee;
+  border: 1px solid #dfe8d6;
+  margin: 18px 0;
+}
+.workspace-backup-inspection h4 {
+  font-size: 12px;
+  color: var(--green);
+}
+.workspace-backup-inspection p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.7;
+}
+.workspace-backup-inspection .workspace-backup-count {
+  background: #fff;
+}
+#workspace-backup-restore-form > label:not(.checkbox-label) {
+  margin-top: 16px;
+}
+#workspace-backup-restore-form > .checkbox-label {
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 22px;
+  line-height: 1.8;
+}
+#workspace-backup-restore-form > .checkbox-label input {
+  flex-shrink: 0;
+  margin-top: 4px;
+  accent-color: var(--green);
+}
+.workspace-backup-history {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.workspace-backup-history-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.workspace-backup-history-heading h3 {
+  font-size: 13px;
+}
+.workspace-backup-operations {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+}
+.workspace-backup-operation {
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+.workspace-backup-operation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+.workspace-backup-operation h4 {
+  font-size: 12px;
+  font-weight: 550;
+  margin-bottom: 5px;
+}
+.workspace-backup-caption {
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.workspace-backup-state {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #eef2e8;
+  color: #75846a;
+}
+.workspace-backup-state.failed,
+.workspace-backup-state.interrupted {
+  background: #fcf1e8;
+  color: #936545;
+}
+.workspace-backup-operation-message {
+  font-size: 11px;
+  margin-top: 16px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.workspace-backup-operation-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 13px;
+}
+.workspace-backup-operation-actions:empty {
+  display: none;
+}
+.workspace-backup-remove {
+  margin-left: auto;
+  color: #89937f;
+}
+.workspace-backup-command {
+  padding: 11px;
+  border: 1px solid #e4eadb;
+  border-radius: 5px;
+  background: #f7f9f2;
+  font-size: 10px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  margin-top: 10px;
+}
+#workspace-backup-status {
+  overflow-wrap: anywhere;
+  margin-top: 18px;
+}
+#workspace-backup-more {
+  margin-top: 14px;
+}
+@media (max-width: 740px) {
+  .workspace-backup-location {
+    display: block;
+    padding-top: 16px;
+    margin-top: 0;
+  }
+  .workspace-backup-location > .eyebrow,
+  .workspace-backup-location > #storage-path,
+  .workspace-backup-location > .small {
+    display: none;
+  }
+  .workspace-backup-launch {
+    margin-top: 0;
+  }
+}
+@media (max-width: 560px) {
+  .workspace-backup-modal {
+    padding: 20px 16px;
+  }
+  .workspace-backup-volume {
+    padding: 17px;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .workspace-backup-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspace-backup-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .workspace-backup-actions > .button,
+  .workspace-backup-upload .button {
+    width: 100%;
+  }
+  .workspace-backup-category {
+    gap: 9px;
+  }
+  .workspace-backup-category span:nth-child(2) {
+    display: none;
+  }
+  .workspace-backup-category {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .workspace-backup-operation {
+    padding: 14px;
+  }
+  .workspace-backup-operation-actions {
+    gap: 12px;
+  }
+  .workspace-backup-remove {
+    margin-left: 0;
+  }
+}

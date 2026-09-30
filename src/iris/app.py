@@ -1,6 +1,7 @@
 """HTTP interface for a single-user, loopback-only workspace."""
 
 import os
+import shutil
 import tempfile
 import threading
 from contextlib import asynccontextmanager
@@ -76,10 +77,18 @@ from iris.video_reviews import (
     queue_review,
     read_review_images,
 )
+from iris.workspace_archive import MAX_ARCHIVE_BYTES, ArchiveError, ArchiveLimitError
+from iris.workspace_operations import WorkspaceBusy, WorkspaceOperations
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 2 * 1024**3
 MAX_DATASET_UPLOAD_BYTES = 64 * 1024**2
+
+
+class WorkspaceRestoreInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    inspection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    folder_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
 
 
 class SessionInput(BaseModel):
@@ -316,9 +325,28 @@ class _DatasetExportResponse(FileResponse):
                 self.export_lock.release()
 
 
+class _WorkspaceArchiveResponse(FileResponse):
+    def __init__(self, manager, identifier, path, filename):
+        super().__init__(
+            path,
+            media_type="application/zip",
+            filename=filename,
+            headers={"Cache-Control": "no-store"},
+        )
+        self.manager = manager
+        self.identifier = identifier
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.manager.release_download(self.identifier)
+
+
 def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAPI:
     store = Store(data_dir or Path(os.getenv("IRIS_DATA_DIR", ".iris")))
     jobs = JobManager(store)
+    workspace_operations = WorkspaceOperations(store)
     import_lock = threading.Lock()
     export_lock = threading.Lock()
     experiment_export_lock = threading.Lock()
@@ -329,16 +357,21 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         if run_jobs:
             jobs.start()
         try:
+            workspace_operations.recover()
             yield
         finally:
-            if run_jobs:
-                jobs.close()
+            try:
+                workspace_operations.close()
+            finally:
+                if run_jobs:
+                    jobs.close()
 
     app = FastAPI(
         title="IRIS", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None
     )
     app.state.store = store
     app.state.jobs = jobs
+    app.state.workspace_operations = workspace_operations
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"])
 
     @app.middleware("http")
@@ -358,15 +391,65 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 return JSONResponse({"detail": "Cross-site requests are not allowed"}, 403)
         length = request.headers.get("content-length")
         dataset_upload = request.method == "POST" and request.url.path == "/api/dataset-imports"
-        limit = MAX_DATASET_UPLOAD_BYTES if dataset_upload else MAX_UPLOAD_BYTES
+        workspace_upload = (
+            request.method == "POST" and request.url.path == "/api/workspace/restore-inspections"
+        )
+        if workspace_upload and (length is None or request.headers.get("transfer-encoding")):
+            return JSONResponse(
+                {
+                    "detail": (
+                        "Workspace archive uploads require Content-Length; "
+                        "chunked uploads are unsupported"
+                    )
+                },
+                411,
+            )
+        limit = (
+            MAX_ARCHIVE_BYTES
+            if workspace_upload
+            else MAX_DATASET_UPLOAD_BYTES
+            if dataset_upload
+            else MAX_UPLOAD_BYTES
+        )
         if length and (not length.isdecimal() or int(length) > limit + 1024**2):
             description = (
-                "Dataset ZIP exceeds the 64 MiB limit"
+                "Workspace ZIP exceeds the 64 GiB limit"
+                if workspace_upload
+                else "Dataset ZIP exceeds the 64 MiB limit"
                 if dataset_upload
                 else ("Upload exceeds the 2 GiB limit")
             )
             return JSONResponse({"detail": description}, 413)
-        response = await call_next(request)
+        if workspace_upload and length:
+            size = int(length)
+            temporary_root = Path(tempfile.gettempdir())
+            same_volume = temporary_root.stat().st_dev == store.root.stat().st_dev
+            temporary_free = shutil.disk_usage(temporary_root).free
+            workspace_free = shutil.disk_usage(store.root).free
+            reserve = 16 * 1024**2
+            if (
+                temporary_free < size + reserve
+                or workspace_free < size * (2 if same_volume else 1) + reserve
+            ):
+                return JSONResponse(
+                    {"detail": "Not enough local disk space to receive and inspect this archive"},
+                    507,
+                )
+        mutation = request.method not in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        } and not request.url.path.startswith("/api/workspace/")
+        if mutation:
+            try:
+                workspace_operations.gate.enter()
+            except WorkspaceBusy as exc:
+                return JSONResponse({"detail": str(exc)}, 409)
+        try:
+            response = await call_next(request)
+        finally:
+            if mutation:
+                workspace_operations.gate.leave()
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers.setdefault(
@@ -404,12 +487,76 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "dataset_export": True,
                 "evaluation_analysis": True,
                 "experiment_reports": True,
+                "workspace_backup": True,
                 "coco_import": True,
                 "training": True,
                 "evaluation": True,
                 "review_queue": True,
             },
         }
+
+    def workspace_action(action):
+        try:
+            return action()
+        except KeyError as exc:
+            raise HTTPException(404, "Workspace operation not found") from exc
+        except WorkspaceBusy as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ArchiveLimitError as exc:
+            raise HTTPException(413, str(exc)) from exc
+        except ArchiveError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(
+                507, "Cannot access transfer files. Check local permissions and free disk space."
+            ) from exc
+
+    @app.get("/api/workspace/backup-preview")
+    def workspace_backup_preview():
+        return workspace_action(workspace_operations.preview)
+
+    @app.get("/api/workspace/operations")
+    def workspace_operation_list():
+        return workspace_action(workspace_operations.list)
+
+    @app.get("/api/workspace/operations/{identifier}")
+    def workspace_operation(identifier: str):
+        return workspace_action(lambda: workspace_operations.get(identifier))
+
+    @app.post("/api/workspace/backups", status_code=202)
+    def workspace_backup():
+        return workspace_action(workspace_operations.backup)
+
+    @app.post("/api/workspace/restore-inspections", status_code=202)
+    def workspace_inspect(file: UploadFile):
+        try:
+            return workspace_action(
+                lambda: workspace_operations.inspect_upload(
+                    file.file, file.filename or "workspace.zip"
+                )
+            )
+        finally:
+            file.file.close()
+
+    @app.post("/api/workspace/restores", status_code=202)
+    def workspace_restore(payload: WorkspaceRestoreInput):
+        return workspace_action(
+            lambda: workspace_operations.restore(payload.inspection_id, payload.folder_name)
+        )
+
+    @app.post("/api/workspace/operations/{identifier}/cancel")
+    def workspace_operation_cancel(identifier: str):
+        return workspace_action(lambda: workspace_operations.cancel(identifier))
+
+    @app.get("/api/workspace/operations/{identifier}/archive")
+    def workspace_archive_download(identifier: str):
+        path, filename = workspace_action(lambda: workspace_operations.archive(identifier))
+        return _WorkspaceArchiveResponse(workspace_operations, identifier, path, filename)
+
+    @app.delete("/api/workspace/operations/{identifier}", status_code=204)
+    def workspace_operation_delete(identifier: str):
+        workspace_action(lambda: workspace_operations.delete(identifier))
+        return Response(status_code=204)
 
     @app.get("/api/sessions")
     def sessions():

@@ -1,5 +1,14 @@
 # Architecture and V1 delivery
 
+Workspace backup uses a streamed ZIP64 archive and a consistent SQLite snapshot.
+An admission gate rejects new HTTP mutations while an idle workspace is copied;
+database and file signatures also detect external changes. A background transfer
+manager keeps operation receipts outside the archived inventory. Restoration
+checks the manifest, all hashes, schema and file references, then atomically
+publishes a new directory without replacing an existing destination. It preserves
+the active workspace and starts no model jobs. The same archive services support
+the UI and recovery CLI; see [backup and recovery](workspace-backup.md).
+
 IRIS is a local workbench for improving object detectors from flight recordings.
 V1 covers import, model comparison, assisted annotation, human review, dataset
 versions, fine-tuning, and comparison against earlier checkpoints. Onboard

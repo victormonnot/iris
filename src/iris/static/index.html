@@ -12,6 +12,7 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
     <link rel="stylesheet" href="/static/experiments.css" />
+    <link rel="stylesheet" href="/static/workspace-backup.css" />
     <script src="/static/app.js" defer></script>
     <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison.js" defer></script>
@@ -21,6 +22,7 @@
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
     <script src="/static/experiments.js" defer></script>
+    <script src="/static/workspace-backup.js" defer></script>
     <script src="/static/dataset-import.js" defer></script>
   </head>
   <body>
@@ -89,10 +91,18 @@
           </button>
           <p class="field-hint">Preview a COCO archive and review its labels.</p>
         </div>
-        <div class="workspace-location">
+        <div class="workspace-location workspace-backup-location">
           <span class="eyebrow">Storage</span>
           <p id="storage-path">Connecting to local storage…</p>
           <span class="small muted">Original files are preserved.</span>
+          <button
+            id="workspace-backup-open"
+            class="text-button workspace-backup-launch"
+            type="button"
+          >
+            Workspace backup <span aria-hidden="true">↗</span>
+          </button>
+          <span id="workspace-backup-open-state" role="status"></span>
         </div>
       </aside>
       <main id="main" tabindex="-1">
@@ -2304,6 +2314,328 @@ ollama pull qwen3-vl:4b-instruct</pre
         </footer>
       </main>
     </div>
+    <dialog
+      id="workspace-backup-dialog"
+      class="modal workspace-backup-modal"
+      aria-labelledby="workspace-backup-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">Workspace storage</div>
+          <h2 id="workspace-backup-title">Keep your work safe.</h2>
+        </div>
+        <button
+          id="workspace-backup-close"
+          type="button"
+          class="icon-button"
+          aria-label="Close workspace backup"
+        >
+          ×
+        </button>
+      </div>
+      <p class="workspace-backup-intro">
+        Preserve the complete local workspace, or restore a verified archive into a
+        separate folder. Files stay on your machine.
+      </p>
+      <div
+        id="workspace-backup-tabs"
+        class="workspace-backup-tabs"
+        role="tablist"
+        aria-label="Workspace backup and restore"
+      >
+        <button
+          id="workspace-backup-tab-backup"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="workspace-backup-panel-backup"
+        >
+          Back up
+        </button>
+        <button
+          id="workspace-backup-tab-restore"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="workspace-backup-panel-restore"
+          tabindex="-1"
+        >
+          Restore
+        </button>
+      </div>
+      <div
+        id="workspace-backup-write-lock"
+        class="workspace-backup-warning"
+        role="status"
+        hidden
+      >
+        Backup in progress. You can read saved work; changes are temporarily paused
+        until the backup finishes.
+      </div>
+      <div class="workspace-backup-toolbar">
+        <p
+          id="workspace-backup-preview-status"
+          class="field-hint"
+          role="status"
+          aria-live="polite"
+        >
+          Checking the workspace…
+        </p>
+        <button id="workspace-backup-refresh" type="button" class="text-button">
+          Refresh
+        </button>
+      </div>
+      <p
+        id="workspace-backup-preview-error"
+        class="inline-error"
+        role="alert"
+        hidden
+      ></p>
+      <section
+        id="workspace-backup-panel-backup"
+        role="tabpanel"
+        aria-labelledby="workspace-backup-tab-backup"
+      >
+        <div id="workspace-backup-preview" hidden>
+          <span class="eyebrow">Current workspace</span>
+          <code id="workspace-backup-source" class="workspace-backup-path"></code>
+          <div class="workspace-backup-volume">
+            <div>
+              <span class="eyebrow">Files to include</span
+              ><strong id="workspace-backup-volume"></strong>
+              <p id="workspace-backup-file-count"></p>
+            </div>
+            <p>
+              The archive brings together source media, saved annotations, datasets,
+              trained checkpoints, model references and experiment reports.
+            </p>
+          </div>
+          <div id="workspace-backup-counts" class="workspace-backup-counts"></div>
+          <div
+            id="workspace-backup-categories"
+            class="workspace-backup-categories"
+          ></div>
+          <p id="workspace-backup-space" class="field-hint"></p>
+          <details class="workspace-backup-details">
+            <summary>All saved record counts</summary>
+            <div
+              id="workspace-backup-all-counts"
+              class="workspace-backup-counts"
+            ></div>
+          </details>
+          <details
+            id="workspace-backup-excluded-details"
+            class="workspace-backup-details"
+            hidden
+          >
+            <summary>Files excluded from this archive</summary>
+            <ul id="workspace-backup-excluded"></ul>
+          </details>
+          <div
+            id="workspace-backup-blockers"
+            class="workspace-backup-warning"
+            role="status"
+            hidden
+          ></div>
+          <div id="workspace-backup-warnings"></div>
+        </div>
+        <div class="workspace-backup-actions">
+          <button
+            id="workspace-backup-create"
+            type="button"
+            class="button button-primary"
+            disabled
+          >
+            Create backup
+          </button>
+          <p class="field-hint">
+            Only saved changes are included. Save pending edits before backing up.
+          </p>
+        </div>
+        <p class="field-hint">
+          IRIS must be idle to start. Creating the archive temporarily pauses
+          writes. You can close this panel while it runs.
+        </p>
+      </section>
+      <section
+        id="workspace-backup-panel-restore"
+        role="tabpanel"
+        aria-labelledby="workspace-backup-tab-restore"
+        hidden
+      >
+        <h3 class="workspace-backup-step">
+          <span>01</span> Choose and inspect an archive
+        </h3>
+        <p class="field-hint">
+          The uploaded archive is checked before restoration becomes available. Your
+          current workspace is kept as it is.
+        </p>
+        <form id="workspace-backup-upload-form" class="workspace-backup-upload">
+          <label for="workspace-backup-file">Workspace ZIP archive</label>
+          <input
+            id="workspace-backup-file"
+            type="file"
+            accept=".zip,application/zip,application/x-zip-compressed"
+            required
+          />
+          <p id="workspace-backup-upload-limit" class="field-hint"></p>
+          <button
+            id="workspace-backup-upload"
+            type="submit"
+            class="button button-secondary"
+            disabled
+          >
+            Upload and inspect
+          </button>
+          <div
+            id="workspace-backup-upload-progress"
+            class="workspace-backup-upload-progress"
+            hidden
+          >
+            <p
+              id="workspace-backup-upload-phase"
+              role="status"
+              aria-live="polite"
+            ></p>
+            <progress
+              id="workspace-backup-upload-meter"
+              aria-label="Local archive upload progress"
+              max="1"
+              value="0"
+            ></progress>
+            <p id="workspace-backup-upload-message"></p>
+            <button
+              id="workspace-backup-upload-cancel"
+              type="button"
+              class="text-button"
+            >
+              Cancel upload
+            </button>
+          </div>
+          <p
+            id="workspace-backup-upload-error"
+            class="inline-error"
+            role="alert"
+            hidden
+          ></p>
+        </form>
+        <label for="workspace-backup-inspection-select"
+          >Or use a previously verified archive</label
+        >
+        <select id="workspace-backup-inspection-select">
+          <option value="">No verified archives yet</option>
+        </select>
+        <div
+          id="workspace-backup-inspection-summary"
+          class="workspace-backup-inspection"
+          hidden
+        >
+          <h4 id="workspace-backup-inspection-title"></h4>
+          <p id="workspace-backup-inspection-size"></p>
+          <p id="workspace-backup-inspection-version"></p>
+          <div
+            id="workspace-backup-inspection-counts"
+            class="workspace-backup-counts"
+          ></div>
+        </div>
+        <h3 class="workspace-backup-step">
+          <span>02</span> Restore to a new workspace
+        </h3>
+        <form id="workspace-backup-restore-form">
+          <label for="workspace-backup-folder">New folder name</label>
+          <input
+            id="workspace-backup-folder"
+            type="text"
+            required
+            maxlength="80"
+            pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,79}"
+            placeholder="e.g. iris-restored-2026-09"
+            autocomplete="off"
+            spellcheck="false"
+            aria-describedby="workspace-backup-folder-hint workspace-backup-destination"
+            disabled
+          />
+          <p id="workspace-backup-folder-hint" class="field-hint">
+            Letters, numbers, hyphens and underscores; start with a letter or
+            number. The folder must not already exist.
+          </p>
+          <code id="workspace-backup-destination" class="workspace-backup-path"
+            >Enter a new folder name to see its destination.</code
+          >
+          <label class="checkbox-label" for="workspace-backup-confirm"
+            ><input id="workspace-backup-confirm" type="checkbox" disabled />I
+            checked the archive and destination. Create a separate workspace in this
+            new folder.</label
+          >
+          <div class="workspace-backup-actions">
+            <button
+              id="workspace-backup-restore"
+              type="submit"
+              class="button button-primary"
+              disabled
+            >
+              Restore as new workspace
+            </button>
+          </div>
+          <p
+            id="workspace-backup-restore-error"
+            class="inline-error"
+            role="alert"
+            hidden
+          ></p>
+        </form>
+        <p class="field-hint">
+          Installed local model weights are included. Configure the Python
+          environment and API keys separately. After restoration, IRIS provides a
+          command to open the new workspace; it will not switch automatically.
+        </p>
+      </section>
+      <p id="workspace-backup-busy-note" class="field-hint" hidden>
+        One local archive operation runs at a time. Wait for it to finish or cancel
+        it below.
+      </p>
+      <p
+        id="workspace-backup-action-error"
+        class="inline-error"
+        role="alert"
+        hidden
+      ></p>
+      <p
+        id="workspace-backup-status"
+        class="field-hint"
+        role="status"
+        aria-live="polite"
+      ></p>
+      <section
+        class="workspace-backup-history"
+        aria-labelledby="workspace-backup-history-title"
+      >
+        <div class="workspace-backup-history-heading">
+          <h3 id="workspace-backup-history-title">Local operation history</h3>
+          <span id="workspace-backup-history-count" class="count">0</span>
+        </div>
+        <p class="field-hint">
+          Operations keep running if you close this panel. Reopen it to follow their
+          progress.
+        </p>
+        <p
+          id="workspace-backup-history-error"
+          class="inline-error"
+          role="alert"
+          hidden
+        ></p>
+        <p id="workspace-backup-history-empty" class="field-hint">
+          No backups or restorations yet.
+        </p>
+        <div
+          id="workspace-backup-operations"
+          class="workspace-backup-operations"
+        ></div>
+        <button id="workspace-backup-more" type="button" class="text-button" hidden>
+          Show more
+        </button>
+      </section>
+    </dialog>
     <dialog
       id="experiments-compose-dialog"
       class="modal experiments-compose"
