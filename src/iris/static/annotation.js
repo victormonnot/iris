@@ -2,6 +2,7 @@
 
 (() => {
   const svgNS = "http://www.w3.org/2000/svg";
+  const tools = window.IrisAnnotationTools;
   const editor = {
     sessionId: null,
     frameId: null,
@@ -27,6 +28,12 @@
     jobStatuses: new Map(),
     remoteUpdate: false,
     refreshAfterRequest: false,
+    view: null,
+    viewFrameId: null,
+    spacePan: false,
+    pointers: new Set(),
+    history: new tools.SnapshotHistory({ limit: 100 }),
+    baseline: null,
   };
   const queue = {
     active: false,
@@ -103,9 +110,63 @@
     );
   }
 
-  function changed() {
+  function editableSnapshot() {
+    return {
+      boxes: clone(editor.boxes),
+      decisions: clone(editor.decisions),
+      reviewer: $("#annotation-reviewer").value,
+      notes: $("#annotation-notes").value,
+    };
+  }
+
+  function snapshotKey(snapshot) {
+    // Decision insertion order has no meaning in a saved annotation.
+    return JSON.stringify({
+      ...snapshot,
+      decisions: Object.fromEntries(
+        Object.entries(snapshot.decisions).sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    });
+  }
+
+  function recomputeDirty() {
+    editor.dirty = snapshotKey(editableSnapshot()) !== editor.baseline;
+  }
+
+  function changed(mergeKey = null) {
+    if (editor.history.commit(
+      editableSnapshot(),
+      typeof mergeKey === "string" ? mergeKey : null,
+    )) {
+      editor.request++;
+      invalidatePreview();
+    }
+    recomputeDirty();
+    updateStatus();
+  }
+
+  function restoreSnapshot(snapshot) {
+    editor.boxes = clone(snapshot.boxes);
+    editor.decisions = clone(snapshot.decisions);
+    $("#annotation-reviewer").value = snapshot.reviewer;
+    $("#annotation-notes").value = snapshot.notes;
+    if (!selectedBox()) editor.selected = null;
+    recomputeDirty();
+  }
+
+  const actionBlocked = () =>
+    !editor.document || editor.busy || editor.advancing || editor.loading ||
+    Boolean(editor.drag);
+
+  function changeHistory(direction) {
+    if (actionBlocked()) return;
+    const snapshot = editor.history[direction]();
+    if (!snapshot) return;
+    editor.request++;
     invalidatePreview();
-    editor.dirty = true;
+    restoreSnapshot(snapshot);
+    renderBoxes();
+    renderProposals();
     updateStatus();
   }
 
@@ -147,7 +208,14 @@
         : `${document.status === "validated" ? "Validated" : document.status === "draft" ? "Draft" : "Unannotated"} · revision ${document.revision}`;
     $("#annotation-review-summary").textContent =
       `${editor.boxes.length} label${editor.boxes.length === 1 ? "" : "s"} · ${count} pending proposal${count === 1 ? "" : "s"}`;
-    const blocked = editor.busy || editor.advancing || editor.loading;
+    const blocked = actionBlocked();
+    for (const button of window.document.querySelectorAll("#annotation-boxes button"))
+      button.disabled = blocked;
+    for (const button of window.document.querySelectorAll("#annotation-proposals button"))
+      button.disabled = blocked || Boolean(
+        button.dataset.requiresBox &&
+        !editor.boxes.some((box) => box.id === button.dataset.requiresBox),
+      );
     $("#annotation-save").disabled =
       blocked || (!editor.dirty && document.status === "draft");
     $("#annotation-validate").disabled =
@@ -184,9 +252,12 @@
       blocked || position < 0 || position >= editor.frames.length - 1;
     $("#annotation-frame").disabled = blocked;
     $("#annotation-refresh").disabled = blocked;
-    $("#annotation-canvas").classList.toggle("drawing", editor.tool === "draw");
-    $("#annotation-canvas").classList.toggle("busy", blocked);
-    for (const name of ["draw", "select"]) {
+    const canvas = $("#annotation-canvas");
+    canvas.classList.toggle("drawing", editor.tool === "draw" && !editor.spacePan);
+    canvas.classList.toggle("pan-tool", editor.tool === "pan" || editor.spacePan);
+    canvas.classList.toggle("panning", editor.drag?.kind === "pan");
+    canvas.classList.toggle("busy", editor.busy || editor.advancing || editor.loading);
+    for (const name of ["draw", "select", "pan"]) {
       $(`#annotation-${name}-tool`).classList.toggle(
         "active",
         editor.tool === name,
@@ -210,6 +281,16 @@
     ]) {
       $(selector).disabled = blocked;
     }
+    for (const coordinate of ["x1", "y1", "x2", "y2"])
+      $(`#annotation-${coordinate}`).disabled = blocked;
+    $("#annotation-class").disabled = blocked;
+    $("#annotation-undo").disabled = blocked || !editor.history.canUndo;
+    $("#annotation-redo").disabled = blocked || !editor.history.canRedo;
+    $("#annotation-history-status").textContent =
+      editor.history.canUndo || editor.history.canRedo
+        ? `Local edits · ${editor.history.canUndo ? "undo available" : "no earlier undo step"}${editor.history.canRedo ? " · redo available" : ""}`
+        : "Local edit history starts at the loaded revision.";
+    updateViewControls();
     $("#annotation-prediction").disabled =
       blocked || !$("#annotation-prediction").value;
     for (const selector of [
@@ -524,7 +605,37 @@
     await loadFrame(id);
   }
 
-  function applyDocument(document) {
+  function annotationKey(document) {
+    return JSON.stringify({
+      frame: {
+        id: document.frame.id,
+        width: document.frame.width,
+        height: document.frame.height,
+        sha256: document.frame.sha256,
+      },
+      revision: document.revision,
+      status: document.status,
+      boxes: document.boxes,
+      decisions: document.decisions,
+      reviewer: document.reviewer,
+      notes: document.notes,
+      suggestions: document.suggestions,
+    });
+  }
+
+  function applyDocument(document, automaticRefresh = false) {
+    if (
+      automaticRefresh && editor.document &&
+      annotationKey(document) === annotationKey(editor.document)
+    ) {
+      // An unchanged GET must not erase redo after undoing back to the baseline.
+      editor.document = document;
+      editor.remoteUpdate = false;
+      renderSources();
+      renderHistory();
+      updateStatus();
+      return;
+    }
     invalidatePreview();
     editor.document = document;
     editor.boxes = clone(document.boxes || []);
@@ -543,6 +654,9 @@
     }
     $("#annotation-reviewer").value = reviewer;
     $("#annotation-notes").value = document.notes || "";
+    const snapshot = editableSnapshot();
+    editor.history.reset(snapshot);
+    editor.baseline = snapshotKey(snapshot);
     $("#annotation-conflict").hidden = true;
     $("#annotation-editor").hidden = false;
     $("#annotation-empty").hidden = true;
@@ -551,8 +665,14 @@
     $("#annotation-source").textContent =
       `${source?.filename || frame.asset_id} · ${frame.width} × ${frame.height}${frame.timestamp_seconds != null ? ` · ${timestamp(frame.timestamp_seconds)}` : ""}`;
     $("#annotation-frame").value = editor.frameId;
-    const canvas = $("#annotation-canvas");
-    canvas.setAttribute("viewBox", `0 0 ${frame.width} ${frame.height}`);
+    if (editor.viewFrameId !== frame.id || !editor.view) {
+      editor.view = tools.fitViewport(frame.width, frame.height);
+      editor.viewFrameId = frame.id;
+      editor.spacePan = false;
+    } else {
+      editor.view = tools.clampViewport(editor.view, frame.width, frame.height);
+    }
+    syncViewBox();
     const image = $("#annotation-image");
     image.setAttribute(
       "href",
@@ -619,9 +739,7 @@
     });
     if (interactive) rectangle.dataset.boxId = box.id;
     group.append(rectangle);
-    const scale =
-      editor.document.frame.width /
-      Math.max($("#annotation-canvas").getBoundingClientRect().width, 200);
+    const scale = 1 / screenScale();
     const text = svg("text", {
       x: left + 3 * scale,
       y: Math.max(14 * scale, top - 5 * scale),
@@ -646,11 +764,9 @@
         `${index + 1} · ${box.label}`,
         true,
       );
-      if (selected && editor.tool === "select") {
+      if (selected && editor.tool === "select" && !editor.spacePan) {
         const [x1, y1, x2, y2] = box.box;
-        const size =
-          (9 * editor.document.frame.width) /
-          Math.max($("#annotation-canvas").getBoundingClientRect().width, 200);
+        const size = 9 / screenScale();
         for (const [corner, x, y] of [
           ["nw", x1, y1],
           ["ne", x2, y1],
@@ -680,6 +796,7 @@
           boxShape(proposal, "annotation-proposal-box", `? ${proposal.label}`),
         );
     }
+    updateViewControls();
   }
 
   function renderBoxes() {
@@ -701,6 +818,7 @@
         `annotation-box-item${box.id === editor.selected ? " selected" : ""}`,
       );
       button.type = "button";
+      button.disabled = actionBlocked();
       button.setAttribute("aria-pressed", String(box.id === editor.selected));
       const proposal = editor.document.suggestions.find(
         (item) => item.id === box.suggestion_id,
@@ -713,10 +831,13 @@
         node("span", "small muted", origin),
       );
       button.addEventListener("click", () => {
+        if (actionBlocked()) return;
+        editor.history.breakMerge();
         editor.selected = box.id;
         editor.tool = "select";
         renderBoxes();
         updateStatus();
+        $("#annotation-canvas").focus({ preventScroll: true });
       });
       list.append(button);
     });
@@ -822,8 +943,9 @@
             : "Accept proposal",
         );
         accept.type = "button";
+        accept.dataset.requiresBox = proposal.metadata?.target_box_id || "";
         accept.disabled =
-          editor.busy ||
+          actionBlocked() ||
           Boolean(
             proposal.metadata?.target_box_id &&
               !editor.boxes.some(
@@ -833,9 +955,9 @@
         accept.addEventListener("click", () => acceptProposal(proposal));
         const reject = node("button", "text-button", "Reject proposal");
         reject.type = "button";
-        reject.disabled = editor.busy;
+        reject.disabled = actionBlocked();
         reject.addEventListener("click", () => {
-          if (editor.busy) return;
+          if (actionBlocked()) return;
           editor.decisions[proposal.id] = "rejected";
           changed();
           renderProposals();
@@ -850,9 +972,9 @@
           "Reject proposal and remove its label",
         );
         undo.type = "button";
-        undo.disabled = editor.busy;
+        undo.disabled = actionBlocked();
         undo.addEventListener("click", () => {
-          if (editor.busy) return;
+          if (actionBlocked()) return;
           if (
             editor.boxes.some((box) => box.suggestion_id === proposal.id) &&
             !window.confirm(
@@ -894,7 +1016,7 @@
   }
 
   function acceptProposal(proposal) {
-    if (editor.busy) return;
+    if (actionBlocked()) return;
     const existing = editor.boxes.find(
       (box) => box.id === proposal.metadata?.target_box_id,
     );
@@ -923,7 +1045,7 @@
 
   function removeSelected() {
     const box = selectedBox();
-    if (!box || editor.busy) return;
+    if (!box || actionBlocked()) return;
     if (box.suggestion_id) editor.decisions[box.suggestion_id] = "rejected";
     editor.boxes = editor.boxes.filter((item) => item.id !== box.id);
     editor.selected = null;
@@ -1019,7 +1141,7 @@
   }
 
   async function importProposals() {
-    if (editor.dirty || editor.busy) return;
+    if (editor.dirty || actionBlocked()) return;
     editor.request++;
     editor.busy = true;
     updateStatus();
@@ -1196,7 +1318,7 @@
         ? "Waiting for all preview images to load. If an image fails to load, discard this preview and try again."
         : `Approval expires at ${new Date(preview.expires_at).toLocaleTimeString()}. Changing any review settings discards this preview.`;
     $("#annotation-api-confirm").disabled =
-      editor.busy || editor.dirty || expired || !imagesReady ||
+      actionBlocked() || editor.dirty || expired || !imagesReady ||
       !$("#annotation-api-consent").checked || assistActive();
     $("#annotation-api-consent").disabled = editor.busy || expired;
     $("#annotation-api-cancel").disabled = editor.busy;
@@ -1263,7 +1385,7 @@
   }
 
   async function requestAssistance() {
-    if (editor.dirty || editor.busy || !providerReady()) return;
+    if (editor.dirty || actionBlocked() || !providerReady()) return;
     invalidatePreview();
     const generation = editor.previewGeneration;
     const frameId = editor.frameId;
@@ -1293,6 +1415,7 @@
   }
 
   async function confirmApiReview() {
+    if (actionBlocked()) return;
     const preview = editor.preview;
     updatePreviewStatus();
     if (!preview || $("#annotation-api-confirm").disabled) return;
@@ -1409,72 +1532,166 @@
     dialog.showModal();
   }
 
-  function canvasPoint(event) {
+  function screenScale() {
+    const matrix = $("#annotation-canvas").getScreenCTM();
+    const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 0;
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
+  function syncViewBox() {
+    if (!editor.view) return;
+    const { x, y, width, height } = editor.view;
+    $("#annotation-canvas").setAttribute(
+      "viewBox", `${x} ${y} ${width} ${height}`,
+    );
+  }
+
+  function updateViewControls() {
+    const blocked = actionBlocked();
+    for (const selector of [
+      "#annotation-zoom-out", "#annotation-zoom-in",
+      "#annotation-fit", "#annotation-one-to-one",
+    ]) $(selector).disabled = blocked;
+    $("#annotation-focus-box").disabled = blocked || !selectedBox();
+    const scale = screenScale() * 100;
+    $("#annotation-zoom-level").textContent = `${scale < 10 ? scale.toFixed(1) : Math.round(scale)}%`;
+  }
+
+  function setView(view) {
+    editor.view = view;
+    syncViewBox();
+    paintCanvas();
+    updateViewControls();
+  }
+
+  function changeView(action, factor = 1, anchor = null) {
+    if (actionBlocked()) return;
+    const { width, height } = editor.document.frame;
     const canvas = $("#annotation-canvas");
-    const matrix = canvas.getScreenCTM();
-    if (!matrix) return null;
+    const { width: canvasWidth, height: canvasHeight } = canvas.getBoundingClientRect();
+    if (!(canvasWidth > 0 && canvasHeight > 0)) return;
+    let view;
+    if (action === "fit") view = tools.fitViewport(width, height);
+    else if (action === "one-to-one")
+      view = tools.oneToOneViewport(
+        editor.view, width, height, canvasWidth, canvasHeight,
+      );
+    else if (action === "focus") {
+      if (!selectedBox()) return;
+      view = tools.focusViewport(selectedBox().box, width, height);
+    } else {
+      const oneToOneZoom = Math.max(width / canvasWidth, height / canvasHeight);
+      anchor ||= {
+        x: editor.view.x + editor.view.width / 2,
+        y: editor.view.y + editor.view.height / 2,
+      };
+      view = tools.zoomViewport(editor.view, factor, anchor, width, height, {
+        minZoom: Math.min(1 / 64, oneToOneZoom),
+        maxZoom: Math.max(64, oneToOneZoom),
+      });
+    }
+    setView(view);
+  }
+
+  function canvasPoint(event, bounded = true) {
+    const matrix = $("#annotation-canvas").getScreenCTM();
+    if (!matrix || !Number.isFinite(matrix.a) || matrix.a === 0) return null;
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
       matrix.inverse(),
     );
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    if (!bounded) return [point.x, point.y];
     return [
       Math.max(0, Math.min(editor.document.frame.width, point.x)),
       Math.max(0, Math.min(editor.document.frame.height, point.y)),
     ];
   }
 
+  function selectTool(name) {
+    if (actionBlocked()) return;
+    editor.history.breakMerge();
+    editor.tool = name;
+    paintCanvas();
+    updateStatus();
+  }
+
   function pointerDown(event) {
-    if (!editor.document || editor.busy || editor.advancing || editor.loading || event.button !== 0)
+    if (event.button !== 0 && event.button !== 1) return;
+    editor.pointers.add(event.pointerId);
+    // Two fingers must never turn an in-progress drag into a new annotation.
+    if (editor.pointers.size > 1 || event.isPrimary === false) {
+      pointerEnd(null, true);
       return;
-    const point = canvasPoint(event);
+    }
+    if (actionBlocked()) return;
+    const point = canvasPoint(event, false);
     if (!point) return;
-    invalidatePreview();
+    const { width, height } = editor.document.frame;
+    const pan = editor.tool === "pan" || editor.spacePan || event.button === 1;
+    if (!pan && (
+      point[0] < 0 || point[1] < 0 || point[0] > width || point[1] > height
+    )) return;
     event.preventDefault();
     const canvas = $("#annotation-canvas");
     canvas.focus({ preventScroll: true });
+    editor.history.breakMerge();
+    const before = editableSnapshot();
+    const selection = editor.selected;
     const id = event.target.dataset.boxId;
-    if (editor.tool === "draw") {
+    if (pan) {
+      editor.drag = {
+        kind: "pan", pointer: event.pointerId,
+        startScreen: [event.clientX, event.clientY],
+        originalView: clone(editor.view), scale: screenScale(),
+      };
+    } else if (editor.tool === "draw") {
       editor.selected = null;
       editor.drag = {
-        kind: "draw",
-        start: point,
-        current: point,
-        pointer: event.pointerId,
+        kind: "draw", start: point, current: point,
+        pointer: event.pointerId, before, selection,
       };
-    } else if (id) {
+    } else if (id && editor.boxes.some((box) => box.id === id)) {
       editor.selected = id;
       editor.drag = {
         kind: event.target.dataset.corner || "move",
-        start: point,
-        original: [...selectedBox().box],
-        pointer: event.pointerId,
+        start: point, original: [...selectedBox().box],
+        pointer: event.pointerId, before, selection,
       };
     } else {
       editor.selected = null;
       renderBoxes();
+      updateStatus();
       return;
     }
     canvas.setPointerCapture(event.pointerId);
     renderBoxes();
+    renderProposals();
+    updateStatus();
   }
 
   function pointerMove(event) {
     const drag = editor.drag;
     if (!drag || drag.pointer !== event.pointerId) return;
+    if (drag.kind === "pan") {
+      const { width, height } = editor.document.frame;
+      setView(tools.panViewport(
+        drag.originalView,
+        -(event.clientX - drag.startScreen[0]) / drag.scale,
+        -(event.clientY - drag.startScreen[1]) / drag.scale,
+        width, height,
+      ));
+      return;
+    }
     const point = canvasPoint(event);
+    if (!point) return;
     drag.current = point;
     if (drag.kind === "draw") {
       const box = [
-        Math.min(drag.start[0], point[0]),
-        Math.min(drag.start[1], point[1]),
-        Math.max(drag.start[0], point[0]),
-        Math.max(drag.start[1], point[1]),
+        Math.min(drag.start[0], point[0]), Math.min(drag.start[1], point[1]),
+        Math.max(drag.start[0], point[0]), Math.max(drag.start[1], point[1]),
       ];
       $("#annotation-drawing-layer").replaceChildren(
-        boxShape(
-          { box },
-          "annotation-box selected",
-          $("#annotation-class").value,
-        ),
+        boxShape({ box }, "annotation-box selected", $("#annotation-class").value),
       );
       return;
     }
@@ -1487,10 +1704,10 @@
       const dy = Math.max(-y1, Math.min(height - y2, point[1] - drag.start[1]));
       box.box = [x1 + dx, y1 + dy, x2 + dx, y2 + dy];
     } else {
-      const left = drag.kind.includes("w") ? Math.min(point[0], x2 - 1) : x1;
-      const right = drag.kind.includes("e") ? Math.max(point[0], x1 + 1) : x2;
-      const top = drag.kind.includes("n") ? Math.min(point[1], y2 - 1) : y1;
-      const bottom = drag.kind.includes("s") ? Math.max(point[1], y1 + 1) : y2;
+      const left = drag.kind.includes("w") ? Math.max(0, Math.min(point[0], x2 - 1)) : x1;
+      const right = drag.kind.includes("e") ? Math.min(width, Math.max(point[0], x1 + 1)) : x2;
+      const top = drag.kind.includes("n") ? Math.max(0, Math.min(point[1], y2 - 1)) : y1;
+      const bottom = drag.kind.includes("s") ? Math.min(height, Math.max(point[1], y1 + 1)) : y2;
       box.box = [left, top, right, bottom];
     }
     paintCanvas();
@@ -1499,44 +1716,43 @@
 
   function pointerEnd(event, cancel = false) {
     const drag = editor.drag;
-    if (!drag || (event?.pointerId != null && drag.pointer !== event.pointerId))
-      return;
+    if (!drag || (
+      event?.pointerId != null && drag.pointer !== event.pointerId
+    )) return;
+    // Clear first: releasing capture can synchronously dispatch lostpointercapture.
+    editor.drag = null;
     const canvas = $("#annotation-canvas");
     if (canvas.hasPointerCapture(drag.pointer))
       canvas.releasePointerCapture(drag.pointer);
     $("#annotation-drawing-layer").replaceChildren();
-    if (drag.kind === "draw" && !cancel) {
+    if (drag.kind === "pan") {
+      if (cancel) setView(drag.originalView);
+    } else if (cancel) {
+      restoreSnapshot(drag.before);
+      editor.selected = drag.selection;
+    } else if (drag.kind === "draw") {
       const point = drag.current || drag.start;
       const coords = [
-        Math.min(drag.start[0], point[0]),
-        Math.min(drag.start[1], point[1]),
-        Math.max(drag.start[0], point[0]),
-        Math.max(drag.start[1], point[1]),
+        Math.min(drag.start[0], point[0]), Math.min(drag.start[1], point[1]),
+        Math.max(drag.start[0], point[0]), Math.max(drag.start[1], point[1]),
       ];
       if (coords[2] - coords[0] >= 1 && coords[3] - coords[1] >= 1) {
         const box = {
-          id: crypto.randomUUID(),
-          label: $("#annotation-class").value,
-          box: coords,
-          suggestion_id: null,
+          id: crypto.randomUUID(), label: $("#annotation-class").value,
+          box: coords, suggestion_id: null,
         };
         editor.boxes.push(box);
         editor.selected = box.id;
         editor.tool = "select";
         changed();
-      }
-    } else if (drag.kind !== "draw") {
+      } else editor.selected = drag.selection;
+    } else {
       const box = selectedBox();
-      if (box && cancel) box.box = drag.original;
-      else if (
-        box &&
-        JSON.stringify(box.box) !== JSON.stringify(drag.original)
-      ) {
+      if (box && JSON.stringify(box.box) !== JSON.stringify(drag.original)) {
         updateBoxDecision(box);
         changed();
       }
     }
-    editor.drag = null;
     renderBoxes();
     renderProposals();
     updateStatus();
@@ -1544,7 +1760,7 @@
 
   function applyCoordinates() {
     const box = selectedBox();
-    if (!box || editor.busy) return;
+    if (!box || actionBlocked()) return;
     const inputs = ["x1", "y1", "x2", "y2"].map((coordinate) =>
       $(`#annotation-${coordinate}`),
     );
@@ -1584,7 +1800,7 @@
         !editor.busy &&
         !editor.drag
       )
-        applyDocument(document);
+        applyDocument(document, true);
     } catch (failure) {
       if (frameId === editor.frameId && request === editor.request) reportFailure(failure);
     }
@@ -1606,12 +1822,25 @@
       ),
     );
   }
-  for (const name of ["select", "draw"])
+  for (const name of ["select", "draw", "pan"])
     $(`#annotation-${name}-tool`).addEventListener("click", () => {
-      editor.tool = name;
-      pointerEnd(null, true);
-      paintCanvas();
-      updateStatus();
+      selectTool(name);
+      $("#annotation-canvas").focus({ preventScroll: true });
+    });
+  for (const [selector, action, factor] of [
+    ["#annotation-zoom-out", "zoom", 1 / 1.25],
+    ["#annotation-zoom-in", "zoom", 1.25],
+    ["#annotation-fit", "fit", 1],
+    ["#annotation-one-to-one", "one-to-one", 1],
+    ["#annotation-focus-box", "focus", 1],
+  ]) $(selector).addEventListener("click", () => {
+    changeView(action, factor);
+    $("#annotation-canvas").focus({ preventScroll: true });
+  });
+  for (const direction of ["undo", "redo"])
+    $(`#annotation-${direction}`).addEventListener("click", () => {
+      changeHistory(direction);
+      $("#annotation-canvas").focus({ preventScroll: true });
     });
   $("#annotation-save").addEventListener("click", () => save("draft"));
   $("#annotation-validate").addEventListener("click", () => save("validated"));
@@ -1654,8 +1883,10 @@
     refreshQueue();
     refreshCurrent();
   });
-  $("#annotation-reviewer").addEventListener("input", changed);
-  $("#annotation-notes").addEventListener("input", changed);
+  for (const field of ["reviewer", "notes"]) {
+    $(`#annotation-${field}`).addEventListener("input", () => changed(field));
+    $(`#annotation-${field}`).addEventListener("blur", () => editor.history.breakMerge());
+  }
   $("#annotation-show-proposals").addEventListener("change", paintCanvas);
   for (const selector of [
     "#annotation-prediction",
@@ -1699,7 +1930,7 @@
   );
   $("#annotation-box-class").addEventListener("change", (event) => {
     const box = selectedBox();
-    if (!box || editor.busy) return;
+    if (!box || actionBlocked()) return;
     box.label = event.target.value;
     updateBoxDecision(box);
     changed();
@@ -1707,7 +1938,7 @@
     renderProposals();
   });
   $("#annotation-add-box").addEventListener("click", () => {
-    if (!editor.document || editor.busy) return;
+    if (actionBlocked()) return;
     const { width, height } = editor.document.frame;
     const box = {
       id: crypto.randomUUID(),
@@ -1723,20 +1954,94 @@
     $("#annotation-x1").focus();
   });
   const canvas = $("#annotation-canvas");
+  window.addEventListener("pointerdown", (event) => {
+    if (
+      event.pointerType === "touch" && editor.drag &&
+      event.pointerId !== editor.drag.pointer && !canvas.contains(event.target)
+    ) {
+      editor.pointers.add(event.pointerId);
+      pointerEnd(null, true);
+    }
+  }, true);
   canvas.addEventListener("pointerdown", pointerDown);
   canvas.addEventListener("pointermove", pointerMove);
   canvas.addEventListener("pointerup", (event) => pointerEnd(event));
   canvas.addEventListener("pointercancel", (event) => pointerEnd(event, true));
-  canvas.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+  canvas.addEventListener("lostpointercapture", (event) => pointerEnd(event, true));
+  canvas.addEventListener("auxclick", (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+  for (const eventName of ["pointerup", "pointercancel"])
+    window.addEventListener(eventName, (event) => editor.pointers.delete(event.pointerId));
+  canvas.addEventListener("wheel", (event) => {
+    if (document.activeElement !== canvas || event.ctrlKey || event.metaKey) return;
+    if (actionBlocked() || editor.pointers.size > 1) return;
+    const point = canvasPoint(event, false);
+    if (!point) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16
+      : event.deltaMode === 2 ? canvas.clientHeight : 1;
+    const factor = Math.exp(
+      -Math.max(-500, Math.min(500, event.deltaY * unit)) * 0.002,
+    );
+    changeView("zoom", factor, { x: point[0], y: point[1] });
+  }, { passive: false });
+  $("#annotation-editor").addEventListener("keydown", (event) => {
+    if (
+      !editor.document || !queue.active || event.altKey ||
+      document.querySelector("dialog[open]")
+    ) return;
+    if (event.target.closest(
+      "input, textarea, select, [contenteditable]:not([contenteditable='false'])",
+    )) return;
+    const key = event.key.toLowerCase();
+    const command = event.ctrlKey || event.metaKey;
+    const history = command && (key === "z" || key === "y");
+    const plain = !command && [
+      "v", "b", "h", "f", "0", "1", "+", "=", "-", "_",
+      "delete", "backspace", "escape",
+    ].includes(key);
+    const space = !command && event.code === "Space" && event.target === canvas;
+    if (!history && !plain && !space) return;
+    event.preventDefault();
+    if (key === "escape") {
       pointerEnd(null, true);
-      editor.tool = "select";
+      editor.spacePan = false;
+      if (!actionBlocked()) editor.tool = "select";
+      paintCanvas();
       updateStatus();
+      return;
     }
-    if (event.key === "Delete" || event.key === "Backspace") {
-      event.preventDefault();
-      removeSelected();
-    }
+    if (actionBlocked()) return;
+    if (history) changeHistory(key === "y" || event.shiftKey ? "redo" : "undo");
+    else if (space) {
+      editor.spacePan = true;
+      paintCanvas();
+      updateStatus();
+    } else if (key === "delete" || key === "backspace") removeSelected();
+    else if (["v", "b", "h"].includes(key))
+      selectTool({ v: "select", b: "draw", h: "pan" }[key]);
+    else if (key === "f") changeView("focus");
+    else if (key === "0") changeView("fit");
+    else if (key === "1") changeView("one-to-one");
+    else changeView("zoom", ["+", "="].includes(key) ? 1.25 : 1 / 1.25);
+  });
+  window.addEventListener("keyup", (event) => {
+    if (event.code !== "Space" || !editor.spacePan) return;
+    editor.spacePan = false;
+    paintCanvas();
+    updateStatus();
+  });
+  function cancelInteraction() {
+    pointerEnd(null, true);
+    editor.pointers.clear();
+    editor.spacePan = false;
+    paintCanvas();
+    updateStatus();
+  }
+  window.addEventListener("blur", cancelInteraction);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelInteraction();
   });
   window.addEventListener("beforeunload", (event) => {
     if (editor.dirty || editor.busy) {
@@ -1756,6 +2061,12 @@
     editor.dirty = false;
     editor.loading = false;
     editor.drag = null;
+    editor.spacePan = false;
+    editor.pointers.clear();
+    editor.view = null;
+    editor.viewFrameId = null;
+    editor.history.reset({ boxes: [], decisions: {}, reviewer: "", notes: "" });
+    editor.baseline = null;
     editor.remoteUpdate = false;
     editor.refreshAfterRequest = false;
     editor.request++;
@@ -1802,7 +2113,13 @@
     if (refreshList) scheduleQueue(history);
     updateStatus();
   });
-  window.addEventListener("resize", paintCanvas);
+  function resizeCanvas() {
+    pointerEnd(null, true);
+    paintCanvas();
+    if (editor.document) updateViewControls();
+  }
+  new ResizeObserver(resizeCanvas).observe(canvas);
+  window.addEventListener("resize", resizeCanvas);
   editor.sessionId = state.sessionId;
   resetQueue();
 })();

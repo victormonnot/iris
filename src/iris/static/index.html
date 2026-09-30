@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
     <script src="/static/comparison.js" defer></script>
+    <script src="/static/annotation-tools.js" defer></script>
     <script src="/static/annotation.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
@@ -635,6 +636,15 @@
                       >
                         Draw box
                       </button>
+                      <button
+                        id="annotation-pan-tool"
+                        type="button"
+                        class="filter-button"
+                        aria-pressed="false"
+                        title="Move the view without editing labels (H)"
+                      >
+                        Pan
+                      </button>
                     </div>
                     <label class="sr-only" for="annotation-class"
                       >Class for new boxes</label
@@ -643,12 +653,89 @@
                       <option value="car">Car</option>
                     </select>
                   </div>
+                  <div class="annotation-view-toolbar">
+                    <div class="annotation-view-actions" role="group" aria-label="Image view">
+                      <button
+                        id="annotation-zoom-out"
+                        type="button"
+                        class="button button-secondary"
+                        aria-label="Zoom out"
+                        title="Zoom out (−)"
+                      >
+                        −
+                      </button>
+                      <output
+                        id="annotation-zoom-level"
+                        aria-label="Image scale"
+                        title="100% means one image pixel per CSS display pixel"
+                        >100%</output
+                      >
+                      <button
+                        id="annotation-zoom-in"
+                        type="button"
+                        class="button button-secondary"
+                        aria-label="Zoom in"
+                        title="Zoom in (+)"
+                      >
+                        +
+                      </button>
+                      <button
+                        id="annotation-fit"
+                        type="button"
+                        class="button button-secondary"
+                        title="Fit the whole image (0)"
+                      >
+                        Fit
+                      </button>
+                      <button
+                        id="annotation-one-to-one"
+                        type="button"
+                        class="button button-secondary"
+                        title="One image pixel per CSS display pixel (1)"
+                      >
+                        1:1
+                      </button>
+                      <button
+                        id="annotation-focus-box"
+                        type="button"
+                        class="button button-secondary"
+                        title="Focus the selected box (F)"
+                        disabled
+                      >
+                        Focus selected
+                      </button>
+                    </div>
+                    <div class="annotation-history-actions" role="group" aria-label="Local edit history">
+                      <button
+                        id="annotation-undo"
+                        type="button"
+                        class="button button-secondary"
+                        title="Undo local edit (Ctrl/Cmd+Z)"
+                        aria-keyshortcuts="Control+z Meta+z"
+                        disabled
+                      >
+                        Undo
+                      </button>
+                      <button
+                        id="annotation-redo"
+                        type="button"
+                        class="button button-secondary"
+                        title="Redo local edit (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
+                        aria-keyshortcuts="Control+Shift+z Meta+Shift+z Control+y Meta+y"
+                        disabled
+                      >
+                        Redo
+                      </button>
+                    </div>
+                  </div>
                   <div class="annotation-canvas-wrap">
                     <svg
                       id="annotation-canvas"
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 640 480"
+                      preserveAspectRatio="xMidYMid meet"
                       aria-label="Frame annotation editor"
+                      aria-describedby="annotation-canvas-help"
                       role="img"
                       tabindex="0"
                     >
@@ -664,12 +751,29 @@
                       <g id="annotation-drawing-layer"></g>
                     </svg>
                   </div>
-                  <p class="annotation-canvas-help field-hint">
+                  <p id="annotation-canvas-help" class="annotation-canvas-help field-hint">
                     Draw a box around each visible person or car. Select a box
-                    to move it or drag its corners. Use the coordinates below
-                    for keyboard editing. Delete removes the selected box;
-                    Escape cancels drawing.
+                    to move it or drag its corners. Focus the canvas to zoom
+                    with the wheel; hold Space and drag to pan. Coordinates
+                    always refer to the original image.
                   </p>
+                  <div class="annotation-edit-guidance">
+                    <p id="annotation-history-status" class="field-hint" role="status">Local edit history starts from the saved revision.</p>
+                    <details class="annotation-keyboard-help">
+                      <summary>Keyboard shortcuts and local history</summary>
+                      <dl>
+                        <dt>V / B / H</dt><dd>Select, draw or pan</dd>
+                        <dt>Space + drag</dt><dd>Temporarily pan; the middle mouse button also pans</dd>
+                        <dt>+ / −</dt><dd>Zoom in or out</dd>
+                        <dt>0 / 1 / F</dt><dd>Fit image, actual pixel size or focus selected box</dd>
+                        <dt>Ctrl/Cmd + Z</dt><dd>Undo a local edit</dd>
+                        <dt>Ctrl/Cmd + Shift + Z or Y</dt><dd>Redo a local edit</dd>
+                        <dt>Delete / Backspace</dt><dd>Remove the selected box</dd>
+                        <dt>Escape</dt><dd>Cancel the current gesture</dd>
+                      </dl>
+                      <p class="field-hint">Shortcuts apply in the editor, outside text fields and dialogs. View changes do not modify labels. Up to 100 local edits can be undone; saving, reloading or changing frames starts a new history. Human validation remains explicit.</p>
+                    </details>
+                  </div>
                   <div
                     id="annotation-box-properties"
                     class="annotation-box-properties"

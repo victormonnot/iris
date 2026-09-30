@@ -153,6 +153,16 @@ contains **person** and **car**; the interface shows their exact definitions.
 Draw boxes, move or resize them, or edit their pixel coordinates. Saved detector
 outputs can be imported as proposals without running inference again.
 
+Use **Fit**, **1:1**, zoom controls and **Focus selected** to inspect small objects.
+The hand tool or **Space + drag** moves the view; the mouse wheel zooms when the
+canvas has focus. Labels and resize handles keep a readable size, and all saved
+coordinates remain in original image pixels.
+
+**Undo** and **Redo** cover up to 100 local edits, including proposal decisions,
+box geometry, classes and review notes. They do not undo saved revisions or
+validate labels. Saving, reloading a revision or switching frames starts a new
+local history. See the [editor controls and shortcuts](docs/annotation-editor.md).
+
 Accept or reject proposals individually, correct labels and geometry, and inspect
 the whole image for missed objects. **Save draft** records work in progress.
 **Validate frame** requires a reviewer and a decision for every pending proposal;
@@ -404,7 +414,12 @@ reporting rather than model selection.
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+node --test tests/js/annotation-tools.test.cjs
 ```
+
+The JavaScript tests use Node's built-in test runner; Node is only needed for
+development, not for running IRIS. They check viewport geometry, zoom anchoring,
+pixel scale, image bounds and local history branching.
 
 Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,

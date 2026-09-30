@@ -2653,6 +2653,55 @@ select:focus-visible {
 .annotation-toolbar .filter-button {
   padding: 7px 9px;
 }
+.annotation-view-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-view-actions,
+.annotation-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.annotation-view-toolbar .button {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+#annotation-zoom-level {
+  min-width: 55px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.annotation-edit-guidance {
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-keyboard-help {
+  font-size: 12px;
+}
+.annotation-keyboard-help summary {
+  cursor: pointer;
+  color: var(--green);
+}
+.annotation-keyboard-help dl {
+  display: grid;
+  grid-template-columns: minmax(85px, 1fr) 2fr;
+  gap: 8px 14px;
+  line-height: 1.5;
+}
+.annotation-keyboard-help dt {
+  font-weight: 600;
+}
+.annotation-keyboard-help dd {
+  margin: 0;
+}
 .annotation-canvas-wrap {
   background: #17221f;
   line-height: 0;
@@ -2661,14 +2710,25 @@ select:focus-visible {
 #annotation-canvas {
   display: block;
   width: 100%;
-  max-height: 580px;
-  aspect-ratio: auto;
-  min-height: 180px;
+  height: clamp(240px, 55vh, 580px);
+  min-height: 240px;
   touch-action: none;
   user-select: none;
 }
 #annotation-canvas.drawing {
   cursor: crosshair;
+}
+#annotation-canvas.pan-tool,
+#annotation-canvas.pan-tool .annotation-box rect {
+  cursor: grab;
+}
+#annotation-canvas.panning,
+#annotation-canvas.panning .annotation-box rect {
+  cursor: grabbing;
+}
+#annotation-canvas:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -3px;
 }
 #annotation-canvas.busy {
   pointer-events: none;
