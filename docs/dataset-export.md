@@ -8,8 +8,16 @@ available by switching versions; they are never merged or silently relabeled.
 Assign complete scene groups to train, validation or test. Train and validation
 must each contain an image and use separate groups. Existing group reservations
 apply within the project, while exact image pixels keep their split throughout
-the workspace, including splits declared by COCO imports. These protections do not
-prove independence between related scenes or visually similar images.
+the workspace, including splits declared by COCO imports. Original video hashes
+also retain one split across the workspace, including reimports into other
+sessions. Historical conflicting reservations block reuse without rewriting old
+releases. These protections do not prove independence between related scenes,
+reencoded footage or visually similar images.
+
+**Suggest whole-group partitions** previews an allocation by target proportions
+and seed, with class coverage and similarity warnings. Applying it only fills the
+builder; final publication rechecks current reviews and source reservations.
+See [import and useful selection](intake-selection.md) for the workflow and limits.
 
 Freezing copies each image and records its full reviewed revision, source provenance,
 class definitions and mappings. The browser sends the revision IDs it displayed;

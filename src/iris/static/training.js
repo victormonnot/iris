@@ -12,6 +12,11 @@
     candidateRequest: 0,
     candidateLoading: false,
     candidateNeedsRefresh: false,
+    partitionPlan: null,
+    partitionRequest: 0,
+    partitionLoading: false,
+    partitionApplying: false,
+    partitionApplied: false,
     datasetBusy: false,
     datasets: [],
     datasetId: null,
@@ -92,20 +97,22 @@
       : "No groups included";
     $("#dataset-create").disabled =
       workspace.datasetBusy ||
+      workspace.partitionApplying ||
       workspace.candidateLoading ||
       workspace.candidateNeedsRefresh ||
       !counts.train ||
       !counts.val;
     $("#dataset-refresh").disabled =
-      workspace.datasetBusy || workspace.candidateLoading;
+      workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
     $("#dataset-taxonomy").disabled =
-      workspace.datasetBusy || workspace.candidateLoading || !workspace.taxonomies.length;
-    $("#dataset-parent").disabled = workspace.datasetBusy || workspace.candidateLoading;
+      workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying || !workspace.taxonomies.length;
+    $("#dataset-parent").disabled = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
     for (const select of $("#dataset-groups").querySelectorAll("select"))
-      select.disabled = workspace.datasetBusy || workspace.candidateLoading;
+      select.disabled = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
     $("#dataset-create").textContent = workspace.datasetBusy
       ? "Freezing release…"
       : "Freeze release →";
+    updatePartitionControls();
   }
 
   function renderCandidates() {
@@ -203,9 +210,10 @@
         choice = "";
       workspace.choices.set(group.scene_group, choice);
       select.value = choice;
-      select.disabled = workspace.datasetBusy || workspace.candidateLoading;
+      select.disabled = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
       select.addEventListener("change", () => {
         workspace.choices.set(group.scene_group, select.value);
+        invalidatePartitionPlan("Split changed manually. Preview again to propose new assignments.");
         updateDatasetLaunch();
       });
       field.append(label, select);
@@ -217,6 +225,7 @@
   }
 
   async function refreshCandidates() {
+    invalidatePartitionPlan();
     const request = ++workspace.candidateRequest;
     const requestedTaxonomy = workspace.taxonomyId;
     workspace.candidateLoading = true;
@@ -258,6 +267,146 @@
       row.append(node("strong", "", `${category.name} (${category.id}). `),
         document.createTextNode(category.definition));
       target.append(row);
+    }
+  }
+
+  function updatePartitionControls() {
+    const blocked = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
+    for (const input of $(".partition-settings").querySelectorAll("input")) input.disabled = blocked;
+    $("#dataset-plan-preview").disabled = blocked || workspace.partitionLoading || workspace.candidateNeedsRefresh || !workspace.candidates?.groups?.length;
+    $("#dataset-plan-preview").textContent = workspace.partitionLoading ? "Preparing preview…" : "Preview partitions";
+    $("#dataset-plan-apply").disabled = blocked || workspace.partitionLoading || workspace.partitionApplied || !workspace.partitionPlan?.can_freeze;
+    $("#dataset-plan-apply").textContent = workspace.partitionApplying ? "Checking reviewed frames…" : workspace.partitionApplied ? "Partitions applied" : "Apply proposed partitions";
+  }
+
+  function invalidatePartitionPlan(message = "") {
+    workspace.partitionRequest++;
+    workspace.partitionPlan = null;
+    workspace.partitionLoading = false;
+    workspace.partitionApplying = false;
+    workspace.partitionApplied = false;
+    $("#dataset-plan-result").hidden = true;
+    $("#dataset-plan-status").textContent = message;
+    showError("#dataset-plan-error", null);
+    updatePartitionControls();
+  }
+
+  function partitionSettings() {
+    const values = {};
+    for (const split of ["train", "val", "test"]) {
+      const input = $(`#dataset-plan-${split}`);
+      if (!input.reportValidity() || input.value === "") throw new Error("Enter a percentage for every split.");
+      values[split] = Number(input.value);
+    }
+    if (values.train + values.val + values.test !== 100) throw new Error("Train, validation and test percentages must add up to 100.");
+    const seed = $("#dataset-plan-seed");
+    if (!seed.reportValidity() || seed.value === "") throw new Error("Enter a whole-number seed.");
+    return { taxonomy_id: workspace.taxonomyId, ratios: Object.fromEntries(Object.entries(values).map(([split, value]) => [split, value / 100])), seed: Number(seed.value) };
+  }
+
+  function renderPartitionPlan(plan) {
+    $("#dataset-plan-result").hidden = false;
+    const summary = $("#dataset-plan-summary");
+    summary.replaceChildren();
+    for (const [split, label] of Object.entries(splitNames)) summary.append(node("span", "", `${plan.summary.split_counts[split]} ${label.toLowerCase()} frames`));
+    const body = $("#dataset-plan-coverage");
+    body.replaceChildren();
+    const rows = [
+      ...plan.taxonomy.classes.map((item) => ({ name: item.name, counts: Object.fromEntries(Object.keys(splitNames).map((split) => [split, plan.summary.split_class_counts[split]?.[item.id] || 0])) })),
+      { name: "Validated negative images", counts: plan.summary.split_negative_counts },
+    ];
+    for (const row of rows) {
+      const tr = node("tr");
+      tr.append(node("th", "", row.name));
+      tr.firstChild.scope = "row";
+      for (const split of Object.keys(splitNames)) tr.append(node("td", "", String(row.counts[split] || 0)));
+      body.append(tr);
+    }
+    warnings("#dataset-plan-warnings", plan.warnings);
+    $("#dataset-plan-blockers").replaceChildren(...(plan.blockers || []).map((blocker) => node("p", "", blocker.message)));
+    $("#dataset-plan-blockers").hidden = !plan.blockers?.length;
+    const groups = $("#dataset-plan-groups");
+    groups.replaceChildren();
+    for (const group of plan.groups) {
+      const item = node("div", "partition-preview-group");
+      item.append(node("strong", "", `${group.scene_group} → ${splitNames[group.split] || "Unassigned"}`));
+      item.append(node("p", "field-hint", `${group.count} frames · ${group.negative_count} validated negatives${group.reserved_split ? ` · reserved ${splitNames[group.reserved_split].toLowerCase()}` : ""}${group.related_groups?.length ? ` · linked groups: ${group.related_groups.join(", ")}` : ""}`));
+      groups.append(item);
+    }
+    const related = $("#dataset-plan-related");
+    related.replaceChildren();
+    for (const pair of plan.similar_pairs || []) {
+      const row = node("div", "partition-preview-group");
+      row.append(node("p", "field-hint", `${pair.scene_groups.join(" / ")} · similarity distance ${pair.distance}${pair.cross_split ? " · crosses proposed splits" : " · same proposed split"}`));
+      const images = node("div", "partition-similar-images");
+      for (const id of pair.frame_ids) {
+        const link = node("a");
+        link.href = projectURL(`/api/frames/${encodeURIComponent(id)}/image`);
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.title = `Open original-sized frame ${id}`;
+        const image = node("img");
+        image.src = link.href;
+        image.alt = `Similarity candidate ${id}`;
+        image.loading = "lazy";
+        link.append(image);
+        images.append(link);
+      }
+      row.append(images);
+      related.append(row);
+    }
+    if (plan.similar_pairs_truncated) related.append(node("p", "field-hint", `Showing ${plan.similar_pairs.length} of ${plan.similar_pairs_total} similar pairs. Review source groups before freezing.`));
+    for (const duplicate of plan.exact_duplicates || []) related.append(node("p", "field-hint", `Identical pixels in ${duplicate.scene_groups.join(" / ")}. Frame IDs: ${duplicate.frame_ids.join(", ")}. Choose which frames to include in Data intake.`));
+    $("#dataset-plan-status").textContent = `${plan.groups.length} scene groups · ${plan.summary.frame_count} eligible frames · seed ${plan.seed}. Whole groups and reservations can change the requested percentages.${plan.can_freeze ? " Review the preview, then apply it explicitly." : " Resolve the listed blockers before applying."}`;
+    updatePartitionControls();
+  }
+
+  async function previewPartitions() {
+    if ($("#dataset-plan-preview").disabled) return;
+    let settings;
+    try { settings = partitionSettings(); } catch (error) { showError("#dataset-plan-error", error); return; }
+    invalidatePartitionPlan();
+    const request = ++workspace.partitionRequest;
+    workspace.partitionLoading = true;
+    updatePartitionControls();
+    try {
+      const plan = await api("/api/datasets/plan", { method: "POST", body: JSON.stringify(settings) });
+      if (request !== workspace.partitionRequest || settings.taxonomy_id !== workspace.taxonomyId) return;
+      workspace.partitionPlan = plan;
+      renderPartitionPlan(plan);
+    } catch (error) {
+      if (request === workspace.partitionRequest) showError("#dataset-plan-error", error);
+    } finally {
+      if (request === workspace.partitionRequest) { workspace.partitionLoading = false; updatePartitionControls(); }
+    }
+  }
+
+  async function applyPartitions() {
+    if ($("#dataset-plan-apply").disabled) return;
+    const plan = workspace.partitionPlan;
+    const request = ++workspace.partitionRequest;
+    workspace.partitionApplying = true;
+    updateDatasetLaunch();
+    showError("#dataset-plan-error", null);
+    try {
+      const current = await api(`/api/dataset-candidates?taxonomy_id=${encodeURIComponent(plan.taxonomy_id)}`);
+      if (request !== workspace.partitionRequest || plan !== workspace.partitionPlan) return;
+      const choices = window.IRISPartitionTools.validatePlan(plan, current);
+      workspace.candidates = current;
+      workspace.candidateNeedsRefresh = false;
+      workspace.choices = choices;
+      workspace.partitionApplied = true;
+      renderCandidates();
+      $("#dataset-plan-status").textContent = "Proposed partitions applied to the menus below. Review them and use Freeze release when ready; no release was created.";
+      $("#dataset-groups").scrollIntoView({ block: "nearest" });
+    } catch (error) {
+      if (request !== workspace.partitionRequest) return;
+      workspace.partitionPlan = null;
+      workspace.candidateNeedsRefresh = true;
+      showError("#dataset-plan-error", error);
+      $("#dataset-plan-status").textContent = "No split menus changed. Refresh candidates, review the latest labels and preview again.";
+    } finally {
+      if (request === workspace.partitionRequest) { workspace.partitionApplying = false; updateDatasetLaunch(); }
     }
   }
 
@@ -842,9 +991,12 @@
   }
 
   $("#dataset-refresh").addEventListener("click", refreshCandidates);
+  $("#dataset-plan-preview").addEventListener("click", previewPartitions);
+  $("#dataset-plan-apply").addEventListener("click", applyPartitions);
+  for (const input of $(".partition-settings").querySelectorAll("input")) input.addEventListener("input", () => invalidatePartitionPlan("Settings changed. Preview again to see their effect."));
   $("#dataset-coco-download").addEventListener("click", downloadDatasetCoco);
   $("#dataset-taxonomy").addEventListener("change", (event) => {
-    if (workspace.datasetBusy || workspace.candidateLoading) return;
+    if (workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying) return;
     workspace.taxonomyId = event.target.value;
     workspace.choices.clear();
     workspace.candidates = null;
@@ -981,6 +1133,7 @@
       refreshTrainingModels();
       refreshTrainings();
     } else {
+      invalidatePartitionPlan();
       resetDatasetExport();
       invalidateTrainingPreview();
     }

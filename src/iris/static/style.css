@@ -4308,3 +4308,57 @@ select:focus-visible {
   .video-review-history-row > div { flex-basis: 100%; }
   .video-review-section-heading { align-items: flex-start; }
 }
+
+/* Local import queue and explicit collection review. */
+.source-dropzone { margin: 0 23px 20px; padding: 24px; border: 1px dashed var(--green); border-radius: 8px; display: grid; gap: 8px; text-align: center; cursor: pointer; background: #f7f9f2; }
+.source-dropzone span { color: var(--muted); font-size: 12px; }
+.source-dropzone.dragging, .source-dropzone:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; background: #e8f0df; }
+.source-dropzone[aria-disabled="true"] { opacity: .6; cursor: wait; }
+.upload-queue { padding: 0 23px 20px; }
+.upload-files { list-style: none; margin: 12px 0; padding: 0; max-height: 360px; overflow-y: auto; }
+.upload-file { padding: 12px 0; border-top: 1px solid var(--line); }
+.upload-file-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.upload-file-heading strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.upload-file-heading span { color: var(--muted); }
+.upload-file progress { width: 100%; height: 7px; margin-top: 10px; accent-color: var(--green); }
+.upload-file.succeeded span, .upload-file.existing span { color: var(--green); }
+.upload-actions, .gallery-insights-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.gallery-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 22px 0 12px; }
+.gallery-filters label { display: block; margin-bottom: 6px; }
+.gallery-filters input, .gallery-filters select { width: 100%; min-width: 0; }
+.gallery-insights-heading > p { flex: 1 1 350px; }
+.gallery-signal-hint { max-width: 900px; }
+.gallery-explanation { margin: 10px 0 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.gallery-explanation > summary { padding: 11px 0; color: var(--green); cursor: pointer; font-size: 12px; }
+.gallery-explanation-body { padding: 0 0 10px; max-width: 900px; }
+.gallery-explanation-body p { margin: 0 0 8px; }
+.frame-signals { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 12px 12px; font-size: 10px; color: var(--muted); }
+.frame-signals .text-button { font-size: 10px; padding: 0; text-align: left; }
+.frame-review-state { color: var(--green); }
+.inspect-related { margin-top: 18px; }
+.inspect-related-group h3 { font-size: 13px; margin: 14px 0 8px; }
+.inspect-related-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.inspect-related-frame { min-width: 0; background: var(--surface, #fff); border: 1px solid var(--line); padding: 5px; border-radius: 5px; text-align: left; cursor: pointer; }
+.inspect-related-frame img { width: 100%; height: 70px; object-fit: contain; background: #142c24; }
+.inspect-related-frame span { display: block; overflow-wrap: anywhere; font-size: 10px; padding: 5px 0; }
+.dataset-planner { border: 1px solid var(--line); border-radius: 8px; background: #fafbf6; padding: 18px; margin: 16px 0 22px; }
+.dataset-planner > summary { cursor: pointer; font-weight: 650; }
+.partition-settings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.partition-settings label { display: block; margin-bottom: 6px; }
+.partition-settings input { width: 100%; min-width: 0; }
+#dataset-plan-groups { display: grid; gap: 8px; margin: 12px 0; }
+.partition-preview-group { border-bottom: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere; }
+#dataset-plan-apply { margin-top: 16px; }
+#dataset-plan-related { overflow-wrap: anywhere; }
+@media (max-width: 1000px) { .gallery-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .source-dropzone { margin: 0 16px 16px; padding: 18px 12px; }
+  .upload-queue { padding: 0 16px 16px; }
+  .gallery-filters { grid-template-columns: minmax(0, 1fr); }
+  .partition-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dataset-planner { padding: 13px; }
+  .inspect-related-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.partition-similar-images { display: flex; gap: 12px; margin: 10px 0; }
+.partition-similar-images a { flex: 0 1 160px; min-width: 0; }
+.partition-similar-images img { display: block; width: 100%; height: 100px; object-fit: contain; background: #142c24; border-radius: 5px; }

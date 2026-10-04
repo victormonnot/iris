@@ -39,6 +39,7 @@ from iris.assistance_provider import provider_status
 from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
 from iris.comparison_replay import VIDEO_TYPES, local_media_file
 from iris.dataset_export import ExportLimitError, build_coco_export
+from iris.dataset_planning import preview_dataset_plan
 from iris.datasets import (
     create_dataset,
     dataset_brief,
@@ -77,6 +78,8 @@ from iris.media import import_asset, preview_extraction
 from iris.models import catalog
 from iris.projects import create_project, project_records, record_project
 from iris.review_queue import review_queue
+from iris.selection import SelectionConflict, set_selection
+from iris.selection_insights import selection_insights
 from iris.store import DEFAULT_PROJECT_ID, Store, new_id, now
 from iris.taxonomies import TaxonomyConflict, get_taxonomy, list_taxonomies, publish_taxonomy
 from iris.training import create_training, preview_training, training_detail
@@ -140,6 +143,13 @@ class SelectionInput(BaseModel):
     selected: bool
 
 
+class BatchSelectionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    frame_ids: list[str] = Field(min_length=1, max_length=1000)
+    selected: bool
+    expected_selection: dict[str, bool] = Field(min_length=1, max_length=1000)
+
+
 class ExtractionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     sampling_mode: Literal["uniform", "interval"] = "interval"
@@ -186,6 +196,17 @@ class DatasetInput(BaseModel):
     parent_id: str | None = None
     taxonomy_id: str | None = Field(default=None, min_length=1, max_length=128)
     expected_revisions: dict[str, str] | None = Field(default=None, max_length=1000)
+
+
+class DatasetPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    taxonomy_id: str | None = Field(default=None, min_length=1, max_length=128)
+    ratios: dict[str, float] = Field(
+        default_factory=lambda: {"train": 0.8, "val": 0.2, "test": 0.0},
+        min_length=3,
+        max_length=3,
+    )
+    seed: int = Field(default=0, ge=0, le=2147483647)
 
 
 class DatasetImportInput(BaseModel):
@@ -570,6 +591,8 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "video_sampling_preview": True,
                 "video_passage_review": True,
                 "frame_selection": True,
+                "selection_insights": True,
+                "dataset_split_planning": True,
                 "inference": True,
                 "comparison_replay": True,
                 "annotation": True,
@@ -674,6 +697,19 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 store, project_id=active_project.get(), taxonomy_id=taxonomy_id
             )
         except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/datasets/plan")
+    def dataset_plan(payload: DatasetPlanInput):
+        try:
+            return preview_dataset_plan(
+                store, project_id=active_project.get(), **payload.model_dump()
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Class version not found") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/dataset-imports", status_code=201)
@@ -1086,7 +1122,15 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                         raise HTTPException(413, "Upload exceeds the 2 GiB limit")
                     target.write(chunk)
             with import_lock:
-                return public(import_asset(store, session_id, staged, file.filename or "upload"))
+                return public(
+                    import_asset(
+                        store,
+                        session_id,
+                        staged,
+                        file.filename or "upload",
+                        include_import_status=True,
+                    )
+                )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         finally:
@@ -1103,6 +1147,30 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             {**public(frame), "duplicate_count": counts[frame["sha256"]]}
             for frame in store.list("frames", session_id=session_id)
         ]
+
+    @app.get("/api/sessions/{session_id}/selection-insights")
+    def frame_insights(session_id: str):
+        require("sessions", session_id)
+        try:
+            return selection_insights(store, session_id, project_id=active_project.get())
+        except KeyError as exc:
+            raise HTTPException(404, "Session not found") from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/selection")
+    def select_frames(session_id: str, payload: BatchSelectionInput):
+        require("sessions", session_id)
+        try:
+            return set_selection(
+                store, session_id, project_id=active_project.get(), **payload.model_dump()
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Session not found") from exc
+        except SelectionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.get("/api/sessions/{session_id}/review-queue")
     def session_review_queue(

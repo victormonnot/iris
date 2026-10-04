@@ -15,6 +15,13 @@ const state = {
   frames: [],
   jobs: [],
   filter: "all",
+  galleryFilters: { source: "", search: "", review: "all", signal: "all" },
+  insights: new Map(),
+  insightsRequest: 0,
+  insightsLoading: false,
+  insightsFrameKey: null,
+  insightsMessage: "",
+  insightsWarnings: [],
   inspecting: null,
   inspectionIds: [],
   extracting: null,
@@ -96,9 +103,21 @@ function sourceFor(frame) {
 }
 
 function visibleFrames() {
-  return state.frames.filter(
-    (frame) => state.filter !== "selected" || frame.selected,
-  );
+  return window.IRISIntakeTools.filterFrames(state.frames, state.assets, state.insights,
+    { ...state.galleryFilters, selected: state.filter === "selected" });
+}
+
+function reviewLabel(info) {
+  if (!info) return "Review status unavailable";
+  if (info.negative === true) return "Validated negative";
+  if (info.positive === true) return "Validated · objects present";
+  return { unannotated: "Unreviewed", draft: "Draft labels", pending_suggestions: "Pending proposals", validated: "Validated" }[info.review_status] || "Review status unavailable";
+}
+
+function uploadNavigationBlocked() {
+  if (!uploadQueue.state.busy) return false;
+  notify("An import is still active. Let it finish, or cancel the remaining files and wait for the active file.", true);
+  return true;
 }
 
 function isActive(job) {
@@ -133,7 +152,7 @@ function renderProjects() {
 function openProject(id) {
   // Keep the current selector and scope intact if beforeunload is cancelled.
   $("#project-select").value = state.projectId;
-  if (id === state.projectId) return;
+  if (id === state.projectId || uploadNavigationBlocked()) return;
   // Navigation resets every module, pending preview and modal in one operation.
   // Existing annotation/report beforeunload handlers protect unsaved edits.
   window.location.assign(projectScope.location(id));
@@ -170,6 +189,10 @@ function renderSessions() {
 
 async function selectSession(id) {
   if (state.sessionId !== id) {
+    if (uploadNavigationBlocked() || state.bulkSelecting || state.pendingSelections.size) {
+      if (!uploadQueue.state.busy) notify("Wait for the selection update before changing sessions.", true);
+      return;
+    }
     const event = new CustomEvent("iris:before-session", {
       cancelable: true,
       detail: { sessionId: id },
@@ -181,7 +204,17 @@ async function selectSession(id) {
   state.assets = [];
   state.frames = [];
   state.filter = "all";
+  state.galleryFilters = { source: "", search: "", review: "all", signal: "all" };
+  state.insights = new Map();
+  state.insightsRequest++;
+  state.insightsLoading = false;
+  state.insightsFrameKey = null;
+  state.insightsMessage = "";
+  state.insightsWarnings = [];
+  if ($("#frame-dialog").open) $("#frame-dialog").close();
   state.inspecting = null;
+  state.inspectionIds = [];
+  for (const key of ["source", "search", "review", "signal"]) $(`#gallery-${key}`).value = state.galleryFilters[key];
   rememberSession(id);
   renderSessions();
   const session = state.sessions.find((item) => item.id === id);
@@ -200,7 +233,7 @@ async function selectSession(id) {
   await refreshSession();
 }
 
-async function refreshSession() {
+async function refreshSession(forceInsights = false) {
   if (!state.sessionId) return;
   const id = state.sessionId;
   const request = ++state.frameFetch;
@@ -217,7 +250,60 @@ async function refreshSession() {
       : frame,
   );
   if (assetsChanged || !assets.length) renderAssets();
+  renderGallerySources();
   renderFrames();
+  const frameKey = frames.map((frame) => `${frame.id}:${frame.duplicate_count || 0}`).join("|");
+  if (forceInsights || state.insightsFrameKey !== frameKey) {
+    state.insightsFrameKey = frameKey;
+    await refreshInsights();
+  }
+}
+
+async function refreshInsights() {
+  const sessionId = state.sessionId;
+  if (!sessionId) return;
+  const request = ++state.insightsRequest;
+  state.insightsLoading = true;
+  state.insightsMessage = "Refreshing saved review and similarity signals…";
+  renderGalleryStatus();
+  try {
+    const result = await api(`/api/sessions/${encodeURIComponent(sessionId)}/selection-insights`);
+    if (request !== state.insightsRequest || sessionId !== state.sessionId) return;
+    state.insights = new Map(result.frames.map((frame) => [frame.frame_id, frame]));
+    state.insightsWarnings = result.warnings || [];
+    const total = result.summary?.total_frames ?? state.frames.length;
+    state.insightsMessage = `Review signals available for ${result.frames.length} / ${total} frames. Low confidence means a saved score from 0.1 to below 0.5.`;
+    if (result.frames.length < total) state.insightsMessage += " Unavailable frames are excluded from review and signal filters.";
+    if (result.limits?.similarity_truncated) state.insightsMessage += ` Similarity inspection is limited to the first ${result.limits.max_similarity_frames} frames.`;
+    if (result.frames.some((frame) => frame.prediction_sources_truncated)) state.insightsMessage += " Some older prediction sources were outside the inspection limit.";
+  } catch (error) {
+    if (request !== state.insightsRequest || sessionId !== state.sessionId) return;
+    state.insights = new Map();
+    state.insightsWarnings = [];
+    state.insightsMessage = `Review signals unavailable: ${error.message} Use Refresh review signals to try again.`;
+  } finally {
+    if (request === state.insightsRequest && sessionId === state.sessionId) {
+      state.insightsLoading = false;
+      renderGalleryStatus();
+      renderFrames();
+      if (state.inspecting && $("#frame-dialog").open) renderInspection();
+    }
+  }
+}
+
+function renderGalleryStatus() {
+  $("#gallery-insights-status").textContent = state.insightsMessage;
+  $("#gallery-refresh").disabled = state.insightsLoading || !state.sessionId;
+  $("#gallery-warnings").replaceChildren(...state.insightsWarnings.map((warning) => node("p", "field-hint", warning)));
+}
+
+function renderGallerySources() {
+  const select = $("#gallery-source");
+  select.replaceChildren(new Option("All sources", ""));
+  for (const asset of state.assets) select.append(new Option(asset.filename, asset.id));
+  if (!state.assets.some((asset) => asset.id === state.galleryFilters.source)) state.galleryFilters.source = "";
+  select.value = state.galleryFilters.source;
+  select.title = select.selectedOptions[0]?.textContent || "All sources";
 }
 
 function renderAssets() {
@@ -307,23 +393,24 @@ function renderFrames() {
   const frames = visibleFrames();
   $("#visible-frame-count").textContent = frames.length;
   $("#select-visible").disabled =
-    state.bulkSelecting || !frames.some((frame) => !frame.selected);
-  $("#clear-selection").disabled = state.bulkSelecting || !selected;
+    state.bulkSelecting || state.pendingSelections.size > 0 || !frames.some((frame) => !frame.selected);
+  $("#clear-selection").disabled = state.bulkSelecting || state.pendingSelections.size > 0 || !frames.some((frame) => frame.selected);
   const grid = $("#frame-grid");
   grid.replaceChildren();
   if (!frames.length) {
     const empty = node("div", "empty-frames");
     const onlySelected = state.filter === "selected";
+    const filtered = state.frames.length > 0;
     empty.append(
       node(
         "strong",
         "",
-        onlySelected ? "Your selection is empty" : "No frames to review yet",
+        filtered ? "No frames match these filters" : onlySelected ? "Your selection is empty" : "No frames to review yet",
       ),
       node(
         "p",
         "",
-        onlySelected
+        filtered ? "Reset the filters or choose another source or review state. Frames remain saved in this session." : onlySelected
           ? "Choose frames from the collection using their checkboxes. Your selection is saved automatically."
           : "Import an image, or extract frames from a video above. Each frame will retain its source and original timestamp.",
       ),
@@ -407,7 +494,19 @@ function frameCard(frame) {
     duplicates.title = `${frame.duplicate_count} duplicate occurrence(s)`;
     bottom.append(duplicates);
   }
-  card.append(open, bottom);
+  const info = state.insights.get(frame.id);
+  const signals = node("div", "frame-signals");
+  signals.append(node("span", "frame-review-state", reviewLabel(info)));
+  if (info?.low_confidence_count > 0) signals.append(node("span", "", `${info.low_confidence_count} low confidence`));
+  if (info?.no_target_predictions === true) signals.append(node("span", "", "No saved target detections"));
+  if (info?.exact_duplicate_ids?.length || info?.similar_frame_ids?.length) {
+    const related = node("button", "text-button", `${info.exact_duplicate_count ?? info.exact_duplicate_ids?.length ?? 0} identical · ${info.similar_frame_count ?? info.similar_frame_ids?.length ?? 0} similar`);
+    related.type = "button";
+    related.setAttribute("aria-label", `Inspect related frames for ${source?.filename || frame.id}`);
+    related.addEventListener("click", () => { openInspection(frame.id); $("#inspect-related").scrollIntoView({ block: "nearest" }); });
+    signals.append(related);
+  }
+  card.append(open, bottom, signals);
   return card;
 }
 
@@ -437,32 +536,28 @@ async function updateSelection(id, selected, deferRender = false) {
 }
 
 async function bulkSelection(selected) {
-  const targets = (selected ? visibleFrames() : state.frames).filter(
-    (frame) => frame.selected !== selected,
-  );
+  if (state.bulkSelecting || state.pendingSelections.size) return;
+  const sessionId = state.sessionId;
+  const payload = window.IRISIntakeTools.selectionPayload(visibleFrames(), selected);
+  if (!payload.frame_ids.length) return;
+  if (payload.frame_ids.length > 1000) {
+    notify("Select at most 1,000 frames in one action. Narrow the source or gallery filters first.", true);
+    return;
+  }
   state.bulkSelecting = true;
   renderFrames();
-  let failures = 0;
   try {
-    // Limit parallel writes so larger collections do not flood the local server.
-    for (let offset = 0; offset < targets.length; offset += 6) {
-      const results = await Promise.allSettled(
-        targets
-          .slice(offset, offset + 6)
-          .map((frame) => updateSelection(frame.id, selected, true)),
-      );
-      failures += results.filter(
-        (result) => result.status === "rejected",
-      ).length;
-    }
-    if (failures)
-      notify(
-        `${failures} frame selection(s) could not be saved. Please try again.`,
-        true,
-      );
+    const result = await api(`/api/sessions/${encodeURIComponent(sessionId)}/selection`, { method: "POST", body: JSON.stringify(payload) });
+    if (state.sessionId !== sessionId) return;
+    const updates = new Map(result.frames.map((frame) => [frame.id, frame.selected]));
+    for (const frame of state.frames) if (updates.has(frame.id)) frame.selected = updates.get(frame.id);
+    notify(`${result.changed_count} frame selection${result.changed_count === 1 ? "" : "s"} updated. Only the visible filtered frames were affected.`);
+  } catch (error) {
+    notify(error.status === 409 ? "Selection changed in another view. No frames were updated. Review the refreshed selection and try again." : error.message, true);
+    if (state.sessionId === sessionId) await refreshSession().catch((failure) => notify(failure.message, true));
   } finally {
     state.bulkSelecting = false;
-    renderFrames();
+    if (state.sessionId === sessionId) renderFrames();
   }
 }
 
@@ -653,9 +748,10 @@ async function previewExtractionImages() {
 
 function openInspection(id) {
   state.inspectionIds = visibleFrames().map((frame) => frame.id);
+  state.inspectionContext = state.galleryFilters.source ? "Filtered source · chronological order" : "Filtered gallery at opening";
   state.inspecting = id;
   renderInspection();
-  $("#frame-dialog").showModal();
+  if (!$("#frame-dialog").open) $("#frame-dialog").showModal();
 }
 
 function renderInspectionSelection() {
@@ -683,6 +779,15 @@ function renderInspection() {
   const position = state.inspectionIds.indexOf(frame.id);
   $("#inspect-position").textContent =
     `${position + 1} / ${state.inspectionIds.length}`;
+  $("#inspect-browse-context").textContent = state.inspectionContext;
+  const insight = state.insights.get(frame.id);
+  $("#inspect-review-status").textContent = reviewLabel(insight) + (insight?.taxonomy_outdated ? " · uses an older class version" : "");
+  const signal = $("#inspect-prediction-signal");
+  signal.textContent = insight?.prediction_signal_status === "available"
+    ? `${insight.low_confidence_count ?? 0} saved low confidence predictions (0.1 to below 0.5). ${insight.no_target_predictions === true ? "No target detections were saved; this is not a negative annotation." : "Model output is an inspection signal only."}${insight.prediction_mapping_complete === false ? " This source covers only some target classes." : ""}`
+    : insight?.prediction_signal_reason || "No compatible saved detector signal. This does not describe the image's content.";
+  if (insight?.annotation_error) $("#inspect-review-status").textContent += ` · ${insight.annotation_error}`;
+  renderRelatedFrames(frame, insight);
   $("#previous-frame").disabled = position <= 0;
   $("#next-frame").disabled = position >= state.inspectionIds.length - 1;
   const session = state.sessions.find((item) => item.id === frame.session_id);
@@ -700,6 +805,11 @@ function renderInspection() {
     ["Frame pixels · SHA-256", frame.sha256],
     ["Source file · SHA-256", source?.sha256 || "Unavailable"],
   ];
+  if (insight?.prediction_source_id) metadata.push(
+    ["Saved detector signal", insight.prediction_model_id || "Saved model"],
+    ["Prediction record", insight.prediction_source_id],
+    ["Target classes covered", (insight.prediction_target_class_ids || []).join(", ")],
+  );
   if (frame.extraction?.sampling_mode === "passages") {
     const config = frame.extraction;
     const plan = config.passages_plan;
@@ -758,6 +868,44 @@ function renderInspection() {
   $("#download-source").href =
     projectURL(`/api/assets/${encodeURIComponent(frame.asset_id)}/media`);
   $("#download-source").download = source?.filename || "original";
+}
+
+function renderRelatedFrames(frame, insight) {
+  const container = $("#inspect-related");
+  container.replaceChildren();
+  for (const [key, title] of [["exact_duplicate_ids", "Identical image pixels"], ["similar_frame_ids", "Visually similar candidates"], ["neighbor_frame_ids", "Nearby video frames"]]) {
+    const related = (insight?.[key] || []).map((id) => state.frames.find((item) => item.id === id)).filter(Boolean);
+    if (!related.length) continue;
+    const section = node("div", "inspect-related-group");
+    const total = key === "exact_duplicate_ids" ? insight.exact_duplicate_count : key === "similar_frame_ids" ? insight.similar_frame_count : related.length;
+    section.append(node("h3", "", title + (total > related.length ? ` · showing ${related.length} of ${total}` : "")));
+    const list = node("div", "inspect-related-list");
+    for (const item of related) {
+      const source = sourceFor(item);
+      const button = node("button", "inspect-related-frame");
+      button.type = "button";
+      const image = node("img");
+      image.src = projectURL(`/api/frames/${encodeURIComponent(item.id)}/image`);
+      image.alt = "";
+      image.loading = "lazy";
+      const text = `${source?.filename || item.id}${source?.kind === "video" ? ` · ${timestamp(item.timestamp_seconds)}` : ""}`;
+      button.title = text;
+      button.setAttribute("aria-label", `Inspect ${title.toLowerCase()}: ${text}`);
+      button.append(image, node("span", "", text));
+      button.addEventListener("click", () => {
+        state.inspectionIds = [frame.id, ...related.map((row) => row.id)];
+        state.inspectionContext = `${title} · may include frames outside the gallery filters`;
+        state.inspecting = item.id;
+        renderInspection();
+        $("#inspect-image").scrollIntoView({ block: "nearest" });
+      });
+      list.append(button);
+    }
+    section.append(list);
+    container.append(section);
+  }
+  if (!container.childElementCount) container.append(node("p", "field-hint", "No related frames in the available review signals."));
+  else container.append(node("p", "field-hint", "Inspect these candidates yourself. Similarity does not establish scene identity. No frames are removed or validated automatically."));
 }
 
 function navigateInspection(direction) {
@@ -891,8 +1039,9 @@ async function refreshJobs() {
   const changed = state.jobs.some(
     (job) => previousStatuses.get(job.id) !== job.status,
   );
+  const changedSignals = state.jobs.some((job) => ["infer", "assist", "extract"].includes(job.kind) && !isActive(job) && previousStatuses.get(job.id) !== job.status);
   if (previouslyActive || state.jobs.some(isActive) || changed)
-    await refreshSession();
+    await refreshSession(changedSignals);
   schedulePolling();
 }
 
@@ -911,6 +1060,7 @@ function schedulePolling() {
 
 $("#session-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (uploadNavigationBlocked()) return;
   const button = $("button[type=submit]", event.currentTarget);
   const name = $("#session-name").value.trim();
   const sceneGroup = $("#scene-group").value.trim();
@@ -937,48 +1087,115 @@ $("#session-form").addEventListener("submit", async (event) => {
 
 $("#start-session").addEventListener("click", () => $("#session-name").focus());
 
-$("#file-input").addEventListener("change", async (event) => {
-  const files = [...event.target.files];
-  if (!files.length || !state.sessionId) return;
-  const sessionId = state.sessionId;
-  const input = event.target;
-  const progress = $("#upload-progress");
-  const trigger = $(".upload-trigger");
-  input.disabled = true;
-  trigger.classList.add("disabled");
-  progress.hidden = false;
-  let imported = 0;
-  const failures = [];
-  try {
-    for (let index = 0; index < files.length; index++) {
-      const file = files[index];
-      progress.textContent = `Importing ${index + 1} of ${files.length} · ${file.name}`;
-      const body = new FormData();
-      body.append("file", file);
-      try {
-        await api(`/api/sessions/${encodeURIComponent(sessionId)}/assets`, {
-          method: "POST",
-          body,
-        });
-        imported++;
-      } catch (error) {
-        failures.push(`${file.name}: ${error.message}`);
+function uploadFile(file, sessionId, progress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", projectURL(`/api/sessions/${encodeURIComponent(sessionId)}/assets`));
+    request.upload.addEventListener("progress", (event) => progress({ loaded: event.loaded, total: event.lengthComputable ? event.total : null }));
+    request.upload.addEventListener("load", () => progress({ processing: true }));
+    request.addEventListener("load", () => {
+      let response;
+      try { response = JSON.parse(request.responseText); } catch { /* Invalid responses remain visible as failures. */ }
+      if (request.status >= 200 && request.status < 300 && response?.id) resolve(response);
+      else {
+        const detail = response?.detail;
+        reject(new Error(typeof detail === "string" ? detail : `Import failed (${request.status}). Check the source list before retrying.`));
       }
+    });
+    request.addEventListener("error", () => reject(new Error("Connection lost. Check the source list before retrying; the server may already have received this file.")));
+    const body = new FormData();
+    body.append("file", file);
+    request.send(body);
+  });
+}
+
+function renderUploadQueue(queue) {
+  $("#upload-queue").hidden = !queue.entries.length;
+  $("#file-input").disabled = queue.busy;
+  $(".upload-trigger").classList.toggle("disabled", queue.busy);
+  $("#source-dropzone").setAttribute("aria-disabled", String(queue.busy));
+  const sessionName = state.sessions.find((session) => session.id === queue.sessionId)?.name || "this session";
+  const complete = queue.entries.filter((entry) => ["succeeded", "existing"].includes(entry.status)).length;
+  const failed = queue.entries.filter((entry) => entry.status === "failed").length;
+  const cancelled = queue.entries.filter((entry) => entry.status === "cancelled").length;
+  $("#upload-progress").textContent = `${queue.busy ? "Importing into" : "Import results for"} ${sessionName} · ${complete} completed · ${failed} failed${cancelled ? ` · ${cancelled} cancelled` : ""}`;
+  $("#upload-retry").disabled = queue.busy || !failed;
+  $("#upload-cancel").disabled = !queue.busy || !queue.entries.some((entry) => entry.status === "pending");
+  $("#project-select").disabled = queue.busy || !state.projects.length;
+  for (const button of document.querySelectorAll(".session-item, #session-form button[type=submit], #project-form button[type=submit]")) button.disabled = queue.busy;
+  const list = $("#upload-files");
+  list.replaceChildren();
+  for (const entry of queue.entries) {
+    const row = node("li", `upload-file ${entry.status}`);
+    const heading = node("div", "upload-file-heading");
+    const name = node("strong", "", entry.name);
+    name.title = entry.name;
+    const labels = { pending: "Queued", uploading: "Sending file…", processing: "Processing on this computer…", succeeded: "Imported", existing: "Already imported · source reused", failed: "Failed", cancelled: "Cancelled before upload" };
+    let label = labels[entry.status];
+    if (entry.status === "uploading" && entry.total) label += ` ${Math.floor(100 * entry.loaded / entry.total)}%`;
+    heading.append(name, node("span", "small", label));
+    row.append(heading);
+    if (["uploading", "processing"].includes(entry.status)) {
+      const bar = node("progress");
+      bar.setAttribute("aria-label", `Import progress for ${entry.name}`);
+      if (entry.status === "uploading" && entry.total) { bar.max = entry.total; bar.value = entry.loaded; }
+      row.append(bar);
     }
-    await refreshSession();
-    const summary = `${imported} source file${imported === 1 ? "" : "s"} imported.`;
-    notify(
-      failures.length ? `${summary} ${failures.join(" ")}` : summary,
-      Boolean(failures.length),
-    );
-  } catch (error) {
-    notify(error.message, true);
-  } finally {
-    input.value = "";
-    input.disabled = false;
-    trigger.classList.remove("disabled");
-    progress.hidden = true;
+    if (entry.error) row.append(node("p", "job-error", entry.error));
+    list.append(row);
   }
+}
+
+const uploadQueue = window.IRISIntakeTools.createUploadQueue({ upload: uploadFile, onChange: renderUploadQueue });
+async function startUploads(files, retry = false) {
+  if (uploadQueue.state.busy || !state.sessionId || (!retry && !files.length)) return;
+  const sessionId = retry ? uploadQueue.state.sessionId : state.sessionId;
+  await (retry ? uploadQueue.retryFailed() : uploadQueue.start(files, sessionId));
+  if (state.sessionId === sessionId) await refreshSession().catch((error) => notify(error.message, true));
+}
+$("#file-input").addEventListener("change", (event) => {
+  const files = [...event.target.files];
+  event.target.value = "";
+  startUploads(files);
+});
+$("#upload-retry").addEventListener("click", () => startUploads([], true));
+$("#upload-cancel").addEventListener("click", () => uploadQueue.cancelRemaining());
+const dropzone = $("#source-dropzone");
+dropzone.addEventListener("click", () => { if (!uploadQueue.state.busy) $("#file-input").click(); });
+dropzone.addEventListener("keydown", (event) => {
+  if (["Enter", " "].includes(event.key)) { event.preventDefault(); dropzone.click(); }
+});
+for (const type of ["dragenter", "dragover"]) dropzone.addEventListener(type, (event) => {
+  event.preventDefault();
+  if (!uploadQueue.state.busy) dropzone.classList.add("dragging");
+});
+dropzone.addEventListener("dragleave", (event) => { if (!dropzone.contains(event.relatedTarget)) dropzone.classList.remove("dragging"); });
+dropzone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  dropzone.classList.remove("dragging");
+  if (uploadNavigationBlocked()) return;
+  startUploads([...event.dataTransfer.files]);
+});
+window.addEventListener("beforeunload", (event) => {
+  if (!uploadQueue.state.busy && !state.bulkSelecting && !state.pendingSelections.size) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+for (const key of ["source", "search", "review", "signal"]) $(`#gallery-${key}`).addEventListener(key === "search" ? "input" : "change", (event) => {
+  state.galleryFilters[key] = event.target.value;
+  if (key === "source") event.target.title = event.target.selectedOptions[0]?.textContent || "All sources";
+  renderFrames();
+});
+$("#gallery-refresh").addEventListener("click", () => refreshSession(true).catch((error) => notify(error.message, true)));
+$("#gallery-reset").addEventListener("click", () => {
+  state.filter = "all";
+  state.galleryFilters = { source: "", search: "", review: "all", signal: "all" };
+  for (const key of ["source", "search", "review", "signal"]) $(`#gallery-${key}`).value = state.galleryFilters[key];
+  renderGallerySources();
+  renderFrames();
+});
+window.addEventListener("iris:workspace", (event) => {
+  if (event.detail.name === "intake" && state.sessionId) refreshSession(true).catch((error) => notify(error.message, true));
 });
 
 for (const filter of ["all", "selected"]) {
@@ -1124,6 +1341,7 @@ $("#project-select").addEventListener("change", (event) => openProject(event.tar
 $("#project-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("button[type=submit]", event.currentTarget);
+  if (uploadNavigationBlocked()) return;
   const name = $("#project-name").value.trim();
   if (!name) return $("#project-name").focus();
   button.disabled = true;

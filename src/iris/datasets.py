@@ -18,8 +18,9 @@ MAX_FRAMES = 1000
 SPLIT_POLICY = (
     "Assign complete scene groups to train, validation or test. Group assignments and exact "
     "image pixels retain their split across dataset versions and declared source splits "
-    "of imported datasets. Scene groups belong to their project; exact image pixels retain "
-    "their split across this workspace."
+    "of imported datasets. Frames from the same original video SHA-256 stay in one split, "
+    "including copies imported into other sessions or projects. Scene groups belong to their "
+    "project; exact image pixels and original videos retain their split across this workspace."
 )
 INDEPENDENCE_WARNING = (
     "Different scene groups are not proof of independent data. Group related sessions and "
@@ -132,11 +133,24 @@ def dataset_brief(store: Store, row: dict) -> dict:
     return _brief(row, _manifest_from_row(store, row))
 
 
-def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> tuple[dict, dict]:
-    """Scope group names to a project while retaining workspace-wide pixel protection."""
-    groups, pixels = {}, {}
+def _source_video(source: dict) -> str | None:
+    """Original-byte identity, independent of upload/session IDs and extracted pixels."""
+    if source.get("kind") != "video":
+        return None
+    digest = source.get("sha256")
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise ValueError("Original video provenance has no valid SHA-256 identity")
+    return digest
+
+
+def _reservation_state(
+    store: Store, conn, project_id: str = DEFAULT_PROJECT_ID
+) -> tuple[dict, dict, dict]:
+    """Read immutable assignments, retaining old video conflicts for explicit reporting."""
+    groups, pixels, videos = {}, {}, {}
     for raw_row in conn.execute(
-        "SELECT s.scene_group, s.project_id, f.sha256, a.metadata FROM frames f "
+        "SELECT s.scene_group, s.project_id, f.sha256, a.metadata, a.kind, "
+        "a.sha256 AS source_sha256 FROM frames f "
         "JOIN sessions s ON s.id=f.session_id JOIN assets a ON a.id=f.asset_id"
     ):
         row = _decode(raw_row)
@@ -152,6 +166,9 @@ def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> t
         if in_project:
             groups[group] = split
         pixels[digest] = split
+        video = _source_video({"kind": row["kind"], "sha256": row["source_sha256"]})
+        if video is not None:
+            videos.setdefault(video, set()).add(split)
     for raw_row in conn.execute("SELECT * FROM dataset_versions ORDER BY created_at,id"):
         row = _decode(raw_row)
         manifest = _manifest_from_row(store, row)
@@ -167,6 +184,15 @@ def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> t
             if in_project:
                 groups[group] = split
             pixels[digest] = split
+            video = _source_video(frame.get("source", {}))
+            if video is not None:
+                videos.setdefault(video, set()).add(split)
+    return groups, pixels, videos
+
+
+def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> tuple[dict, dict]:
+    """Keep the group/pixel API used by import and review workflows compatible."""
+    groups, pixels, _ = _reservation_state(store, conn, project_id)
     return groups, pixels
 
 
@@ -207,7 +233,7 @@ def dataset_candidates(
             "different_taxonomy",
         )
     }
-    groups = {}
+    groups, candidate_videos = {}, set()
     with store.connect() as conn:
         conn.execute("BEGIN")
         project = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
@@ -215,7 +241,17 @@ def dataset_candidates(
             raise ValueError("Project does not exist")
         taxonomy_id = project["taxonomy_id"] if taxonomy_id is None else taxonomy_id
         taxonomy = get_taxonomy(store, taxonomy_id, project_id)
-        reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
+        reserved_groups, reserved_pixels, reserved_videos = _reservation_state(
+            store, conn, project_id
+        )
+        assets = {
+            row["id"]: _decode(row)
+            for row in conn.execute(
+                "SELECT a.* FROM assets a JOIN sessions s ON s.id=a.session_id "
+                "WHERE s.project_id=?",
+                (project_id,),
+            )
+        }
         sessions = {
             row["id"]: dict(row)
             for row in conn.execute(
@@ -233,6 +269,10 @@ def dataset_candidates(
                 excluded[reason] += 1
                 continue
             session = sessions[frame["session_id"]]
+            asset = assets[frame["asset_id"]]
+            video = _source_video(asset)
+            if video is not None:
+                candidate_videos.add(video)
             group = groups.setdefault(
                 session["scene_group"],
                 {
@@ -254,17 +294,43 @@ def dataset_candidates(
                     "revision": annotation["revision"],
                     "annotation_revision_id": annotation["id"],
                     "box_count": len(annotation["boxes"]),
+                    "class_counts": {
+                        item["id"]: sum(box["label"] == item["id"] for box in annotation["boxes"])
+                        for item in taxonomy["classes"]
+                    },
+                    "negative": not annotation["boxes"],
+                    "perceptual_hash": frame["perceptual_hash"],
+                    "source": {key: asset[key] for key in ("id", "filename", "kind", "sha256")},
+                    "video_sha256": video,
+                    "video_reserved_splits": sorted(reserved_videos.get(video, set())),
                     "reserved_split": reserved_pixels.get(frame["sha256"]),
                 }
             )
             group["count"] += 1
+    video_conflicts = [
+        {"sha256": digest, "splits": sorted(reserved_videos[digest])}
+        for digest in sorted(candidate_videos)
+        if len(reserved_videos.get(digest, set())) > 1
+    ]
     return {
         "taxonomy": taxonomy,
         "taxonomies": list_taxonomies(store, project_id),
         "groups": sorted(groups.values(), key=lambda group: group["scene_group"]),
         "excluded": excluded,
         "split_policy": SPLIT_POLICY,
-        "warnings": [INDEPENDENCE_WARNING],
+        "warnings": [
+            INDEPENDENCE_WARNING,
+            *(
+                [
+                    "Existing releases assign frames from the same original video to different "
+                    "splits. Historical releases remain unchanged; those videos cannot be frozen "
+                    "in a new release."
+                ]
+                if video_conflicts
+                else []
+            ),
+        ],
+        "video_conflicts": video_conflicts,
     }
 
 
@@ -420,7 +486,10 @@ def create_dataset(
                     "Parent dataset uses a different class version; create an independent release "
                     "for these class definitions"
                 )
-            reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
+            reserved_groups, reserved_pixels, reserved_videos = _reservation_state(
+                store, conn, project_id
+            )
+            seen_videos = {}
             snapshots, selected_groups, seen_pixels = [], set(), {}
             for frame, session, annotation in reviewed:
                 frame_id = frame["id"]
@@ -438,6 +507,21 @@ def create_dataset(
                     )
                 if reserved_pixels.get(frame["sha256"], split) != split:
                     raise ValueError("Image pixels are already reserved for a different split")
+                video = _source_video(asset)
+                if video is not None:
+                    historical_splits = reserved_videos.get(video, set())
+                    if len(historical_splits) > 1:
+                        raise ValueError(
+                            "Existing releases split this original video across partitions. "
+                            "Its historical conflict prevents a new release using this video."
+                        )
+                    if historical_splits and historical_splits != {split}:
+                        raise ValueError("Original video is already reserved for a different split")
+                    if seen_videos.get(video, split) != split:
+                        raise ValueError(
+                            "Frames from the same original video cannot cross dataset splits"
+                        )
+                    seen_videos[video] = split
                 if frame["sha256"] in seen_pixels:
                     if seen_pixels[frame["sha256"]] != split:
                         raise ValueError("Exact duplicate images cannot cross dataset splits")

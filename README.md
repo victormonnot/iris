@@ -73,6 +73,12 @@ See [projects and compatibility](docs/projects.md).
    already produced remain available. After a server interruption, unfinished
    jobs are marked interrupted. Re-run extraction explicitly to recover.
 
+The import queue accepts multiple images and videos, reports each result and can
+retry failed files. Gallery filters help inspect human-reviewed positives and
+negatives, duplicate candidates and signals from saved compatible predictions.
+Selection remains a manual decision. See [import and useful selection](docs/intake-selection.md)
+for source navigation, batch selection and the partition assistant.
+
 The budget limits sampled positions, including existing frames and duplicates;
 it is not a guarantee of that many new images. Uniform sampling includes the
 first and last eligible frame when the budget is at least two; a budget of one
@@ -411,6 +417,11 @@ API keys are read only by the server/worker and are never returned to the UI.
    or **Test**. At least two distinct groups are required for train and validation;
    test is optional, and its absence is reported. Related scenes belong in the
    same group. Never distribute neighboring frames randomly across splits.
+   **Suggest whole-group partitions** previews a repeatable allocation by target
+   proportions, with coverage warnings and existing reservations. Review and apply
+   the proposal before freezing. Copies of the same original video remain in one
+   split, including across sessions and releases; reencoded footage still needs
+   deliberate scene grouping.
    Every included image must use that exact class version. Other versions remain
    available through the selector; publishing classes never relabels a dataset.
 3. Name and freeze the version, optionally linking a previous release with the same

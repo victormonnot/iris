@@ -179,12 +179,25 @@ def _frame_record(
         raise
 
 
-def import_asset(store: Store, session_id: str, source: Path, filename: str) -> dict:
+def import_asset(
+    store: Store,
+    session_id: str,
+    source: Path,
+    filename: str,
+    *,
+    include_import_status: bool = False,
+) -> dict:
     """Preserve an original locally and create an EXIF-normalized frame for still images.
 
     Byte-identical imports are idempotent within a session. Distinct sessions retain
     their own provenance, even when their source files contain identical pixels.
     """
+
+    def result(asset: dict, created: bool) -> dict:
+        if include_import_status:
+            return {**asset, "import_status": "created" if created else "existing"}
+        return asset
+
     if store.get("sessions", session_id) is None:
         raise ValueError("Session not found.")
     source = Path(source)
@@ -196,7 +209,7 @@ def import_asset(store: Store, session_id: str, source: Path, filename: str) -> 
     source_hash = _file_hash(source)
     for existing in store.list("assets", session_id=session_id):
         if existing["sha256"] == source_hash:
-            return existing
+            return result(existing, False)
 
     decoded = _image_source(source)
     image, metadata = decoded if decoded else (None, _video_metadata(source))
@@ -230,7 +243,7 @@ def import_asset(store: Store, session_id: str, source: Path, filename: str) -> 
         inserted = True
         if image is not None:
             _frame_record(store, asset, image, extraction={"method": "image_import"})
-        return asset
+        return result(asset, True)
     except BaseException as exc:
         if inserted:
             with store.connect() as connection:
@@ -242,7 +255,7 @@ def import_asset(store: Store, session_id: str, source: Path, filename: str) -> 
         if not inserted and isinstance(exc, sqlite3.IntegrityError):
             for existing in store.list("assets", session_id=session_id):
                 if existing["sha256"] == source_hash:
-                    return existing
+                    return result(existing, False)
         raise
     finally:
         if image is not None:

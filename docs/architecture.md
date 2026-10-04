@@ -201,9 +201,20 @@ images to a staging directory. The completed directory is renamed before its
 manifest hash and summary become visible in SQLite. Failures remove unpublished
 artifacts. Releases copy their PNGs, full annotation revisions and source metadata;
 later source edits cannot change their training inputs. Existing manifests reserve
-scene groups and exact pixel hashes to one split across versions. A checksummed
+scene groups, exact pixel hashes and original video hashes to one split across
+versions. Scene groups are project-scoped; pixel and video reservations span the
+workspace without exposing other projects' records. Read-only partition planning
+links whole groups by shared sources, honors these reservations and returns
+expected revision IDs. Historical manifests are not rewritten. A checksummed
 manifest and image hashes are rechecked before consumption. These hashes detect
 artifact changes; they do not replace backups of the complete workspace.
+
+Intake selection is independent of annotation. The browser import queue captures
+its target session and reports per-file outcomes; it is not a durable background
+job. Bulk selection checks every expected boolean state in one SQLite transaction
+before updating any frame. Bounded, read-only selection insights join human review
+state with duplicate hashes and compatible saved predictions. No inference or
+automatic selection runs as part of these signals. See [intake and selection](intake-selection.md).
 
 New releases use manifest schema 2 with one complete, immutable class snapshot,
 `class_mapping` and `coco_mapping`. The selected annotation revisions must all
