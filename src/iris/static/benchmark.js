@@ -4,6 +4,7 @@
   const field = (name) => $(`#benchmark-${name}`);
   const tools = window.IRISBenchmarkTools;
   const externalTools = window.IRISBenchmarkExternalTools;
+  const samTools = window.IRISBenchmarkSAMTools;
   const taxonomy = window.IRISTaxonomyTools;
   const view = {
     active: false, candidates: null, roles: new Map(), chosen: new Set(), models: [],
@@ -13,19 +14,24 @@
     generation: 0, candidateRequest: 0, listRequest: 0, detailRequest: 0, trialRequest: 0, catalogRequest: 0,
     jobsKey: "", loaded: false,
     providers: null, providerRequest: 0, externalImages: new Set(), externalExpiry: null,
+    samPrompts: null,
   };
   const base = () => `/api/benchmarks/${encodeURIComponent(view.id)}`;
   const selection = () => tools.referenceSelection(view.candidates?.groups || [], view.roles, view.chosen);
   const locked = () => view.detail?.status === "locked";
   const multimodal = () => field("approach").value === "multimodal";
+  const segmentation = () => field("approach").value === "segmentation";
   const configOptions = () => multimodal() ? { approach: "multimodal", model_id: view.providers?.multimodal?.model || "gpt-6-astra",
     multimodal: { image_long_edge: Number(field("image-edge").value), reasoning_effort: field("reasoning").value, max_output_tokens: Number(field("output-tokens").value) } }
+    : segmentation() ? { approach: "segmentation", model_id: view.providers?.segmentation?.model_id || "sam3",
+      segmentation: { class_prompts: samTools.promptPayload(view.samPrompts, view.detail?.manifest.taxonomy), threshold: Number(field("sam-threshold").value), device: field("sam-device").value } }
     : ({ approach: "local_detector", model_id: field("model").value,
     threshold: Number(field("threshold").value), device: field("device").value,
     inference_mode: field("mode").value, tile_size: field("mode").value === "tiled" ? Number(field("tile-size").value) : 640,
     overlap: field("mode").value === "tiled" ? Number(field("overlap").value) : 0.2 });
   const trialOptions = () => ({ config_id: field("trial-config").value, role: field("trial-role").value });
   const selectedConfig = () => view.detail?.configs.find((config) => config.id === field("trial-config").value);
+  const trialApproach = () => selectedConfig()?.approach || selectedConfig()?.config?.approach || "local_detector";
   const externalTrial = () => selectedConfig()?.approach === "multimodal" || selectedConfig()?.config?.approach === "multimodal";
   const externalBudget = () => field("external-budget").value.trim() ? Number(field("external-budget").value) : NaN;
   const approval = () => externalTools.approval(view.trialPreview, { budget: externalBudget(), consent: field("external-consent").checked, loaded: view.externalImages });
@@ -45,8 +51,9 @@
     view.generation++;
     if (kind === "reference") { view.referencePreview = null; field("preview-result").hidden = true; }
     if (kind === "config") { view.configPreview = null; field("config-preview-summary").textContent = ""; }
-    if (kind === "trial" || (kind === "config" && view.trialPreview?.external_plan)) {
+    if (kind === "trial" || kind === "config") {
       view.trialPreview = null; field("trial-preview-summary").textContent = "";
+      field("local-plan").hidden = true; field("local-plan-record").textContent = "";
       clearExternalPreview();
     }
     update();
@@ -63,12 +70,13 @@
     field("history").disabled = busy || view.loading || !view.list.length;
     field("detail").hidden = !view.detail;
     const full = (view.detail?.configs.length || 0) >= 8;
-    for (const input of field("config-form").querySelectorAll("input,select,button")) input.disabled = busy || view.loading || locked() || full || !view.detail;
-    field("config-preview").disabled ||= multimodal() ? !view.providers?.multimodal_settings : !view.models.some((model) => model.id === field("model").value && model.status === "ready");
+    for (const input of field("config-form").querySelectorAll("input,select,textarea,button")) input.disabled = busy || view.loading || locked() || full || !view.detail;
+    field("config-preview").disabled ||= multimodal() ? !view.providers?.multimodal_settings : segmentation() ? !view.providers?.segmentation_settings : !view.models.some((model) => model.id === field("model").value && model.status === "ready");
     field("config-create").disabled ||= !view.configPreview || view.configPreview.key !== tools.canonical(configOptions()) || !field("config-name").value.trim();
-    field("local-settings").hidden = multimodal();
+    field("local-settings").hidden = multimodal() || segmentation();
     field("multimodal-settings").hidden = !multimodal();
-    field("tiling").hidden = multimodal() || field("mode").value !== "tiled";
+    field("sam-settings").hidden = !segmentation();
+    field("tiling").hidden = multimodal() || segmentation() || field("mode").value !== "tiled";
     field("lock").disabled = busy || view.loading || !view.detail?.configs.length || locked() || Boolean(view.detail.trials.some((trial) => isActive(trial.job || {})));
     field("lock-status").textContent = locked()
       ? "Configurations are locked. Only evaluation trials can be created; all tuning records remain available."
@@ -80,7 +88,8 @@
     field("trial-preview").disabled ||= !field("trial-config").value;
     field("trial-create").disabled = busy || view.loading || !view.trialPreview || view.trialPreview.key !== tools.canonical(trialOptions());
     field("trial-create").disabled ||= externalTrial() && !approval().allowed;
-    field("trial-create").textContent = externalTrial() ? "Send approved external trial" : "Run checked trial";
+    field("trial-create").disabled ||= !samTools.launchAllowed(view.trialPreview, trialApproach());
+    field("trial-create").textContent = externalTrial() ? "Send approved external trial" : trialApproach() === "segmentation" ? "Run checked local SAM trial" : "Run checked trial";
     field("external-budget").disabled = busy || !view.trialPreview?.external_plan;
     field("external-consent").disabled = busy || !view.trialPreview?.external_plan;
     if (view.trialPreview?.external_plan) {
@@ -182,12 +191,48 @@
       field("multimodal-model").textContent = `Exact model: ${providers.multimodal.model} · image detail: ${settings.detail}`;
       field("provider-status").textContent = externalTools.providerStatus(providers.multimodal);
       field("provider-setup").textContent = "The server reads IRIS_OPENAI_API_KEY or OPENAI_API_KEY. Keys are never entered or displayed here. This offline check does not verify model access; settings can be prepared without a key.";
+      const sam = providers.segmentation_settings;
+      field("sam-provider-status").textContent = samTools.availability(providers.segmentation);
+      field("sam-availability").textContent = samTools.availability(providers.segmentation);
+      if (sam) {
+        field("sam-threshold").min = sam.threshold.min;
+        field("sam-threshold").max = sam.threshold.max;
+        if (first) field("sam-threshold").value = sam.defaults.threshold;
+        const previous = field("sam-device").value;
+        field("sam-device").replaceChildren(...sam.devices.map((device) => {
+          const status = providers.segmentation?.devices?.find((item) => item.id === device);
+          return new Option(`${device.toUpperCase()}${status?.available === false ? " · setup required" : ""}`, device);
+        }));
+        field("sam-device").value = sam.devices.includes(previous) ? previous : sam.defaults.device;
+        renderSAMPrompts();
+      }
     } catch (failure) {
       if (request !== view.providerRequest) return;
       view.providers = null;
       field("provider-status").textContent = failure.message;
+      field("sam-provider-status").textContent = failure.message;
+      field("sam-availability").textContent = failure.message;
     }
     update();
+  }
+  function renderSAMPrompts() {
+    const next = samTools.promptState(view.samPrompts, view.id, view.detail?.manifest.taxonomy);
+    if (next === view.samPrompts) return;
+    view.samPrompts = next;
+    const container = field("sam-prompts"); container.replaceChildren();
+    for (const [index, category] of (view.detail?.manifest.taxonomy.classes || []).entries()) {
+      const row = node("div", "benchmark-sam-prompt");
+      const label = node("label", "", `${category.name} · ${category.id}`);
+      const input = node("textarea", ""); input.id = `benchmark-sam-prompt-${index}`;
+      label.htmlFor = input.id;
+      const definition = node("p", "field-hint", category.definition);
+      definition.id = `${input.id}-definition`; input.setAttribute("aria-describedby", definition.id);
+      input.rows = 2; input.required = true;
+      input.maxLength = view.providers?.segmentation_settings?.prompt_limits.max_length || 120;
+      input.value = next.values.get(category.id);
+      input.addEventListener("input", () => { next.values.set(category.id, input.value); invalidate("config"); });
+      row.append(label, definition, input); container.append(row);
+    }
   }
   function clearExternalPreview() {
     clearTimeout(view.externalExpiry); view.externalExpiry = null;
@@ -304,6 +349,7 @@
   }
   function renderDetail() {
     if (!view.detail) { update(); return; }
+    renderSAMPrompts();
     const detail = view.detail, summary = detail.summary || {}, manifest = detail.manifest;
     if (view.trialId && !detail.trials.some((trial) => trial.id === view.trialId)) {
       view.trialId = null; view.trial = null; view.trialRequest++; view.trialLoading = false; renderTrial();
@@ -316,9 +362,17 @@
     for (const config of detail.configs) {
       const section = node("article", "benchmark-config");
       const external = config.config.approach === "multimodal";
+      const sam = config.config.approach === "segmentation";
       section.append(node("strong", "", config.name), node("p", "field-hint", external
         ? `A · ${config.config.model_name || config.config.model_id} · external API · image edge ${config.config.provider_config.image_encoding.long_edge}px · reasoning ${config.config.provider_config.settings.reasoning.effort} · output limit ${config.config.provider_config.settings.max_output_tokens} tokens · no detector confidence scores`
+        : sam ? `B · ${config.config.model_name || config.config.model_id} · local ${config.config.provider_config.settings.device.toUpperCase()} · ${config.config.provider_config.prompts.length} class prompts · native SAM score > ${config.config.provider_config.settings.threshold} · boxes only; no masks`
         : `${config.config.model_name || config.config.model_id} · ${config.config.inference.mode} · proposal score ≥ ${config.config.threshold}`));
+      if (sam) {
+        const prompts = node("details", "benchmark-sam-saved-prompts");
+        prompts.append(node("summary", "", "Frozen class prompts"));
+        for (const item of config.config.provider_config.prompts) prompts.append(node("p", "field-hint", `${item.class_id}: ${item.text}`));
+        section.append(prompts);
+      }
       const button = node("button", "text-button", "Inspect frozen configuration"); button.type = "button"; button.addEventListener("click", () => showRecord("Frozen candidate configuration", config)); section.append(button); field("configs").append(section);
       field("trial-config").append(new Option(config.name, config.id));
     }
@@ -338,10 +392,11 @@
     head.append(row); table.append(head); const body = node("tbody", "");
     for (const trial of view.detail.trials) {
       const metrics = trial.quality?.metrics?.summary, corrections = trial.corrections;
+      const modelLoading = trial.config?.candidate_config?.approach === "segmentation" ? ` · model loading ${tools.duration(trial.latency?.model_load_ms)} separately` : "";
       const tr = node("tr", "");
       const values = [`${trial.config_name} · ${roleName(trial.split)}`, `${trial.job?.status || "saved"} · ${trial.counts?.ready || 0}/${trial.counts?.total || 0} outputs`,
         metrics ? `${metrics.fp} extra / ${metrics.fn} missed` : "Incomplete · not scored", metrics ? String(metrics.class_conflicts) : "N/A", metrics ? `${percentage(metrics.precision)} / ${percentage(metrics.recall)}` : "N/A",
-        metrics ? percentage(metrics.matched_iou_mean) : "N/A", trial.latency ? `${tools.duration(trial.latency.total_ms)} · ${trial.latency.measured_count}/${trial.latency.planned_count} images timed` : "See saved trial details", externalTools.costPresentation(trial.external_dispatch), corrections ? `${corrections.reviewed_count}/${corrections.output_count} reviewed · ${tools.duration(corrections.recorded_review_ms)} recorded${corrections.fully_timed_count < corrections.timed_count ? " · interruptions recorded" : ""}` : "Unmeasured"];
+        metrics ? percentage(metrics.matched_iou_mean) : "N/A", trial.latency ? `${tools.duration(trial.latency.total_ms)} · ${trial.latency.measured_count}/${trial.latency.planned_count} images timed${modelLoading}` : "See saved trial details", externalTools.costPresentation(trial.external_dispatch), corrections ? `${corrections.reviewed_count}/${corrections.output_count} reviewed · ${tools.duration(corrections.recorded_review_ms)} recorded${corrections.fully_timed_count < corrections.timed_count ? " · interruptions recorded" : ""}` : "Unmeasured"];
       for (const value of values) tr.append(node("td", "", value)); body.append(tr);
     }
     table.append(body); container.append(table);
@@ -349,6 +404,11 @@
   }
   function configValid() {
     if (multimodal()) return Boolean(field("image-edge").value && field("reasoning").value && field("output-tokens").value.trim() && field("output-tokens").reportValidity());
+    if (segmentation()) {
+      const promptError = samTools.promptError(view.samPrompts, view.detail?.manifest.taxonomy, view.providers?.segmentation_settings?.prompt_limits);
+      if (promptError) { error("action-error", promptError); return false; }
+      return Boolean(field("sam-device").value && field("sam-threshold").value.trim() && field("sam-threshold").reportValidity());
+    }
     return ["threshold", ...(field("mode").value === "tiled" ? ["tile-size", "overlap"] : [])].every((name) => field(name).value.trim() && field(name).reportValidity());
   }
   async function previewConfig() {
@@ -358,6 +418,10 @@
       view.configPreview = { ...result, key: tools.canonical(options) };
       if (options.approach === "multimodal") {
         field("config-preview-summary").textContent = `A · ${result.config.model_name || result.config.model_id} · ${result.work.tuning.request_count} tuning / ${result.work.evaluation.request_count} evaluation image requests. Saving this configuration sends nothing externally. Each trial requires its own exact-image preview and explicit budget approval. ${(result.warnings || []).join(" ")}`;
+        return;
+      }
+      if (options.approach === "segmentation") {
+        field("config-preview-summary").textContent = `B · ${result.config.model_name || result.config.model_id}. Tuning: ${samTools.workSummary(result.work.tuning)}. Evaluation: ${samTools.workSummary(result.work.evaluation)}. ${samTools.availability(result.provider_status)} Saving freezes the published model identity and these prompts; it installs nothing and runs no model. ${(result.warnings || []).join(" ")}`;
         return;
       }
       const coverage = result.config.proposal_contract;
@@ -380,12 +444,18 @@
     const options = trialOptions(); invalidate("trial");
     await operation("trial-preview", () => api(`${base()}/trials/preview`, { method: "POST", body: JSON.stringify(options) }), (result) => {
       view.trialPreview = { ...result, key: tools.canonical(options) };
-      field("trial-preview-summary").textContent = `${result.frame_ids.length} ${roleName(options.role).toLowerCase()} images · ${result.external_plan ? `${result.external_plan.requests.length} external image requests` : `${result.work.total_forward_passes} detector passes including warm-up`}. Reference labels are withheld from the candidate. ${(result.warnings || []).join(" ")}`;
+      const work = result.external_plan ? `${result.external_plan.requests.length} external image requests`
+        : result.local_plan ? `local SAM · ${samTools.workSummary(result.work)}` : `${result.work.total_forward_passes} detector passes including warm-up`;
+      field("trial-preview-summary").textContent = `${result.frame_ids.length} ${roleName(options.role).toLowerCase()} images · ${work}. Reference labels are withheld from the candidate. ${result.launch_allowed === false ? `Launch unavailable: ${result.launch_reason || "Local setup must be completed."} ` : ""}${(result.warnings || []).join(" ")}`;
+      field("local-plan").hidden = !result.local_plan;
+      field("local-plan").open = false;
+      field("local-plan-record").textContent = result.local_plan ? JSON.stringify({ local_plan: result.local_plan, work: result.work, configuration: selectedConfig()?.config, provider_status: result.provider_status }, null, 2) : "";
       renderExternalPreview();
     });
   }
   async function createTrial() {
     if (field("trial-create").disabled) return;
+    if (!samTools.launchAllowed(view.trialPreview, trialApproach())) { update(); return; }
     const preview = view.trialPreview, isExternal = externalTrial(), benchmarkId = view.id, path = base();
     if (isExternal && !approval().allowed) { update(); return; }
     const data = { ...trialOptions(), expected_fingerprint: preview.fingerprint,
@@ -426,8 +496,10 @@
     field("trial-summary").textContent = `${trial.config_name} · ${roleName(trial.split)} · ${trial.job?.status || "saved"} · ${trial.counts.ready}/${trial.counts.total} usable outputs${trial.quality?.reason ? `. ${trial.quality.reason}` : ""}`;
     const measured = (trial.outputs || []).map((output) => output.metadata?.timing?.elapsed_ms).filter((value) => typeof value === "number" && Number.isFinite(value) && value >= 0);
     const remote = trial.config?.candidate_config?.approach === "multimodal" || Boolean(trial.external_dispatch);
+    const sam = trial.config?.candidate_config?.approach === "segmentation";
     field("trial-summary").textContent += ` · ${remote ? "API/image processing" : "Local image processing"}: ${measured.length ? tools.duration(measured.reduce((sum, value) => sum + value, 0)) : "unmeasured"} across ${measured.length}/${trial.counts.total} images. ${remote ? "Includes observed request processing; separate from human correction time." : "Includes image decode and local inference; separate from human correction time. Monetary cost is not measured."}`;
     if (remote) field("trial-summary").textContent += ` ${externalTools.costPresentation(trial.external_dispatch)}. Usage-based estimates are not the provider's invoice.`;
+    if (sam) field("trial-summary").textContent += ` SAM 3 model loading: ${tools.duration(trial.latency?.model_load_ms)}, recorded separately from image processing. Image times include the first pass; there is no warm-up pass. Native SAM scores are not calibrated probabilities. Metrics cover native boxes; masks are neither calculated nor saved.`;
     field("outputs").replaceChildren();
     if (trial.external_dispatch) {
       const dispatch = trial.external_dispatch, presentation = window.IRISJobTools.dispatchPresentation(dispatch);
@@ -479,9 +551,15 @@
   field("name").addEventListener("input", update); field("config-name").addEventListener("input", update);
   for (const name of ["model", "threshold", "device", "mode", "tile-size", "overlap"]) field(name).addEventListener(["threshold", "tile-size", "overlap"].includes(name) ? "input" : "change", () => invalidate("config"));
   field("approach").addEventListener("change", () => {
-    if (["Local detector control", "A · GPT-6 Astra"].includes(field("config-name").value)) field("config-name").value = multimodal() ? "A · GPT-6 Astra" : "Local detector control";
+    if (["Local detector control", "A · GPT-6 Astra", "B · SAM 3"].includes(field("config-name").value)) field("config-name").value = multimodal() ? "A · GPT-6 Astra" : segmentation() ? "B · SAM 3" : "Local detector control";
     invalidate("config");
   });
+  for (const name of ["sam-threshold", "sam-device"]) field(name).addEventListener(name === "sam-threshold" ? "input" : "change", () => invalidate("config"));
+  field("sam-setup").addEventListener("click", () => showRecord("SAM 3 local setup requirements", {
+    guide: "docs/sam-preannotation-adapter.md",
+    setup: "Configure the isolated Python runtime with IRIS_SAM_PYTHON, the official weights under models/sam3/sam3.pt, and a compatible CUDA GPU. Preparing configurations requires none of these to be installed. This interface does not install or download anything. Availability does not prove a successful model run.",
+    local_status: view.providers?.segmentation || null,
+  }));
   for (const name of ["image-edge", "reasoning", "output-tokens"]) field(name).addEventListener(name === "output-tokens" ? "input" : "change", () => invalidate("config"));
   field("external-budget").addEventListener("input", () => { field("external-consent").checked = false; update(); });
   field("external-consent").addEventListener("change", update);

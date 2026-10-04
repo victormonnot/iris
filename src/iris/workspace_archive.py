@@ -149,8 +149,10 @@ def allowed_artifact_path(value: str) -> bool:
             len(parts) == 4 and parts[2] == "images" and parts[-1].endswith(".png")
         )
     if root == "models":
-        return (len(parts) == 2 and parts[-1].endswith((".pth", ".pth.json"))) or (
-            len(parts) == 3 and parts[1] == "trained" and parts[-1].endswith(".pth")
+        return (
+            value == "models/sam3/sam3.pt"
+            or (len(parts) == 2 and parts[-1].endswith((".pth", ".pth.json")))
+            or (len(parts) == 3 and parts[1] == "trained" and parts[-1].endswith(".pth"))
         )
     if root == "assistance":
         return len(parts) == 4 and parts[1] == "previews" and parts[-1].endswith(".jpg")
@@ -482,7 +484,7 @@ def _validate_benchmarks(connection, root, require):
         except ValueError as exc:
             raise ArchiveError("Benchmark frozen configuration is invalid") from exc
         configurations[row["id"]] = row
-    external_trials = {}
+    external_trials, sam_trials = {}, {}
     for row in connection.execute(
         "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params,j.result AS job_result "
         "FROM benchmark_trials t JOIN benchmark_configs c ON c.id=t.config_id "
@@ -530,6 +532,25 @@ def _validate_benchmarks(connection, root, require):
                 if isinstance(job_result, dict)
                 else None,
             }
+        elif config["approach"] == "segmentation":
+            from iris.benchmark_segmentation import validate_trial
+
+            try:
+                plan = validate_trial(
+                    frozen,
+                    config["config"],
+                    [frame for frame in manifest["frames"] if frame["role"] == row["split"]],
+                )
+            except ValueError as exc:
+                raise ArchiveError("SAM benchmark runtime or work plan is invalid") from exc
+            job_result = _parse_json(row["job_result"]) if row["job_result"] else {}
+            sam_trials[row["id"]] = {
+                "config": config,
+                "plan": plan,
+                "attempt": job_result.get("benchmark_attempt_id")
+                if isinstance(job_result, dict)
+                else None,
+            }
     for row in connection.execute(
         "SELECT o.*,t.benchmark_id,t.split FROM benchmark_outputs o "
         "JOIN benchmark_trials t ON t.id=o.trial_id"
@@ -555,6 +576,20 @@ def _validate_benchmarks(connection, root, require):
                 raise ArchiveError("External benchmark dispatch receipt is invalid") from exc
             external["frames"].add(row["frame_id"])
             external["reserved"] += saved["metadata"]["budget"]["reserved_microusd"]
+        elif row["trial_id"] in sam_trials:
+            from iris.benchmark_segmentation import validate_saved_output
+
+            sam = sam_trials[row["trial_id"]]
+            try:
+                validate_saved_output(
+                    _decode(row),
+                    config=sam["config"],
+                    frame=frame,
+                    plan=sam["plan"],
+                    attempt=sam["attempt"],
+                )
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise ArchiveError("SAM benchmark native output evidence is invalid") from exc
     for external in external_trials.values():
         if (
             external["frames"] != {request["frame_id"] for request in external["plan"]["requests"]}
@@ -738,7 +773,11 @@ def validate_database(
                 ):
                     raise ArchiveError("Experiment report no longer matches its frozen checksum")
         for path in sorted(inventory):
-            if path.startswith("models/") and path.endswith(".pth.json") and path.count("/") == 1:
+            if path == "models/sam3/sam3.pt":
+                from iris.sam_provider import CHECKPOINT_SHA256, CHECKPOINT_SIZE
+
+                require(path, ("models/sam3/",), CHECKPOINT_SHA256, CHECKPOINT_SIZE)
+            elif path.startswith("models/") and path.endswith(".pth.json") and path.count("/") == 1:
                 receipt, _ = _read_json(root / path)
                 if not isinstance(receipt, dict) or not isinstance(
                     receipt.get("weight_filename"), str

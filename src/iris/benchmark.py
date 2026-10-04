@@ -58,10 +58,12 @@ def _digest(value):
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
-def benchmark_approaches():
+def benchmark_approaches(root=None):
     from iris.multimodal_provider import provider_status
+    from iris.sam_provider import provider_status as sam_status
 
     multimodal = provider_status()
+    segmentation = sam_status(root) if root is not None else None
     return [
         {"id": "local_detector", "name": "Installed local detector control", "available": True},
         {
@@ -71,6 +73,13 @@ def benchmark_approaches():
             "available": multimodal["status"] == "ready",
             "reason": multimodal["reason"],
         },
+        {
+            "id": "segmentation",
+            "name": "B — SAM alone",
+            "implemented": True,
+            "available": bool(segmentation and segmentation["status"] == "ready"),
+            "reason": segmentation["reason"] if segmentation else "Check local SAM setup",
+        },
         *[
             {
                 "id": key,
@@ -78,10 +87,7 @@ def benchmark_approaches():
                 "available": False,
                 "reason": "Future adapter; not implemented or runnable in this benchmark",
             }
-            for key, name in (
-                ("segmentation", "B — segmentation alone"),
-                ("combined", "C — multimodal and segmentation"),
-            )
+            for key, name in (("combined", "C — multimodal and segmentation"),)
         ],
     ]
 
@@ -502,19 +508,39 @@ def preview_benchmark_config(
     overlap=0.2,
     approach="local_detector",
     multimodal=None,
+    segmentation=None,
 ):
     row = store.get("benchmarks", benchmark_id)
     if row is None:
         raise KeyError(benchmark_id)
     if row["status"] != "tuning":
         raise BenchmarkConflict("This benchmark's configurations are already locked")
+    if segmentation is not None and approach != "segmentation":
+        raise ValueError("SAM settings require the segmentation approach")
+    if multimodal is not None and approach != "multimodal":
+        raise ValueError("Multimodal settings require the multimodal approach")
+    if approach == "segmentation":
+        from iris.benchmark_segmentation import preview_config
+
+        if (threshold, device, inference_mode, tile_size, overlap) != (
+            0.5,
+            "cpu",
+            "full",
+            640,
+            0.2,
+        ):
+            raise ValueError(
+                "Use nested segmentation settings; detector settings do not apply to SAM"
+            )
+        return preview_config(store, benchmark_id, model_id=model_id, segmentation=segmentation)
     if approach == "multimodal":
         from iris.benchmark_multimodal import preview_config
 
         return preview_config(store, benchmark_id, model_id=model_id, multimodal=multimodal)
     if approach != "local_detector":
         raise ValueError(
-            "This future approach is unavailable; choose a local detector or multimodal candidate"
+            "This future approach is unavailable; "
+            "choose a local detector, multimodal or SAM candidate"
         )
     if multimodal is not None:
         raise ValueError("Multimodal settings require the multimodal approach")
@@ -623,7 +649,7 @@ def validate_benchmark_config(row, benchmark, manifest):
     config = row["config"]
     if (
         row["benchmark_id"] != benchmark["id"]
-        or row["approach"] not in {"local_detector", "multimodal"}
+        or row["approach"] not in {"local_detector", "multimodal", "segmentation"}
         or config.get("protocol") != PROTOCOL
         or config.get("approach") != row["approach"]
         or _digest(config) != row["fingerprint"]
@@ -632,6 +658,10 @@ def validate_benchmark_config(row, benchmark, manifest):
         raise ValueError("Frozen benchmark configuration provenance is inconsistent")
     if row["approach"] == "multimodal":
         from iris.benchmark_multimodal import validate_config
+
+        return validate_config(config, manifest)
+    if row["approach"] == "segmentation":
+        from iris.benchmark_segmentation import validate_config
 
         return validate_config(config, manifest)
     if config.get("scoring") != SCORING:
@@ -733,7 +763,7 @@ def benchmark_detail(store, benchmark_id):
             ],
         ],
         "lock_fingerprint": _lock_fingerprint(store, row),
-        "approaches": benchmark_approaches(),
+        "approaches": benchmark_approaches(store.root),
     }
 
 

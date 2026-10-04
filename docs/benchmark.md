@@ -44,7 +44,8 @@ The three approaches are displayed separately:
 
 - **A · Multimodal**: OpenAI `gpt-6-astra`, with an explicit external request preview
   and budget approval for each trial.
-- **B · Segmentation**: not connected yet.
+- **B · Segmentation**: local SAM 3 with one frozen text prompt per class. This
+  adapter uses native box output; it does not calculate or save masks.
 - **C · Combined**: not connected yet.
 
 The **local detector control** is executable using an already available checkpoint.
@@ -70,6 +71,55 @@ After locking, preview and launch **Evaluation scenes** trials. Repeated evaluat
 is recorded and warned about; it is not a fresh held-out dataset. Candidate adapters
 receive only image pixels, class definitions and frozen settings. Human reference
 boxes are not supplied to inference.
+
+## Prepare a local SAM configuration
+
+Choose **B · SAM 3 · local** in the configuration form. IRIS displays setup status
+for the isolated runtime, official model weights and CUDA device. **Local setup
+requirements** opens the local status and points to the
+[SAM adapter guide](sam-preannotation-adapter.md). The interface does not install,
+download, load or test a model automatically. Availability is not evidence of a
+successful model run. This image adapter uses SAM 3; SAM 3.1's video tracking changes
+are outside this benchmark's image protocol.
+
+Configuration preparation and freezing work before local setup is complete: the
+published code revision, weight identity and settings are saved independently of
+their availability on this computer. Execution requires the configured isolated
+Python runtime (`IRIS_SAM_PYTHON`), matching official weights at
+`models/sam3/sam3.pt`, and a supported CUDA device. There is no automatic CPU fallback.
+
+The form displays every class ID, name and definition from the **frozen benchmark
+reference**, including custom classes. Each text prompt starts with that class's
+name. Review or replace it with a descriptive phrase, between 1 and 120 characters.
+The displayed definition helps the person preparing the prompt; it does not
+automatically replace the entered text. Every class requires a prompt, and the same
+prompt applies to every image in this configuration. Class names or prompts do not
+guarantee that SAM will recognize the intended objects. Changing the reference
+resets draft prompts; routine status refreshes preserve edits for the same reference.
+
+Choose the native SAM score threshold (0–1, default 0.5) and CUDA device. Boxes must
+score strictly above the threshold, matching the adapter's filtering rule. Native SAM
+scores are not calibrated probabilities and are not interchangeable with detector
+scores. **Preview configuration** shows image encodings and class-prompt evaluations
+for both roles, plus availability and warnings. **Save frozen configuration** saves
+the prompts, class snapshot, threshold, device, model/code identities and protocol;
+it does not run SAM. Inspect a saved configuration to reopen its exact class prompts.
+
+Select that frozen configuration and **Preview trial**. The local work plan includes
+the runtime identity and requested work. If setup is missing or incompatible, the
+reason stays visible and **Run checked local SAM trial** is disabled. Complete setup
+separately and prepare a fresh preview before launching. SAM trials require no API
+key, external-image consent or provider budget. They use the same explicit tuning
+and evaluation lock as the other approaches. Prompt or threshold changes require a
+new configuration before locking; evaluation cannot silently change either.
+
+SAM measurements cover its native boxes, not mask quality. Model loading time is
+displayed separately from image processing. There is no warm-up pass: measured
+image processing includes the first pass. Invalid output or unavailable
+runtime is a failure, never a successful empty prediction. Raw local output,
+normalization evidence, timing coverage and saved settings remain inspectable.
+Usable boxes open the same separate, timed human correction editor; they do not
+alter the independent reference or frame annotations.
 
 ## Prepare and approve a multimodal trial
 
@@ -124,8 +174,9 @@ model identity remain part of the saved evidence.
 ## Read results and retained evidence
 
 The table keeps configuration and scene role separate. It displays extra and missed
-boxes, class conflicts, precision, recall and matched-box IoU. Local detectors use
-their frozen proposal threshold; multimodal trials include all valid proposed boxes.
+boxes, class conflicts, precision, recall and matched-box IoU. Local detectors and
+SAM use their respective frozen native-score thresholds; multimodal trials include
+all valid proposed boxes. SAM masks are not part of this measurement.
 This is operating-point geometry matching, not AP. Native provider scores
 are not calibrated or comparable probabilities. The saved scoring protocol explains
 one-to-one matching and the IoU threshold.
@@ -137,7 +188,8 @@ and work settings remain inspectable from the saved trial. **Job details and
 cancellation** opens the durable processing record; no additional trial is launched.
 
 Processing/API time and human correction time are distinct. Local processing timings
-include decoding and inference for the measured images and exclude warm-up; external
+include decoding and inference for the measured images. Detector controls exclude
+warm-up; SAM has no warm-up and includes the first pass. External
 trials record observed image/request processing. The number of measured versus
 planned images is shown. Failed attempts can also have recorded processing time.
 Missing durations are unmeasured, not zero. Local monetary cost is unmeasured.

@@ -346,7 +346,7 @@ def test_lock_explicit_cas_and_no_future_adapters(workspace):
     store = workspace[0]
     reference = freeze(workspace)
     stale = reference["lock_fingerprint"]
-    for approach in ("segmentation", "combined"):
+    for approach in ("combined",):
         with pytest.raises(ValueError, match="unavailable"):
             preview_benchmark_config(store, reference["id"], model_id=MODEL, approach=approach)
     config(workspace, reference)

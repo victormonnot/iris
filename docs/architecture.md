@@ -445,3 +445,22 @@ proposals. Unknown outcomes retain their reservation, with no automatic retry.
 The worker stops the remaining requests after any failure. Token-based costs use
 the saved price schedule and are distinct from the provider invoice. These
 records reuse the schema 15 tables and survive offline archive validation.
+
+The local SAM path uses `benchmark_segmentation.py` to freeze per-class phrases,
+native score threshold, checkpoint identity and execution protocol. Trial previews
+bind the observed runtime identity, and admission checks input image bounds before
+loading a model. `sam_provider.py` validates native outputs and converts normalized
+boxes into original image pixels. `sam_runtime.py` communicates through bounded
+JSON lines with the standalone `sam_runtime_worker.py`, launched by the separate
+Python executable in `IRIS_SAM_PYTHON`. Only the worker imports the optional Meta
+CUDA stack; NumPy version requirements remain isolated from the IRIS environment.
+
+SAM loads once per trial, disables masks, encodes each image once and grounds each
+class phrase independently. Runtime identity is checked again after loading.
+Image timings include the cold first prediction and exclude separately recorded
+model initialization. Cancellation stops the process group; a Linux parent-death
+guard stops the worker if its owning job exits. Raw evidence is saved before
+normalization, and partial images cannot publish successful proposals. Archives
+validate the frozen protocol without probing SAM. They preserve the pinned
+checkpoint when present, while histories can be restored without it or the
+external runtime. See [the SAM adapter](sam-preannotation-adapter.md).

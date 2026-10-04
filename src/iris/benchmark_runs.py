@@ -44,9 +44,9 @@ def _context(store, benchmark_id, config_id, role, *, check_phase=True):
 
 def _ready_config(store, config, manifest):
     frozen = config["config"]
-    if config["approach"] == "multimodal":
-        # Preparing the exact outgoing images and budget does not require a key.
-        # Launch admission and the adapter check current server credentials.
+    if config["approach"] in {"multimodal", "segmentation"}:
+        # Frozen profiles and previews can be prepared before runtime setup.
+        # Launch admission and the adapter enforce provider readiness.
         return
     model = next(
         (model for model in catalog(store.root) if model["id"] == frozen["model_id"]), None
@@ -69,18 +69,25 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
     _ready_config(store, config, manifest)
     frames = [frame for frame in manifest["frames"] if frame["role"] == role]
     for frame in frames:
-        with open_benchmark_image(store, frame):
-            pass
+        with open_benchmark_image(store, frame) as image:
+            if config["approach"] == "segmentation":
+                from iris.sam_runtime import prepare_image
+
+                prepare_image(image)
     frozen = config["config"]
     work = (
         {"image_count": len(frames), "request_count": len(frames)}
-        if (config["approach"] == "multimodal")
+        if (config["approach"] in {"multimodal", "segmentation"})
         else _work_plan(
             [{**frame, "id": frame["frame_id"]} for frame in frames],
             [{"model_id": frozen["model_id"], "variant": frozen["inference"]["mode"]}],
             frozen["inference"],
         )
     )
+    if config["approach"] == "segmentation":
+        from iris.benchmark_segmentation import work_plan
+
+        work = work_plan(frozen, len(frames))
     with store.connect() as conn:
         history = [
             _decode(row)
@@ -124,6 +131,10 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
         from iris.benchmark_multimodal import attach_preview, prepare_plan
 
         return attach_preview(preview, prepare_plan(store, config, frames))
+    if config["approach"] == "segmentation":
+        from iris.benchmark_segmentation import attach_preview
+
+        return attach_preview(store, preview, config["config"])
     return preview
 
 
@@ -157,6 +168,8 @@ def create_benchmark_trial(
                     "Benchmark trial inputs changed; preview the explicit launch again"
                 )
             config = store.get("benchmark_configs", config_id)
+            if config["approach"] == "segmentation" and not preview["launch_allowed"]:
+                raise ValueError(preview["launch_reason"])
             external_plan = None
             if config["approach"] == "multimodal":
                 from iris.benchmark_multimodal import approve_plan
@@ -182,6 +195,8 @@ def create_benchmark_trial(
             }
             if external_plan:
                 frozen["external_plan"] = external_plan
+            if config["approach"] == "segmentation":
+                frozen["local_plan"] = preview["local_plan"]
             identifier, job_id, created = new_id(), new_id(), now()
             conn.execute(
                 "INSERT INTO jobs (id,kind,status,params,message,created_at) VALUES (?,?,?,?,?,?)",
@@ -233,6 +248,10 @@ def run_benchmark_trial(store: Store, trial_id: str, progress, cancelled, detect
         raise KeyError(trial_id)
     if trial["config"].get("candidate_config", {}).get("approach") == "multimodal":
         from iris.benchmark_multimodal import run_trial
+
+        return run_trial(store, trial_id, progress, cancelled)
+    if trial["config"].get("candidate_config", {}).get("approach") == "segmentation":
+        from iris.benchmark_segmentation import run_trial
 
         return run_trial(store, trial_id, progress, cancelled)
     job = store.get("jobs", trial["job_id"])
@@ -536,8 +555,16 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
             "mean_ms": sum(timings) / len(timings) if timings else None,
             "includes": "OpenAI request and response round trip, including provider processing"
             if config["approach"] == "multimodal"
+            else "image decode and local SAM prediction; includes cold first prediction, "
+            "excludes separately recorded model loading; no warmup"
+            if config["approach"] == "segmentation"
             else "image decode and local inference; successful outputs exclude warmup",
             "note": "Saved image attempts, including failures; missing measurements are not zero.",
+            **(
+                {"model_load_ms": (job.get("result") or {}).get("model_load_ms")}
+                if config["approach"] == "segmentation"
+                else {}
+            ),
         },
     }
     if include_outputs:

@@ -51,6 +51,12 @@ class MultimodalSettings(StrictInput):
     max_output_tokens: int = Field(default=4096, ge=1024, le=8192)
 
 
+class SegmentationSettings(StrictInput):
+    class_prompts: dict[str, str] | None = None
+    threshold: float = Field(default=0.5, ge=0, le=1)
+    device: Literal["cuda"] = "cuda"
+
+
 class ConfigPreview(StrictInput):
     model_id: str = Field(min_length=1, max_length=128)
     threshold: float = Field(default=0.5, ge=0, le=1)
@@ -60,6 +66,7 @@ class ConfigPreview(StrictInput):
     overlap: float = Field(default=0.2, ge=0, le=0.5)
     approach: Literal["local_detector", "multimodal", "segmentation", "combined"] = "local_detector"
     multimodal: MultimodalSettings | None = None
+    segmentation: SegmentationSettings | None = None
 
 
 class ConfigCreate(ConfigPreview):
@@ -121,8 +128,9 @@ def install_benchmark_routes(app, store, jobs, require, active_project):
     @app.get("/api/benchmark-providers")
     def providers():
         from iris.benchmark_multimodal import provider_catalog
+        from iris.benchmark_segmentation import provider_catalog as sam_catalog
 
-        return action(provider_catalog)
+        return action(lambda: {**provider_catalog(), **sam_catalog(store)})
 
     @app.get("/api/benchmark-configs/{config_id}/frames/{frame_id}/input-image")
     def external_input_image(config_id: str, frame_id: str):

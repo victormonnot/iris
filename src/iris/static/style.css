@@ -4437,6 +4437,13 @@ select:focus-visible {
 .benchmark-body #benchmark-external-budget { max-width: 260px; }
 .benchmark-dispatch { padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; }
 .benchmark-dispatch.unknown { background: #faf3e3; border-left: 3px solid #b58638; }
+.benchmark-sam-prompts { display: grid; gap: 14px; margin: 18px 0; }
+.benchmark-sam-prompt { padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; min-width: 0; }
+.benchmark-sam-prompt label, .benchmark-sam-prompt p { overflow-wrap: anywhere; }
+.benchmark-sam-prompt textarea { resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: inherit; font: inherit; font-size: 13px; line-height: 1.5; }
+.benchmark-sam-saved-prompts summary, .benchmark-local-plan summary { font-size: 12px; cursor: pointer; line-height: 1.6; }
+.benchmark-local-plan { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 6px; }
+.benchmark-local-plan pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: 11px; }
 .benchmark-configs, .benchmark-outputs { display: grid; gap: 12px; margin: 20px 0; }
 .benchmark-config, .benchmark-output { border: 1px solid var(--line); border-radius: 7px; padding: 16px; overflow-wrap: anywhere; }
 .benchmark-trial-setup, .benchmark-results { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }

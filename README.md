@@ -19,8 +19,9 @@ preannotation configurations. Assign whole scenes to **tuning** or **evaluation*
 record the reference reviewer and independence declaration, then freeze candidate
 settings. Lock the configuration set before evaluating the held-out images.
 
-Choose an installed local detector as the control or **A · Multimodal · OpenAI**
-using `gpt-6-astra`. Segmentation-only and combined approaches remain future integrations.
+Choose an installed local detector as the control, **A · Multimodal · OpenAI**
+using `gpt-6-astra`, or **B · SAM 3** for local text-prompted native boxes.
+The combined approach remains a future integration.
 Successful complete trials report proposal precision,
 recall, false positives, misses, class conflicts and matched-box IoU at the
 recorded operating point. Failures and missing outputs remain explicit.
@@ -30,6 +31,13 @@ append-only correction history. Neither these corrections nor the candidate
 outputs modify the reference or ordinary annotations. Recorded review intervals
 are separate from model latency, and missing time is never reported as zero.
 See [the benchmark protocol and limitations](docs/benchmark.md).
+
+The SAM path uses one short phrase per frozen class and an independent score
+threshold. Configurations can be saved before setup; execution requires the
+pinned checkpoint and a separate CUDA environment configured through
+`IRIS_SAM_PYTHON`. Masks are disabled and no installation or download happens
+automatically. Real SAM execution and hardware measurements remain deferred.
+See [the SAM adapter and setup requirements](docs/sam-preannotation-adapter.md).
 
 The OpenAI path is optional and sends images outside this computer. Configure
 `IRIS_OPENAI_API_KEY` (or `OPENAI_API_KEY`) in the server environment, then restart
@@ -724,6 +732,7 @@ They exercise ingestion, provenance, extraction, selection, model availability,
 comparison snapshots, raw outputs, annotation revisions, human validation,
 tiled coverage, coordinate restoration, merging, work limits and variant selection,
 multimodal response validation, exact outgoing previews, explicit API consent,
+SAM native-box validation, isolated runtime transport and offline recovery,
 local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
 training-depth contracts, read-only workload previews and frozen-layer preservation,
