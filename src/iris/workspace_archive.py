@@ -482,8 +482,9 @@ def _validate_benchmarks(connection, root, require):
         except ValueError as exc:
             raise ArchiveError("Benchmark frozen configuration is invalid") from exc
         configurations[row["id"]] = row
+    external_trials = {}
     for row in connection.execute(
-        "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params "
+        "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params,j.result AS job_result "
         "FROM benchmark_trials t JOIN benchmark_configs c ON c.id=t.config_id "
         "JOIN jobs j ON j.id=t.job_id"
     ):
@@ -506,13 +507,60 @@ def _validate_benchmarks(connection, root, require):
             or _SHA.fullmatch(frozen["fingerprint"]) is None
         ):
             raise ArchiveError("Benchmark trial has an invalid configuration or job owner")
+        if config["approach"] == "multimodal":
+            from iris.benchmark_dispatch import validate_external_trial
+
+            try:
+                plan = validate_external_trial(
+                    frozen,
+                    config["config"],
+                    [frame for frame in manifest["frames"] if frame["role"] == row["split"]],
+                )
+            except ValueError as exc:
+                raise ArchiveError(
+                    "External benchmark consent or planning budget is invalid"
+                ) from exc
+            job_result = _parse_json(row["job_result"]) if row["job_result"] is not None else {}
+            external_trials[row["id"]] = {
+                "trial": {**dict(row), "config": frozen},
+                "plan": plan,
+                "frames": set(),
+                "reserved": 0,
+                "attempt": job_result.get("benchmark_attempt_id")
+                if isinstance(job_result, dict)
+                else None,
+            }
     for row in connection.execute(
-        "SELECT o.frame_id,t.benchmark_id,t.split FROM benchmark_outputs o "
+        "SELECT o.*,t.benchmark_id,t.split FROM benchmark_outputs o "
         "JOIN benchmark_trials t ON t.id=o.trial_id"
     ):
         frame = manifests[row["benchmark_id"]].get(row["frame_id"])
         if frame is None or frame["role"] != row["split"]:
             raise ArchiveError("Benchmark output is outside its trial's frozen image partition")
+        if row["trial_id"] in external_trials:
+            from iris.benchmark_dispatch import validate_output_row
+
+            saved = _decode(row)
+            external = external_trials[row["trial_id"]]
+            try:
+                dispatch = validate_output_row(
+                    saved, external["trial"], validated_plan=external["plan"]
+                )
+                if (
+                    dispatch.get("attempt_id") is not None
+                    and dispatch["attempt_id"] != external["attempt"]
+                ):
+                    raise ValueError("External output attempt does not own its job")
+            except ValueError as exc:
+                raise ArchiveError("External benchmark dispatch receipt is invalid") from exc
+            external["frames"].add(row["frame_id"])
+            external["reserved"] += saved["metadata"]["budget"]["reserved_microusd"]
+    for external in external_trials.values():
+        if (
+            external["frames"] != {request["frame_id"] for request in external["plan"]["requests"]}
+            or external["reserved"] > external["plan"]["approval"]["budget_microusd"]
+        ):
+            raise ArchiveError("External benchmark request coverage or budget is inconsistent")
     for row in connection.execute("SELECT elapsed_ms,segments FROM benchmark_timers"):
         if (
             type(row["elapsed_ms"]) not in (int, float)

@@ -16,12 +16,12 @@ comparator and can be measured against their parents. See
 
 Open **Benchmark** to freeze an independent human reference and compare saved
 preannotation configurations. Assign whole scenes to **tuning** or **evaluation**,
-record the reference reviewer and independence declaration, then freeze detector
+record the reference reviewer and independence declaration, then freeze candidate
 settings. Lock the configuration set before evaluating the held-out images.
 
-The installed local detector is the executable control. The multimodal-only,
-segmentation-only and combined approaches are shown as future integrations;
-they cannot be run yet. Successful complete trials report proposal precision,
+Choose an installed local detector as the control or **A · Multimodal · OpenAI**
+using `gpt-6-astra`. Segmentation-only and combined approaches remain future integrations.
+Successful complete trials report proposal precision,
 recall, false positives, misses, class conflicts and matched-box IoU at the
 recorded operating point. Failures and missing outputs remain explicit.
 
@@ -30,6 +30,16 @@ append-only correction history. Neither these corrections nor the candidate
 outputs modify the reference or ordinary annotations. Recorded review intervals
 are separate from model latency, and missing time is never reported as zero.
 See [the benchmark protocol and limitations](docs/benchmark.md).
+
+The OpenAI path is optional and sends images outside this computer. Configure
+`IRIS_OPENAI_API_KEY` (or `OPENAI_API_KEY`) in the server environment, then restart
+IRIS. Key presence does not verify account access. Every trial shows the exact
+outgoing images and prompt, a planning estimate and a fresh consent/budget control.
+The budget limits admitted requests; it is not a guaranteed provider invoice cap.
+Failures stop the remaining requests, and ambiguous outcomes are never retried
+automatically. API token usage and unknown charges remain visible in the receipts.
+No key is needed to prepare configurations and inspect local previews.
+See [the adapter contract and pricing sources](docs/openai-preannotation-adapter.md).
 
 ## Run locally
 

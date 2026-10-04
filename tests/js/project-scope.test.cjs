@@ -56,6 +56,7 @@ test("detail, media, exports and previews are scoped with their existing paramet
     "/api/benchmark-candidates", "/api/benchmarks/reference/configs/preview",
     "/api/benchmark-trials/trial", "/api/benchmark-outputs/output/correction",
     "/api/benchmark-outputs/output/timer", "/api/benchmarks/reference/frames/frame/image",
+    "/api/benchmark-providers", "/api/benchmark-configs/config/frames/frame/input-image",
   ]) {
     const url = new URL(scope.url(path), "http://localhost:8000");
     assert.equal(url.searchParams.get("project_id"), "inventory");

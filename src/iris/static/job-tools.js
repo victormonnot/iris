@@ -5,7 +5,7 @@
   else root.IRISJobTools = tools;
 })(typeof window === "undefined" ? globalThis : window, () => {
   const active = (job) => ["queued", "running"].includes(job.status);
-  const kindNames = { extract: "Frame extraction", infer: "Model comparison", assist: "Annotation assistance", train: "Detector training", evaluate: "Quality evaluation", video_review: "Video passage review" };
+  const kindNames = { extract: "Frame extraction", infer: "Model comparison", assist: "Annotation assistance", train: "Detector training", evaluate: "Quality evaluation", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
   const statusName = (status) => String(status || "unknown").replaceAll("_", " ");
   function history(jobs, { status = "all", kind = "all", query = "", limit = 8 } = {}) {
     const search = query.trim().toLocaleLowerCase();
@@ -23,13 +23,17 @@
   function dispatchPresentation(dispatch) {
     if (!dispatch) return null;
     const labels = { not_started: "Not sent", dispatching: "Request in progress", response_received: "Response received", outcome_unknown: "Delivery outcome unknown" };
-    const explanation = dispatch.state === "outcome_unknown"
+    let explanation = dispatch.state === "outcome_unknown"
       ? `The provider may have processed this request. IRIS will not resend it automatically. Check the saved evidence before preparing a new request.${dispatch.external ? " Another request may incur another charge; check the provider records." : ""}`
       : dispatch.state === "response_received"
         ? `A response was recorded. This does not by itself confirm a usable result${dispatch.external ? " or a final charge" : ""}.`
         : dispatch.state === "dispatching"
           ? "The request was handed to the provider. Cancelling locally cannot guarantee that the provider stops processing it."
           : "No request dispatch has been recorded.";
+    if (dispatch.counts) {
+      const counts = dispatch.counts;
+      explanation = `Image requests: ${counts.response_received || 0} responses recorded · ${counts.dispatching || 0} in progress · ${counts.outcome_unknown || 0} outcomes unknown · ${counts.not_started || 0} not sent. ${explanation}`;
+    }
     return { label: labels[dispatch.state] || statusName(dispatch.state), explanation, unknown: dispatch.state === "outcome_unknown" };
   }
   function canContinue(detail, preview) {

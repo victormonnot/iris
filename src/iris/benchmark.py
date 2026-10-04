@@ -59,8 +59,18 @@ def _digest(value):
 
 
 def benchmark_approaches():
+    from iris.multimodal_provider import provider_status
+
+    multimodal = provider_status()
     return [
         {"id": "local_detector", "name": "Installed local detector control", "available": True},
+        {
+            "id": "multimodal",
+            "name": "A — multimodal alone",
+            "implemented": True,
+            "available": multimodal["status"] == "ready",
+            "reason": multimodal["reason"],
+        },
         *[
             {
                 "id": key,
@@ -69,7 +79,6 @@ def benchmark_approaches():
                 "reason": "Future adapter; not implemented or runnable in this benchmark",
             }
             for key, name in (
-                ("multimodal", "A — multimodal alone"),
                 ("segmentation", "B — segmentation alone"),
                 ("combined", "C — multimodal and segmentation"),
             )
@@ -492,16 +501,23 @@ def preview_benchmark_config(
     tile_size=640,
     overlap=0.2,
     approach="local_detector",
+    multimodal=None,
 ):
     row = store.get("benchmarks", benchmark_id)
     if row is None:
         raise KeyError(benchmark_id)
     if row["status"] != "tuning":
         raise BenchmarkConflict("This benchmark's configurations are already locked")
+    if approach == "multimodal":
+        from iris.benchmark_multimodal import preview_config
+
+        return preview_config(store, benchmark_id, model_id=model_id, multimodal=multimodal)
     if approach != "local_detector":
         raise ValueError(
-            "This future approach is unavailable; only installed local detectors can run"
+            "This future approach is unavailable; choose a local detector or multimodal candidate"
         )
+    if multimodal is not None:
+        raise ValueError("Multimodal settings require the multimodal approach")
     if (
         type(threshold) not in {int, float}
         or not math.isfinite(threshold)
@@ -594,7 +610,7 @@ def create_benchmark_config(store, benchmark_id, *, name, expected_fingerprint, 
                 identifier,
                 benchmark_id,
                 name.strip(),
-                "local_detector",
+                preview["config"]["approach"],
                 json.dumps(preview["config"]),
                 preview["fingerprint"],
                 now(),
@@ -607,13 +623,18 @@ def validate_benchmark_config(row, benchmark, manifest):
     config = row["config"]
     if (
         row["benchmark_id"] != benchmark["id"]
-        or row["approach"] != "local_detector"
+        or row["approach"] not in {"local_detector", "multimodal"}
         or config.get("protocol") != PROTOCOL
-        or config.get("approach") != "local_detector"
+        or config.get("approach") != row["approach"]
         or _digest(config) != row["fingerprint"]
         or config.get("reference_manifest_sha256") != benchmark["manifest_sha256"]
-        or config.get("scoring") != SCORING
     ):
+        raise ValueError("Frozen benchmark configuration provenance is inconsistent")
+    if row["approach"] == "multimodal":
+        from iris.benchmark_multimodal import validate_config
+
+        return validate_config(config, manifest)
+    if config.get("scoring") != SCORING:
         raise ValueError("Frozen benchmark configuration provenance is inconsistent")
     contract = validate_contract(config["proposal_contract"])
     if contract["taxonomy"] != manifest["taxonomy"] or contract["model_id"] != config["model_id"]:
@@ -668,7 +689,7 @@ def lock_benchmark(store, benchmark_id, *, expected_fingerprint):
                 "Benchmark trials or configurations changed; inspect before locking"
             )
         if not store.list("benchmark_configs", benchmark_id=benchmark_id):
-            raise ValueError("Freeze at least one detector configuration before locking")
+            raise ValueError("Freeze at least one candidate configuration before locking")
         if conn.execute(
             "SELECT 1 FROM benchmark_trials t JOIN jobs j ON j.id=t.job_id "
             "WHERE t.benchmark_id=? AND j.status IN ('queued','running')",

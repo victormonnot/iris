@@ -45,6 +45,12 @@ class ReferenceCreate(ReferencePreview):
     expected_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class MultimodalSettings(StrictInput):
+    image_long_edge: Literal[512, 1024, 1536, 2048] = 1536
+    reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    max_output_tokens: int = Field(default=4096, ge=1024, le=8192)
+
+
 class ConfigPreview(StrictInput):
     model_id: str = Field(min_length=1, max_length=128)
     threshold: float = Field(default=0.5, ge=0, le=1)
@@ -53,6 +59,7 @@ class ConfigPreview(StrictInput):
     tile_size: int = Field(default=640, ge=64, le=4096)
     overlap: float = Field(default=0.2, ge=0, le=0.5)
     approach: Literal["local_detector", "multimodal", "segmentation", "combined"] = "local_detector"
+    multimodal: MultimodalSettings | None = None
 
 
 class ConfigCreate(ConfigPreview):
@@ -71,6 +78,9 @@ class TrialPreview(StrictInput):
 
 class TrialCreate(TrialPreview):
     expected_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approve_external: bool = False
+    max_cost_usd: float | None = Field(default=None, ge=0, le=1000)
+    preview_token: str | None = Field(default=None, max_length=512)
 
 
 class CorrectionBox(StrictInput):
@@ -107,6 +117,23 @@ def install_benchmark_routes(app, store, jobs, require, active_project):
             raise HTTPException(404, "Benchmark or source not found") from exc
         except (ValueError, RuntimeError, OSError) as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/benchmark-providers")
+    def providers():
+        from iris.benchmark_multimodal import provider_catalog
+
+        return action(provider_catalog)
+
+    @app.get("/api/benchmark-configs/{config_id}/frames/{frame_id}/input-image")
+    def external_input_image(config_id: str, frame_id: str):
+        from iris.benchmark_multimodal import input_image
+
+        require("benchmark_configs", config_id)
+        return Response(
+            action(lambda: input_image(store, config_id, frame_id)),
+            media_type="image/png",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/benchmark-candidates")
     def candidates(taxonomy_id: str | None = None):

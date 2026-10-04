@@ -40,15 +40,16 @@ reopens the saved evidence without running a candidate.
 
 ## Tune candidates, then lock for evaluation
 
-The three planned approaches are displayed separately:
+The three approaches are displayed separately:
 
-- **A · Multimodal**: not connected yet.
+- **A · Multimodal**: OpenAI `gpt-6-astra`, with an explicit external request preview
+  and budget approval for each trial.
 - **B · Segmentation**: not connected yet.
 - **C · Combined**: not connected yet.
 
 The **local detector control** is executable using an already available checkpoint.
 It exercises the benchmark workflow and does not substitute for evidence about
-A, B or C. No new model is downloaded and no external provider is called here.
+A, B or C. The local control does not download a model or call an external provider.
 
 Prepare up to eight candidate configurations while the benchmark is in tuning.
 Choose a local detector, proposal score threshold, CPU or CUDA, and full-image or
@@ -70,11 +71,62 @@ is recorded and warned about; it is not a fresh held-out dataset. Candidate adap
 receive only image pixels, class definitions and frozen settings. Human reference
 boxes are not supplied to inference.
 
+## Prepare and approve a multimodal trial
+
+Choose **A · Multimodal · OpenAI** in the configuration form. The server reads
+`IRIS_OPENAI_API_KEY`, falling back to `OPENAI_API_KEY`; keys are never entered or
+displayed in this UI. The configuration status is an offline check. A configured
+key does not prove that the account can access the model or that a connection works.
+You can prepare and freeze a configuration without a key or external request.
+
+The frozen settings include the exact model ID, class IDs/names/definitions,
+prompt and structured output schema, image transform, reasoning effort, maximum
+output tokens and pricing basis. The default maximum image long edge is 1536 pixels,
+with 512/1024/1536/2048 available; images are not enlarged. Image detail is `original`.
+Reasoning defaults to `low`; the available efforts come from the provider catalog.
+The output limit defaults to 4096 tokens and accepts 1024–8192. Candidate scores are
+unavailable, so multimodal proposals have no detector confidence threshold or AP.
+
+After saving the configuration, choose its scene role and **Preview trial**. This
+step remains local. For every image the preview displays the exact outgoing PNG,
+original and sent dimensions, pixel/PNG hashes, coordinate transform, prompt, class
+definitions, request hash and per-image estimate. The PNG is RGB and contains no
+source metadata. Reference boxes, correction decisions, reviewer notes and
+independence notes are excluded from provider requests. Text or sensitive content
+visible in image pixels is still part of the outgoing image.
+
+Inspect these inputs, enter the approved USD planning budget and check the explicit
+approval for this provider, model, image set and budget. **Send approved external
+trial** is available only after all outgoing images have loaded, the key is
+configured, the preview is current, and the budget covers its estimate. The signed
+preview expires after ten minutes. New previews, changed trial/configuration
+settings, workspace or session changes and edited budgets clear approval; a changed
+budget requires checking the declaration again. Every trial requires fresh approval.
+
+The conservative estimate is an admission budget for the listed requests, **not a
+guaranteed provider billing cap**. It includes the frozen output token allowance and
+an offline input allowance, not an exact tokenizer measurement. The UI displays its
+basis. Provider usage and invoices remain distinct; account-specific rates or
+processing details can differ. Sending images does not establish a processing
+region. The frozen request uses `store: false`, which alone does not establish zero
+data retention. Review applicable provider/account settings before sending data.
+
+IRIS records an attempted dispatch before sending each request. Cancelling a local
+job cannot guarantee that an already submitted request stops or incurs no charge.
+The first failed request stops the batch; remaining images are recorded as unsent.
+IRIS does not automatically resend uncertain requests. If the creation response is
+lost, the UI performs a read-only lookup for the exact saved trial fingerprint. A
+matching receipt opens the existing trial. Otherwise it clears approval and directs
+you to saved trials and Project jobs; preparing another trial can incur another
+charge. Model aliases may change behind the same name; the raw response and returned
+model identity remain part of the saved evidence.
+
 ## Read results and retained evidence
 
 The table keeps configuration and scene role separate. It displays extra and missed
-boxes, class conflicts, precision, recall and matched-box IoU at the frozen proposal
-threshold. This is operating-point geometry matching, not AP. Native provider scores
+boxes, class conflicts, precision, recall and matched-box IoU. Local detectors use
+their frozen proposal threshold; multimodal trials include all valid proposed boxes.
+This is operating-point geometry matching, not AP. Native provider scores
 are not calibrated or comparable probabilities. The saved scoring protocol explains
 one-to-one matching and the IoU threshold.
 
@@ -84,11 +136,21 @@ prediction. Partial outputs, raw responses, normalization errors, source identit
 and work settings remain inspectable from the saved trial. **Job details and
 cancellation** opens the durable processing record; no additional trial is launched.
 
-Local processing time and human correction time are distinct. Processing timings
-include decoding and local inference for the measured images and exclude warm-up;
-the number of measured versus planned images is shown. Failed attempts can also
-have recorded processing time. Missing durations are unmeasured, not zero, and
-monetary cost is not measured by this local workflow.
+Processing/API time and human correction time are distinct. Local processing timings
+include decoding and inference for the measured images and exclude warm-up; external
+trials record observed image/request processing. The number of measured versus
+planned images is shown. Failed attempts can also have recorded processing time.
+Missing durations are unmeasured, not zero. Local monetary cost is unmeasured.
+
+External trial details show each image's dispatch state: **Not sent**, **Request in
+progress**, **Response received**, or **Delivery outcome unknown**. A received
+response does not itself prove usable boxes or a final charge. Inspect the raw
+response, normalization result/errors, returned usage and request identity alongside
+the dispatch receipt. Invalid responses remain failures, never successful empty
+images. An unknown delivery outcome is never assigned zero cost. When only some
+usage is available, the displayed known subtotal is explicitly separate from the
+unknown total. Usage-based estimates use the frozen price basis and are not invoices.
+Reserved planning amounts are also distinct from recorded usage estimates.
 
 ## Measure corrections without changing the reference
 
@@ -140,17 +202,20 @@ corrections are separate from both the immutable reference and original proposal
 The routes are project-scoped:
 
 - `GET /api/benchmark-candidates`
+- `GET /api/benchmark-providers` (offline configuration status and settings)
 - `POST /api/benchmarks/preview`, `POST /api/benchmarks`, `GET /api/benchmarks`
 - `GET /api/benchmarks/{id}`
 - `POST /api/benchmarks/{id}/configs/preview` and `/configs`
 - `POST /api/benchmarks/{id}/lock`
 - `POST /api/benchmarks/{id}/trials/preview` and `/trials`
 - `GET /api/benchmark-trials/{id}`
+- `GET /api/benchmark-configs/{id}/frames/{frame_id}/input-image` (exact local PNG)
 - `GET` and `PUT /api/benchmark-outputs/{id}/correction`
 - `POST /api/benchmark-outputs/{id}/timer`
 - `GET /api/benchmark-outputs/{id}/corrections/{revision}`
 
-Creation uses preview fingerprints; correction and timer changes use revision
-checks. Schema 15 stores independent benchmarks, configurations, trials, outputs,
+Creation uses preview fingerprints; external trials additionally require a signed,
+unexpired preview token, `approve_external: true` and `max_cost_usd`. Correction and
+timer changes use revision checks. Schema 15 stores independent benchmarks, configurations, trials, outputs,
 correction revisions and timer receipts. Workspace backups include these records
 and frozen benchmark images. No new background service is required.

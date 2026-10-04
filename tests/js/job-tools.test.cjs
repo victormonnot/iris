@@ -28,6 +28,14 @@ test("external delivery uncertainty and a recorded response never imply success 
   assert.equal(dispatchPresentation(null), null);
 });
 
+test("multi-image dispatch history keeps received, unknown and unstarted attempts distinct", () => {
+  const result = dispatchPresentation({ state: "outcome_unknown", external: true,
+    counts: { response_received: 2, dispatching: 0, outcome_unknown: 1, not_started: 3 } });
+  assert.match(result.explanation, /2 responses recorded.*1 outcomes unknown.*3 not sent/);
+  assert.match(result.explanation, /another charge/);
+  assert.equal(history([{ id: "trial", kind: "benchmark", status: "succeeded" }], { query: "preannotation benchmark" }).total, 1);
+});
+
 test("continuation needs a checked extraction fingerprint for this exact terminal job", () => {
   const detail = { job: { id: "parent", kind: "extract", status: "interrupted" }, recovery: { can_check: true }, dispatch: null };
   const preview = { source_job_id: "parent", mode: "continue_extraction", available: true, fingerprint: "frozen-plan", remaining_count: 3 };

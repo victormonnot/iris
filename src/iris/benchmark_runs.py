@@ -44,6 +44,10 @@ def _context(store, benchmark_id, config_id, role, *, check_phase=True):
 
 def _ready_config(store, config, manifest):
     frozen = config["config"]
+    if config["approach"] == "multimodal":
+        # Preparing the exact outgoing images and budget does not require a key.
+        # Launch admission and the adapter check current server credentials.
+        return
     model = next(
         (model for model in catalog(store.root) if model["id"] == frozen["model_id"]), None
     )
@@ -68,10 +72,14 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
         with open_benchmark_image(store, frame):
             pass
     frozen = config["config"]
-    work = _work_plan(
-        [{**frame, "id": frame["frame_id"]} for frame in frames],
-        [{"model_id": frozen["model_id"], "variant": frozen["inference"]["mode"]}],
-        frozen["inference"],
+    work = (
+        {"image_count": len(frames), "request_count": len(frames)}
+        if (config["approach"] == "multimodal")
+        else _work_plan(
+            [{**frame, "id": frame["frame_id"]} for frame in frames],
+            [{"model_id": frozen["model_id"], "variant": frozen["inference"]["mode"]}],
+            frozen["inference"],
+        )
     )
     with store.connect() as conn:
         history = [
@@ -94,7 +102,7 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
         "phase": benchmark["status"],
         "previous_trials": [row["id"] for row in history],
     }
-    return {
+    preview = {
         **inputs,
         "fingerprint": _digest(inputs),
         "frame_ids": [frame["frame_id"] for frame in frames],
@@ -112,10 +120,24 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
             ),
         ],
     }
+    if config["approach"] == "multimodal":
+        from iris.benchmark_multimodal import attach_preview, prepare_plan
+
+        return attach_preview(preview, prepare_plan(store, config, frames))
+    return preview
 
 
 def create_benchmark_trial(
-    store: Store, jobs, benchmark_id: str, *, config_id: str, role: str, expected_fingerprint: str
+    store: Store,
+    jobs,
+    benchmark_id: str,
+    *,
+    config_id: str,
+    role: str,
+    expected_fingerprint: str,
+    approve_external: bool = False,
+    max_cost_usd: float | None = None,
+    preview_token: str | None = None,
 ):
     with jobs.guard, store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -135,6 +157,18 @@ def create_benchmark_trial(
                     "Benchmark trial inputs changed; preview the explicit launch again"
                 )
             config = store.get("benchmark_configs", config_id)
+            external_plan = None
+            if config["approach"] == "multimodal":
+                from iris.benchmark_multimodal import approve_plan
+
+                external_plan = approve_plan(
+                    preview,
+                    approve_external=approve_external,
+                    max_cost_usd=max_cost_usd,
+                    preview_token=preview_token,
+                )
+            elif approve_external or max_cost_usd is not None or preview_token is not None:
+                raise ValueError("External approval applies only to a multimodal trial")
             frozen = {
                 "protocol": PROTOCOL,
                 "fingerprint": preview["fingerprint"],
@@ -146,6 +180,8 @@ def create_benchmark_trial(
                 "work": preview["work"],
                 "warnings": preview["warnings"],
             }
+            if external_plan:
+                frozen["external_plan"] = external_plan
             identifier, job_id, created = new_id(), new_id(), now()
             conn.execute(
                 "INSERT INTO jobs (id,kind,status,params,message,created_at) VALUES (?,?,?,?,?,?)",
@@ -154,7 +190,9 @@ def create_benchmark_trial(
                     "benchmark",
                     "queued",
                     json.dumps({"trial_id": identifier}),
-                    "Waiting for a local benchmark trial; human reference withheld",
+                    "Waiting for the approved OpenAI trial; human reference withheld"
+                    if external_plan
+                    else "Waiting for a local benchmark trial; human reference withheld",
                     created,
                 ),
             )
@@ -163,6 +201,21 @@ def create_benchmark_trial(
                 "(id,benchmark_id,config_id,split,config,job_id,created_at) VALUES (?,?,?,?,?,?,?)",
                 (identifier, benchmark_id, config_id, role, json.dumps(frozen), job_id, created),
             )
+            if external_plan:
+                from iris.benchmark_dispatch import initialize_outputs
+
+                trial = {
+                    "id": identifier,
+                    "job_id": job_id,
+                    "config": frozen,
+                    "benchmark_id": benchmark_id,
+                    "config_id": config_id,
+                    "split": role,
+                }
+                manifest = load_benchmark_manifest(store, benchmark_id)
+                initialize_outputs(
+                    conn, trial, [f for f in manifest["frames"] if f["role"] == role], external_plan
+                )
     return benchmark_trial_detail(store, identifier)
 
 
@@ -178,6 +231,10 @@ def run_benchmark_trial(store: Store, trial_id: str, progress, cancelled, detect
     trial = store.get("benchmark_trials", trial_id)
     if trial is None:
         raise KeyError(trial_id)
+    if trial["config"].get("candidate_config", {}).get("approach") == "multimodal":
+        from iris.benchmark_multimodal import run_trial
+
+        return run_trial(store, trial_id, progress, cancelled)
     job = store.get("jobs", trial["job_id"])
     if (
         job is None
@@ -477,11 +534,17 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
             "planned_count": len(trial["config"]["frame_ids"]),
             "total_ms": sum(timings) if timings else None,
             "mean_ms": sum(timings) / len(timings) if timings else None,
-            "includes": "image decode and local inference; successful outputs exclude warmup",
+            "includes": "OpenAI request and response round trip, including provider processing"
+            if config["approach"] == "multimodal"
+            else "image decode and local inference; successful outputs exclude warmup",
             "note": "Saved image attempts, including failures; missing measurements are not zero.",
         },
     }
     if include_outputs:
         detail["outputs"] = outputs
     detail["corrections"] = correction_summaries(store, trial_id)
+    if config["approach"] == "multimodal":
+        from iris.benchmark_dispatch import dispatch_summary
+
+        detail["external_dispatch"] = dispatch_summary(store, trial_id)
     return detail

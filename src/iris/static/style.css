@@ -4424,6 +4424,19 @@ select:focus-visible {
 .benchmark-approaches article { padding: 16px; border: 1px dashed #b9c4b9; border-radius: 7px; background: #fafbf7; }
 .benchmark-approaches h3 { font-size: 14px; margin: 0 0 10px; }
 .benchmark-approaches p { color: var(--muted); font-size: 12px; margin: 0; }
+.benchmark-approaches p + p { margin-top: 8px; line-height: 1.6; }
+.benchmark-external-preview { margin: 20px 0; padding: 18px; border: 1px solid #b9c9ad; border-radius: 8px; background: #f5f8ef; }
+.benchmark-external-preview > h3 { margin-top: 0; }
+.benchmark-external-preview p { overflow-wrap: anywhere; }
+.benchmark-external-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 18px 0; }
+.benchmark-external-image { min-width: 0; margin: 0; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 7px; }
+.benchmark-external-image img { display: block; width: 100%; max-height: 260px; object-fit: contain; background: #152e24; border-radius: 4px; }
+.benchmark-external-image figcaption { margin: 10px 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.benchmark-request-details summary, .benchmark-dispatch summary { cursor: pointer; font-size: 12px; line-height: 1.6; }
+.benchmark-request-details pre, .benchmark-dispatch pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; background: #f6f8f2; padding: 12px; border-radius: 4px; }
+.benchmark-body #benchmark-external-budget { max-width: 260px; }
+.benchmark-dispatch { padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; }
+.benchmark-dispatch.unknown { background: #faf3e3; border-left: 3px solid #b58638; }
 .benchmark-configs, .benchmark-outputs { display: grid; gap: 12px; margin: 20px 0; }
 .benchmark-config, .benchmark-output { border: 1px solid var(--line); border-radius: 7px; padding: 16px; overflow-wrap: anywhere; }
 .benchmark-trial-setup, .benchmark-results { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
@@ -4462,6 +4475,8 @@ select:focus-visible {
   .benchmark-prepare > summary { padding: 18px 16px; }
   .benchmark-body { padding: 0 16px 20px; }
   .benchmark-fields, .benchmark-groups, .benchmark-approaches { grid-template-columns: minmax(0, 1fr); }
+  .benchmark-external-images { grid-template-columns: minmax(0, 1fr); }
+  .benchmark-external-preview { padding: 14px; }
   .benchmark-preview, .benchmark-config-form { padding: 14px; }
   .benchmark-editor-dialog { width: calc(100vw - 16px); padding: 18px 14px; max-height: calc(100dvh - 16px); }
   .benchmark-editor-toolbar .button { padding: 9px; font-size: 11px; }

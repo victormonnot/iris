@@ -435,3 +435,13 @@ shutdown preserve acknowledged time and interrupt unfinished intervals. Restored
 workspace archives retain their original database bytes until normal startup.
 See [the protocol](benchmark.md) for scene reservations, independence declarations,
 metric definitions and timing limitations.
+
+The optional multimodal benchmark adapter receives only copied pixels, frozen
+class definitions and fixed model settings. It sends one OpenAI Responses request
+per approved image. `benchmark_multimodal.py` builds local outgoing previews and
+short-lived approval receipts; `benchmark_dispatch.py` journals per-image budget
+reservations before transport and preserves raw responses separately from valid
+proposals. Unknown outcomes retain their reservation, with no automatic retry.
+The worker stops the remaining requests after any failure. Token-based costs use
+the saved price schedule and are distinct from the provider invoice. These
+records reuse the schema 15 tables and survive offline archive validation.
