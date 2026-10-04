@@ -19,15 +19,26 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from iris import __version__
-from iris.store import JSON_FIELDS, SCHEMA, SCHEMA_V12, SCHEMA_V13, SCHEMA_VERSION, TABLES, now
+from iris.store import (
+    BENCHMARK_TABLES,
+    JSON_FIELDS,
+    SCHEMA,
+    SCHEMA_V12,
+    SCHEMA_V13,
+    SCHEMA_V14,
+    SCHEMA_VERSION,
+    TABLES,
+    now,
+)
 from iris.taxonomies import validate_taxonomy_records
 
 PROTOCOL = "iris-workspace-archive-v1"
 FORMAT_VERSION = 1
-SCHEMAS = {12: SCHEMA_V12, 13: SCHEMA_V13, SCHEMA_VERSION: SCHEMA}
+SCHEMAS = {12: SCHEMA_V12, 13: SCHEMA_V13, 14: SCHEMA_V14, SCHEMA_VERSION: SCHEMA}
 SCHEMA_TABLES = {
-    12: TABLES - {"projects", "taxonomy_versions"},
-    13: TABLES - {"taxonomy_versions"},
+    12: TABLES - BENCHMARK_TABLES - {"projects", "taxonomy_versions"},
+    13: TABLES - BENCHMARK_TABLES - {"taxonomy_versions"},
+    14: TABLES - BENCHMARK_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -43,6 +54,7 @@ _CATEGORIES = {
     "frames": "Extracted images",
     "imports": "Imported datasets",
     "datasets": "Frozen dataset versions",
+    "benchmarks": "Frozen benchmark references and images",
     "models": "Detector checkpoints",
     "assistance": "Annotation review previews",
     "video_reviews": "Video review storyboards",
@@ -132,7 +144,7 @@ def allowed_artifact_path(value: str) -> bool:
         return root == "assets" or parts[-1].endswith(".png" if root == "frames" else ".log")
     if root == "imports" and len(parts) == 3:
         return parts[-1] == "source.zip" or parts[-1].endswith((".source", ".png"))
-    if root == "datasets":
+    if root in {"datasets", "benchmarks"}:
         return (len(parts) == 3 and parts[-1] == "manifest.json") or (
             len(parts) == 4 and parts[2] == "images" and parts[-1].endswith(".png")
         )
@@ -162,7 +174,7 @@ def is_reference_document(value: str) -> bool:
     parts = value.split("/")
     return (
         len(parts) == 3
-        and parts[0] == "datasets"
+        and parts[0] in {"datasets", "benchmarks"}
         and parts[-1] == "manifest.json"
         or len(parts) >= 4
         and parts[:2] == ["ollama", "manifests"]
@@ -401,6 +413,116 @@ def _schema_signature(connection, tables):
     return result
 
 
+def _validate_benchmarks(connection, root, require):
+    """Validate frozen references and ownership without opening or migrating Store."""
+    benchmarks = connection.execute("SELECT * FROM benchmarks").fetchall()
+    if not benchmarks:
+        return
+    # The pure validator reads only the manifest. Candidate models and the active
+    # project's current taxonomy are deliberately not consulted during recovery.
+    from iris.benchmark import validate_benchmark_config, validate_benchmark_manifest
+    from iris.store import _decode
+    from iris.taxonomies import _get
+
+    manifests, benchmark_rows, configurations = {}, {}, {}
+    for row in benchmarks:
+        expected_path = f"benchmarks/{row['id']}/manifest.json"
+        if row["path"] != expected_path:
+            raise ArchiveError("Benchmark manifest path differs from its frozen directory")
+        require(row["path"], (f"benchmarks/{row['id']}/",), row["manifest_sha256"])
+        manifest, digest = _read_json(root / row["path"])
+        try:
+            validate_benchmark_manifest(manifest)
+            if (
+                digest != row["manifest_sha256"]
+                or manifest["id"] != row["id"]
+                or manifest["project_id"] != row["project_id"]
+                or _get(connection, manifest["taxonomy"]["id"], row["project_id"])
+                != manifest["taxonomy"]
+            ):
+                raise ValueError("Frozen identity or class definitions differ")
+        except ValueError as exc:
+            raise ArchiveError("Benchmark manifest or frozen taxonomy is invalid") from exc
+        frames = {}
+        for frame in manifest["frames"]:
+            if frame["image_path"] != f"benchmarks/{row['id']}/images/{frame['frame_id']}.png":
+                raise ArchiveError("Frozen image path differs from its benchmark directory")
+            require(
+                frame["image_path"],
+                (f"benchmarks/{row['id']}/images/",),
+                frame["image_file_sha256"],
+            )
+            source = connection.execute(
+                "SELECT f.session_id,s.project_id FROM frames f "
+                "JOIN sessions s ON s.id=f.session_id WHERE f.id=?",
+                (frame["frame_id"],),
+            ).fetchone()
+            annotation = _decode(
+                connection.execute(
+                    "SELECT * FROM annotation_revisions WHERE id=?",
+                    (frame["annotation_revision_id"],),
+                ).fetchone()
+            )
+            if (
+                source is None
+                or source["session_id"] != frame["session_id"]
+                or source["project_id"] != row["project_id"]
+                or annotation != frame["annotation"]
+                or annotation["frame_id"] != frame["frame_id"]
+            ):
+                raise ArchiveError("Benchmark reference has an invalid frame or revision owner")
+            frames[frame["frame_id"]] = frame
+        manifests[row["id"]] = frames
+        benchmark_rows[row["id"]] = (dict(row), manifest)
+    for raw_row in connection.execute("SELECT * FROM benchmark_configs"):
+        row = _decode(raw_row)
+        benchmark, manifest = benchmark_rows[row["benchmark_id"]]
+        try:
+            validate_benchmark_config(row, benchmark, manifest)
+        except ValueError as exc:
+            raise ArchiveError("Benchmark frozen configuration is invalid") from exc
+        configurations[row["id"]] = row
+    for row in connection.execute(
+        "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params "
+        "FROM benchmark_trials t JOIN benchmark_configs c ON c.id=t.config_id "
+        "JOIN jobs j ON j.id=t.job_id"
+    ):
+        frozen = _parse_json(row["config"])
+        config = configurations[row["config_id"]]
+        benchmark, manifest = benchmark_rows[row["benchmark_id"]]
+        if (
+            row["config_benchmark_id"] != row["benchmark_id"]
+            or row["kind"] != "benchmark"
+            or _parse_json(row["params"]).get("trial_id") != row["id"]
+            or not isinstance(frozen, dict)
+            or frozen.get("protocol") != manifest["protocol"]
+            or frozen.get("source_config_fingerprint") != config["fingerprint"]
+            or frozen.get("benchmark_manifest_sha256") != benchmark["manifest_sha256"]
+            or frozen.get("candidate_config") != config["config"]
+            or frozen.get("role") != row["split"]
+            or frozen.get("frame_ids")
+            != [frame["frame_id"] for frame in manifest["frames"] if frame["role"] == row["split"]]
+            or not isinstance(frozen.get("fingerprint"), str)
+            or _SHA.fullmatch(frozen["fingerprint"]) is None
+        ):
+            raise ArchiveError("Benchmark trial has an invalid configuration or job owner")
+    for row in connection.execute(
+        "SELECT o.frame_id,t.benchmark_id,t.split FROM benchmark_outputs o "
+        "JOIN benchmark_trials t ON t.id=o.trial_id"
+    ):
+        frame = manifests[row["benchmark_id"]].get(row["frame_id"])
+        if frame is None or frame["role"] != row["split"]:
+            raise ArchiveError("Benchmark output is outside its trial's frozen image partition")
+    for row in connection.execute("SELECT elapsed_ms,segments FROM benchmark_timers"):
+        if (
+            type(row["elapsed_ms"]) not in (int, float)
+            or not math.isfinite(row["elapsed_ms"])
+            or row["elapsed_ms"] < 0
+            or not isinstance(_parse_json(row["segments"]), list)
+        ):
+            raise ArchiveError("Benchmark timer has invalid measured intervals")
+
+
 def validate_database(
     root: Path, inventory: dict, *, verify_hashes=False, database_path=None
 ) -> dict:
@@ -541,6 +663,8 @@ def validate_database(
                         (f"datasets/{row['id']}/images/",),
                         frame["image_file_sha256"],
                     )
+            if version >= 15:
+                _validate_benchmarks(connection, root, require)
             for table, prefix in (
                 ("assistance_previews", "assistance/previews"),
                 ("video_reviews", "video_reviews"),

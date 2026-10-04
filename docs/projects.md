@@ -64,7 +64,8 @@ Schema-12, schema-13 and schema-14 workspace archives can be inspected and resto
 writes an independent workspace and preserves the archived payload. Opening a
 restored older workspace performs the same migration to the current schema.
 Keep the original archive for use with its original application version; the old
-application does not understand a database already migrated to schema 14.
+application does not understand a database migrated beyond its supported schema.
+The current schema 15 also isolates benchmarks, their trials and corrections by project.
 
 New assistance requests use generic image/video wording and updated prompt-version
 identifiers. Existing saved responses and results remain unchanged. A video-review

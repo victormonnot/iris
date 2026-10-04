@@ -10,12 +10,19 @@ import test_workspace_archive as archive_fixtures
 import test_workspace_restore as restore_fixtures
 
 from iris.projects import create_project
-from iris.store import DEFAULT_PROJECT_ID, SCHEMA_V13, SCHEMA_VERSION, TABLES, Store
+from iris.store import (
+    BENCHMARK_TABLES,
+    DEFAULT_PROJECT_ID,
+    SCHEMA_V13,
+    SCHEMA_VERSION,
+    TABLES,
+    Store,
+)
 from iris.taxonomies import TAXONOMY, current_taxonomy, get_taxonomy, publish_taxonomy
 from iris.workspace_archive import ArchiveError, create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
-SCHEMA13_TABLES = TABLES - {"taxonomy_versions"}
+SCHEMA13_TABLES = TABLES - BENCHMARK_TABLES - {"taxonomy_versions"}
 
 
 def rows(root, tables=SCHEMA13_TABLES):

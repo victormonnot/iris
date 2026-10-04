@@ -10,6 +10,7 @@ WORKSPACES = {
     "train": "training",
     "evaluate": "evaluation",
     "video_review": "intake",
+    "benchmark": "benchmark",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -18,6 +19,7 @@ NAMES = {
     "train": "Detector training",
     "evaluate": "Quality evaluation",
     "video_review": "Video passage review",
+    "benchmark": "Annotation benchmark",
 }
 
 
@@ -111,6 +113,11 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                 len((target["result"] or {}).get("passages", [])),
                 target["id"],
             )
+        elif target and job["kind"] == "benchmark":
+            count = conn.execute(
+                "SELECT COUNT(*) FROM benchmark_outputs WHERE trial_id=?", (target["id"],)
+            ).fetchone()[0]
+            add("benchmark_outputs", "Saved benchmark image results", count, target["id"])
         children = [
             _decode(row)
             for row in conn.execute(
@@ -153,6 +160,9 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "and runs its selected images again."
         ),
         "evaluate": "A new evaluation keeps the earlier predictions and metrics intact.",
+        "benchmark": (
+            "Preview an explicit new benchmark trial; earlier outputs and corrections stay intact."
+        ),
         "assist": (
             "Prepare a fresh review and inspect its images. "
             "External processing requires new cost approval."

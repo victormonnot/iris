@@ -95,8 +95,8 @@ image paths refer to the original workspace layout; `export.json` maps the
 images to archive paths and records file checksums. New schema-2 manifests export
 with `iris-coco-export-v2`, including the frozen class definitions and both mappings.
 Existing schema-1 releases retain their original bytes and `iris-coco-export-v1`
-behavior, including Person / Car IDs. SQLite stays at schema 14; no existing dataset
-manifest is rewritten. Load images through the COCO paths when using the archive.
+behavior, including Person / Car IDs. No existing dataset manifest is rewritten
+when the workspace schema is upgraded. Load images through the COCO paths when using the archive.
 
 The manifest retains source identifiers, filenames, scene groups, timestamps,
 annotation revisions, reviewer names and notes. Imported dataset attribution,

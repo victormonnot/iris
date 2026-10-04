@@ -80,6 +80,10 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_evaluation(store, job["params"]["evaluation_id"], progress, cancelled)
         elif job["kind"] == "video_review":
             result = run_video_review(store, job["params"]["video_review_id"], progress, cancelled)
+        elif job["kind"] == "benchmark":
+            from iris.benchmark_runs import run_benchmark_trial
+
+            result = run_benchmark_trial(store, job["params"]["trial_id"], progress, cancelled)
         else:
             raise ValueError(f"Unsupported job kind: {job['kind']}")
         current = store.get("jobs", job_id)
@@ -91,6 +95,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             else ("interrupted" if stopping else "succeeded")
         )
         preannotation = result.get("preannotation")
+        if job["kind"] == "benchmark":
+            preannotation = result
         preannotation_failed = bool(
             status == "succeeded"
             and isinstance(preannotation, dict)
@@ -100,7 +106,8 @@ def run(root: Path, job_id: str, parent_pid: int):
         if preannotation_failed:
             status = "failed"
         preannotation_message = (
-            f"Preannotation complete: {preannotation['frames_ready']} images ready for review, "
+            f"{'Benchmark' if job['kind'] == 'benchmark' else 'Preannotation'} complete: "
+            f"{preannotation['frames_ready']} images ready for review, "
             f"{preannotation['frames_issues']} need attention"
             if isinstance(preannotation, dict)
             else None
@@ -112,7 +119,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "status": status,
                 "result": result,
                 "finished_at": now(),
-                "error": "No image could publish proposals; inspect the saved per-image results"
+                "error": "No image returned usable proposals; inspect the saved per-image results"
                 if preannotation_failed
                 else current["error"],
                 "progress": 1 if status == "succeeded" else current["progress"],
@@ -125,6 +132,9 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "train": "Training complete; checkpoint available in the comparator",
                         "evaluate": "Evaluation complete; metrics and predictions saved",
                         "video_review": "Video passages ready for human selection",
+                        "benchmark": (
+                            "Benchmark attempt finished; inspect coverage and per-image errors"
+                        ),
                     }[job["kind"]]
                 )
                 if status == "succeeded" or preannotation_failed

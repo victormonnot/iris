@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -189,7 +189,7 @@ for _table in PROJECT_TABLES:
     SCHEMA_V13 += f"CREATE INDEX IF NOT EXISTS {_table}_project ON {_table}(project_id);\n"
 
 FRAME_TAXONOMY_COLUMN = "taxonomy_id TEXT NOT NULL DEFAULT 'iris-objects-v1'"
-SCHEMA = (
+SCHEMA_V14 = (
     SCHEMA_V13.replace(
         "CREATE TABLE IF NOT EXISTS frames (\n",
         f"CREATE TABLE IF NOT EXISTS frames (\n    {FRAME_TAXONOMY_COLUMN},\n",
@@ -201,6 +201,61 @@ CREATE TABLE IF NOT EXISTS taxonomy_versions (
     snapshot TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id,version)
 );
 CREATE INDEX IF NOT EXISTS taxonomy_versions_project ON taxonomy_versions(project_id);
+"""
+)
+
+BENCHMARK_TABLES = {
+    "benchmarks",
+    "benchmark_configs",
+    "benchmark_trials",
+    "benchmark_outputs",
+    "benchmark_corrections",
+    "benchmark_timers",
+}
+SCHEMA = (
+    SCHEMA_V14
+    + """
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+    name TEXT NOT NULL, path TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
+    summary TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'tuning'
+    CHECK(status IN ('tuning','locked')), locked_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS benchmarks_project ON benchmarks(project_id);
+CREATE TABLE IF NOT EXISTS benchmark_configs (
+    id TEXT PRIMARY KEY, benchmark_id TEXT NOT NULL REFERENCES benchmarks(id),
+    name TEXT NOT NULL, approach TEXT NOT NULL, config TEXT NOT NULL,
+    fingerprint TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS benchmark_configs_benchmark ON benchmark_configs(benchmark_id);
+CREATE TABLE IF NOT EXISTS benchmark_trials (
+    id TEXT PRIMARY KEY, benchmark_id TEXT NOT NULL REFERENCES benchmarks(id),
+    config_id TEXT NOT NULL REFERENCES benchmark_configs(id),
+    split TEXT NOT NULL CHECK(split IN ('tuning','evaluation')), config TEXT NOT NULL,
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS benchmark_trials_benchmark ON benchmark_trials(benchmark_id);
+CREATE TABLE IF NOT EXISTS benchmark_outputs (
+    id TEXT PRIMARY KEY, trial_id TEXT NOT NULL REFERENCES benchmark_trials(id),
+    frame_id TEXT NOT NULL REFERENCES frames(id), raw_response TEXT, result TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}', error TEXT, created_at TEXT NOT NULL,
+    UNIQUE(trial_id,frame_id)
+);
+CREATE TABLE IF NOT EXISTS benchmark_corrections (
+    id TEXT PRIMARY KEY, output_id TEXT NOT NULL REFERENCES benchmark_outputs(id),
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    status TEXT NOT NULL CHECK(status IN ('draft','reviewed')), boxes TEXT NOT NULL,
+    decisions TEXT NOT NULL, reviewer TEXT NOT NULL, notes TEXT NOT NULL,
+    timing TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(output_id,revision)
+);
+CREATE TABLE IF NOT EXISTS benchmark_timers (
+    id TEXT PRIMARY KEY, output_id TEXT NOT NULL UNIQUE REFERENCES benchmark_outputs(id),
+    reviewer TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('running','paused')),
+    revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+    elapsed_ms REAL NOT NULL DEFAULT 0 CHECK(elapsed_ms >= 0),
+    segments TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 )
 
@@ -268,9 +323,10 @@ JSON_FIELDS = {
     "history",
     "metrics",
     "snapshot",
+    "segments",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
-TABLES = {
+TABLES = BENCHMARK_TABLES | {
     "projects",
     "taxonomy_versions",
     "sessions",

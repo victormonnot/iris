@@ -6,10 +6,30 @@ human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **projects, data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
-explicit model reference selection, saved experiment reports, and workspace backup/restoration**, with a review queue for tracking
+explicit model reference selection, saved experiment reports, independent annotation benchmarks,
+and workspace backup/restoration**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
 [the architecture](docs/architecture.md).
+
+## Annotation benchmark
+
+Open **Benchmark** to freeze an independent human reference and compare saved
+preannotation configurations. Assign whole scenes to **tuning** or **evaluation**,
+record the reference reviewer and independence declaration, then freeze detector
+settings. Lock the configuration set before evaluating the held-out images.
+
+The installed local detector is the executable control. The multimodal-only,
+segmentation-only and combined approaches are shown as future integrations;
+they cannot be run yet. Successful complete trials report proposal precision,
+recall, false positives, misses, class conflicts and matched-box IoU at the
+recorded operating point. Failures and missing outputs remain explicit.
+
+Review candidate boxes in a separate editor with start/pause timing and an
+append-only correction history. Neither these corrections nor the candidate
+outputs modify the reference or ordinary annotations. Recorded review intervals
+are separate from model latency, and missing time is never reported as zero.
+See [the benchmark protocol and limitations](docs/benchmark.md).
 
 ## Run locally
 

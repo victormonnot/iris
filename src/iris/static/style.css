@@ -4401,6 +4401,72 @@ select:focus-visible {
 }
 
 /* Project task history and explicit recovery. */
+.benchmark-prepare, .benchmark-library { margin-bottom: 24px; }
+.benchmark-prepare > summary { padding: 22px 24px; cursor: pointer; font-weight: 650; }
+.benchmark-body { padding: 0 24px 24px; }
+.benchmark-body label, .benchmark-editor-dialog label { display: block; margin: 8px 0 6px; font-size: 12px; }
+.benchmark-body input:not([type="checkbox"]), .benchmark-body select, .benchmark-body textarea { width: 100%; min-width: 0; }
+.benchmark-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.benchmark-fields > div { min-width: 0; }
+.benchmark-body .benchmark-check { display: flex; gap: 10px; align-items: start; line-height: 1.6; }
+.benchmark-check input { flex: 0 0 auto; margin-top: 4px; }
+.benchmark-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0; }
+.benchmark-actions h3 { font-size: 16px; margin: 0 auto 0 0; }
+.benchmark-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.benchmark-group { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.benchmark-group legend { padding: 0 6px; font-weight: 650; font-size: 13px; overflow-wrap: anywhere; }
+.benchmark-frame-picker summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.benchmark-frame-picker label { overflow-wrap: anywhere; }
+.benchmark-preview, .benchmark-config-form { margin: 20px 0; padding: 18px; background: #f7f9f3; border: 1px solid var(--line); border-radius: 8px; }
+.benchmark-config-form > summary { cursor: pointer; font-weight: 650; }
+.benchmark-summary { margin: 20px 0; line-height: 1.7; overflow-wrap: anywhere; }
+.benchmark-approaches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.benchmark-approaches article { padding: 16px; border: 1px dashed #b9c4b9; border-radius: 7px; background: #fafbf7; }
+.benchmark-approaches h3 { font-size: 14px; margin: 0 0 10px; }
+.benchmark-approaches p { color: var(--muted); font-size: 12px; margin: 0; }
+.benchmark-configs, .benchmark-outputs { display: grid; gap: 12px; margin: 20px 0; }
+.benchmark-config, .benchmark-output { border: 1px solid var(--line); border-radius: 7px; padding: 16px; overflow-wrap: anywhere; }
+.benchmark-trial-setup, .benchmark-results { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.benchmark-trial-setup h3, .benchmark-results h3 { font-size: 17px; }
+.benchmark-table-wrap { overflow-x: auto; margin: 20px 0; }
+.benchmark-results-table { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 12px; }
+.benchmark-results-table th, .benchmark-results-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.benchmark-results-table th { color: var(--muted); font-weight: 600; }
+.benchmark-editor-dialog { width: min(1180px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+.benchmark-timer { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 16px 0; border-block: 1px solid var(--line); }
+.benchmark-timer > div { flex: 1 1 200px; min-width: 0; }
+.benchmark-timer input { max-width: 100%; }
+#benchmark-editor-clock { display: block; font: 600 26px var(--font-mono, monospace); color: var(--green-dark); }
+.benchmark-editor-mask { text-align: center; background: #f2f6ed; border: 1px dashed #b8c9b3; padding: 40px 24px; margin: 20px 0; border-radius: 8px; }
+.benchmark-editor-mask h3 { font-size: 18px; }
+.benchmark-editor-mask p { color: var(--muted); line-height: 1.7; font-size: 13px; }
+.benchmark-editor-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.benchmark-editor-toolbar .active { color: white; background: var(--green-dark); }
+.benchmark-editor-layout { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(200px, 1fr); gap: 18px; }
+.benchmark-editor-layout > * { min-width: 0; }
+.benchmark-editor-layout aside select { width: 100%; }
+#benchmark-editor-canvas { display: block; width: 100%; height: clamp(260px, 55vh, 580px); min-height: 260px; touch-action: none; user-select: none; }
+#benchmark-editor-canvas.drawing { cursor: crosshair; }
+#benchmark-editor-canvas.pan-tool, #benchmark-editor-canvas.pan-tool .annotation-box rect { cursor: grab; }
+#benchmark-editor-canvas:focus-visible { outline: 2px solid #d2ecc5; outline-offset: -2px; }
+.benchmark-editor-boxes { display: grid; max-height: 180px; overflow-y: auto; gap: 6px; margin: 16px 0; }
+.benchmark-editor-boxes .selected { background: var(--pale); border-color: var(--green); }
+.benchmark-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.benchmark-coordinates input { width: 100%; min-width: 0; }
+#benchmark-editor-notes { width: 100%; }
+.benchmark-correction-revision { padding: 10px 0; }
+.benchmark-correction-revision summary { cursor: pointer; }
+.benchmark-correction-revision pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; font-size: 11px; }
+@media (max-width: 850px) { .benchmark-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .benchmark-editor-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  .benchmark-prepare > summary { padding: 18px 16px; }
+  .benchmark-body { padding: 0 16px 20px; }
+  .benchmark-fields, .benchmark-groups, .benchmark-approaches { grid-template-columns: minmax(0, 1fr); }
+  .benchmark-preview, .benchmark-config-form { padding: 14px; }
+  .benchmark-editor-dialog { width: calc(100vw - 16px); padding: 18px 14px; max-height: calc(100dvh - 16px); }
+  .benchmark-editor-toolbar .button { padding: 9px; font-size: 11px; }
+  .benchmark-timer { gap: 10px; }
+}
 .job-history-controls { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(190px, 1.5fr) auto; gap: 14px; align-items: end; padding: 18px 23px 8px; }
 .job-history-controls > div { min-width: 0; }
 .job-history-controls label { display: block; margin-bottom: 6px; }

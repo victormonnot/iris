@@ -40,6 +40,7 @@
   }
 
   function setWorkspace(name) {
+    if (!window.dispatchEvent(new CustomEvent("iris:before-workspace", { cancelable: true, detail: { name } }))) return;
     const workspaces = {
       intake: [
         "01",
@@ -77,6 +78,10 @@
       "Experiments",
       "Keep the evidence together.",
       "Turn a completed evaluation into a clear experiment record, add your conclusions and share a self-contained report.",
+    ];
+    workspaces.benchmark = [
+      "07", "Preannotation benchmark", "Measure the work behind the labels.",
+      "Freeze an independent human reference, separate tuning from evaluation and measure corrections to candidate proposals.",
     ];
     const info = workspaces[name];
     if (!info) return;
@@ -826,6 +831,7 @@
   $("#workspace-experiments").addEventListener("click", () =>
     setWorkspace("experiments"),
   );
+  $("#workspace-benchmark").addEventListener("click", () => setWorkspace("benchmark"));
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);
   $("#comparison-inference-mode").addEventListener("change", () => {

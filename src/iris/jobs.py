@@ -54,9 +54,11 @@ class JobManager:
                 "WHERE status IN ('queued','running')",
                 (now(),),
             )
+        from iris.benchmark_corrections import recover_timers
         from iris.job_dispatch import reconcile_dispatches
 
         reconcile_dispatches(self.store)
+        recover_timers(self.store)
 
     def close(self):
         self.stop_event.set()

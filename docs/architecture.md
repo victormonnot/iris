@@ -417,3 +417,21 @@ human-reviewed labels, installed detector weights, a working multimodal runtime,
 and suitable compute. Missing dependencies block the corresponding live
 verification, not manual data handling or fixture tests. Large downloads and
 heavy training are explicit setup actions, never startup side effects.
+
+## Independent annotation benchmarks
+
+Schema 15 adds benchmarks, immutable configuration records, trial jobs, raw and
+normalized per-image outputs, correction revisions and acknowledged review
+intervals. The frozen reference has its own copied images and checksum-verified
+manifest. Reference boxes and review decisions do not enter the detector adapter;
+quality is scored after candidate output has been saved.
+
+The benchmark API is project scoped. A sequential `benchmark` worker evaluates
+only the role and configuration confirmed by a preview fingerprint. The whole
+configuration set locks before evaluation, while incomplete trials retain their
+coverage and errors without a headline aggregate. Review intervals use server
+monotonic time with short leases, ownership and revision checks. Startup and
+shutdown preserve acknowledged time and interrupt unfinished intervals. Restored
+workspace archives retain their original database bytes until normal startup.
+See [the protocol](benchmark.md) for scene reservations, independence declarations,
+metric definitions and timing limitations.

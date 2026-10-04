@@ -17,16 +17,19 @@ from iris.store import Store, new_id, now
         (0, 1, True, "cancelled"),
     ],
 )
-def test_preannotation_terminal_status(tmp_path, monkeypatch, ready, issues, cancelled, expected):
+@pytest.mark.parametrize("kind", ["infer", "benchmark"])
+def test_preannotation_terminal_status(
+    tmp_path, monkeypatch, ready, issues, cancelled, expected, kind
+):
     store = Store(tmp_path / "workspace")
     identifier = new_id()
     store.insert(
         "jobs",
         {
             "id": identifier,
-            "kind": "infer",
+            "kind": kind,
             "status": "running",
-            "params": {"comparison_id": "synthetic-output-only"},
+            "params": {"comparison_id": "synthetic-output-only", "trial_id": "synthetic-trial"},
             "created_at": now(),
             "cancel_requested": cancelled,
         },
@@ -39,6 +42,9 @@ def test_preannotation_terminal_status(tmp_path, monkeypatch, ready, issues, can
             "suggestions_created": ready,
         }
     }
+    if kind == "benchmark":
+        result = result["preannotation"]
+        monkeypatch.setattr("iris.benchmark_runs.run_benchmark_trial", lambda *args: result)
     monkeypatch.setattr(worker, "run_comparison", lambda *args: result)
     monkeypatch.setattr(worker.signal, "signal", lambda *args: None)
     monkeypatch.setattr(

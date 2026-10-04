@@ -1633,6 +1633,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             raise HTTPException(404, "No worker log is available for this job")
         return FileResponse(log, media_type="text/plain")
 
+    from iris.benchmark_api import install_benchmark_routes
+
+    install_benchmark_routes(app, store, jobs, require, active_project)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)

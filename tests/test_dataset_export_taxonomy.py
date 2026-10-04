@@ -16,7 +16,7 @@ from iris.app import create_app
 from iris.dataset_export import GENERIC_README, build_coco_export
 from iris.datasets import create_dataset
 from iris.media import import_asset
-from iris.store import DEFAULT_PROJECT_ID, Store, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, SCHEMA_VERSION, Store, new_id, now
 from iris.taxonomies import TAXONOMY, publish_taxonomy
 from iris.workspace_archive import create_archive
 from iris.workspace_restore import inspect_archive, restore_archive
@@ -212,7 +212,7 @@ def test_generic_workspace_backup_restores_exact_manifest_images_and_export(
         classes=[{**CLASSES[0], "name": "Head protection"}, *CLASSES[1:]],
     )
     saved = create_archive(store.root, tmp_path / "workspace.zip")
-    assert saved["manifest"]["schema_version"] == 14
+    assert saved["manifest"]["schema_version"] == SCHEMA_VERSION
     checked = inspect_archive(saved["path"])
     target = tmp_path / "restored"
     restore_archive(saved["path"], target, expected_archive_sha256=checked["archive_sha256"])
