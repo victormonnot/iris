@@ -455,7 +455,7 @@
       button.setAttribute("aria-current", String(frame.id === editor.frameId));
       button.disabled = editor.busy || editor.advancing || editor.loading || Boolean(editor.drag);
       const image = node("img", "review-queue-thumbnail");
-      image.src = `/api/frames/${encodeURIComponent(frame.id)}/image`;
+      image.src = projectURL(`/api/frames/${encodeURIComponent(frame.id)}/image`);
       image.alt = "";
       image.loading = "lazy";
       image.width = 88;
@@ -676,7 +676,7 @@
     const image = $("#annotation-image");
     image.setAttribute(
       "href",
-      `/api/frames/${encodeURIComponent(frame.id)}/image`,
+      projectURL(`/api/frames/${encodeURIComponent(frame.id)}/image`),
     );
     image.setAttribute("width", frame.width);
     image.setAttribute("height", frame.height);
@@ -1354,7 +1354,7 @@
       image.alt = item.label || (item.kind === "frame" ? "Full frame sent to the provider" : `Candidate crop ${index}`);
       image.addEventListener("load", updatePreviewStatus);
       image.addEventListener("error", updatePreviewStatus);
-      image.src = source.href;
+      image.src = projectURL(source.href);
       figure.append(image, node("figcaption", "field-hint", image.alt));
       gallery.append(figure);
     }

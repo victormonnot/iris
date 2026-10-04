@@ -672,7 +672,8 @@ def render_experiment_html(
         '<p class="note">N/A means undefined or unavailable, never a perfect score. '
         "Classes without labeled objects are excluded from macro AP. Precision, recall and "
         "error counts use the saved operating point; AP uses the saved native scores. "
-        "Local timings are not an onboard drone FPS benchmark.</p></section>"
+        "Local timings are not a benchmark of the exported model on its target hardware."
+        "</p></section>"
     )
     document.add("<section><h2>Results by class</h2>" + _class_metrics(snapshot) + "</section>")
     document.add("<section><h2>Recovered objects and new misses</h2>" + _error_summary(snapshot))

@@ -69,7 +69,7 @@ def _configuration(
             raise ValueError("Choose a completed comparison and one of its detector models")
         comparison = store.get("comparisons", comparison_id)
         if comparison is None or comparison["session_id"] != session_id:
-            raise ValueError("The comparison must belong to this flight session")
+            raise ValueError("The comparison must belong to this session")
         job = store.get("jobs", comparison["job_id"])
         if job is None or job["status"] != "succeeded":
             raise ValueError("The source comparison must have completed successfully")
@@ -98,7 +98,7 @@ def _configuration(
     for frame_id in frame_ids:
         frame = store.get("frames", frame_id)
         if frame is None or frame["session_id"] != session_id:
-            raise ValueError("Every frame must belong to this flight session")
+            raise ValueError("Every frame must belong to this session")
         frames.append(frame)
     return (
         frames,

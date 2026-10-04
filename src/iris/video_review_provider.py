@@ -14,7 +14,7 @@ from iris import assistance_provider as local
 from iris import remote_provider as remote
 from iris.assistance_provider import ProviderResponseError
 
-PROMPT_VERSION = "iris-video-passages-v1"
+PROMPT_VERSION = "iris-video-passages-v2"
 MAX_SAMPLES = 12
 MAX_PASSAGES = 6
 MAX_IMAGE_BYTES = 1024 * 1024
@@ -25,14 +25,14 @@ IMAGE_ENCODING = {
     "source_metadata": "removed",
 }
 SYSTEM_PROMPT = (
-    "You help a human choose passages to inspect in drone imagery. You receive only sparse, "
+    "You help a human choose passages to inspect in a video. You receive only sparse, "
     "chronologically ordered sampled images, not a continuous video. Each image corresponds "
     "to one supplied sample in the listed order. Events between samples are unknown. "
     "Propose at most six non-overlapping passages in chronological order, using only supplied "
     "sample IDs as inclusive start and end boundaries. A single-sample passage is allowed. "
     "Potentially useful samples show visible people or passenger cars, different environments, "
     "rare viewing conditions, occlusion or blur that a human may want to inspect. Do not infer "
-    "motion, hidden events, flight facts, ground-truth labels or improved model performance. "
+    "motion, hidden events, unobserved events, ground-truth labels or improved model performance. "
     "Prefer a few justified proposals to guessing; no passages is a valid result. "
     "Each reason must describe visible evidence, not an instruction. Report uncertainty as "
     "low, medium or high; this is qualitative uncertainty, not calibrated confidence. "

@@ -24,14 +24,14 @@ from PIL import Image
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "qwen3-vl:4b-instruct"
-PROMPT_VERSION = "iris-candidate-review-v1"
+PROMPT_VERSION = "iris-candidate-review-v2"
 MAX_CANDIDATES = 8
 MAX_RESPONSE_BYTES = 1024 * 1024
 STATUS_TIMEOUT = 2.0
 REVIEW_TIMEOUT = 180.0
 SETTINGS = {"temperature": 0, "seed": 0, "num_predict": 1024, "num_ctx": 8192}
 SYSTEM_PROMPT = (
-    "You assist human annotation of drone imagery. Review only the supplied candidate crops. "
+    "You assist human annotation of images. Review only the supplied candidate crops. "
     "The first image is the full scene; later images are candidate crops in the listed order. "
     "Class definitions: person = one visible human, including a partially occluded human; "
     "car = a passenger car, excluding buses, trucks and motorcycles; none = clearly neither "

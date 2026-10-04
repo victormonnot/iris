@@ -10,7 +10,7 @@ from iris.inference import PROTOCOL as TIMING_PROTOCOL
 from iris.inference import TILED_PROTOCOL, _validate_prediction, _work_plan, comparison_lanes
 from iris.metrics import evaluate_predictions, get_protocol
 from iris.models import TorchvisionDetector, catalog
-from iris.store import Store, _decode, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, Store, _decode, new_id, now
 from iris.tiling import (
     TiledInferenceCancelled,
     tile_boxes,
@@ -678,8 +678,20 @@ def run_evaluation(
     return result
 
 
-def reference_history(store: Store) -> dict:
-    history = list(reversed(store.list("model_references")))
+def reference_history(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> dict:
+    if store.get("projects", project_id) is None:
+        raise ValueError("Project does not exist")
+    with store.connect() as connection:
+        history = [
+            _decode(row)
+            for row in connection.execute(
+                "SELECT r.* FROM model_references r "
+                "JOIN evaluations e ON e.id=r.evaluation_id "
+                "JOIN dataset_versions d ON d.id=e.dataset_id "
+                "WHERE d.project_id=? ORDER BY r.created_at DESC,r.id DESC",
+                (project_id,),
+            )
+        ]
     return {"current": history[0] if history else None, "history": history}
 
 
@@ -724,6 +736,7 @@ def promote_reference(
     ):
         raise ValueError("Dataset, checkpoint or training provenance changed since evaluation")
     metadata = {
+        "project_id": dataset["project_id"],
         "model_name": row["config"]["model_names"][model_id],
         "weight_sha256": row["config"]["model_hashes"][model_id],
         "dataset_id": row["dataset_id"],
@@ -748,7 +761,11 @@ def promote_reference(
     with store.connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         previous = connection.execute(
-            "SELECT id FROM model_references ORDER BY created_at DESC,id DESC LIMIT 1"
+            "SELECT r.id FROM model_references r "
+            "JOIN evaluations e ON e.id=r.evaluation_id "
+            "JOIN dataset_versions d ON d.id=e.dataset_id "
+            "WHERE d.project_id=? ORDER BY r.created_at DESC,r.id DESC LIMIT 1",
+            (dataset["project_id"],),
         ).fetchone()
         if (previous["id"] if previous else None) != expected_previous_id:
             raise ReferenceConflict(

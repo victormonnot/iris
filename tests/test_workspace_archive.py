@@ -247,7 +247,9 @@ def test_empty_workspace_needs_no_installed_official_models(tmp_path):
     assert archives.preview_workspace(store.root)["can_create"]
     result = archives.create_archive(store.root, tmp_path / "empty.zip")
     assert result["manifest"]["file_count"] == 1
-    assert not any(result["manifest"]["counts"].values())
+    counts = result["manifest"]["counts"]
+    assert counts["projects"] == 1
+    assert not any(count for table, count in counts.items() if table != "projects")
 
 
 def test_reference_inspection_reads_no_ordinary_artifact_files(workspace, tmp_path):
@@ -407,7 +409,8 @@ def test_sqlite_backup_includes_committed_wal_rows(workspace, tmp_path):
     with closing(sqlite3.connect(workspace.db_path)) as writer:
         writer.execute("PRAGMA wal_autocheckpoint=0")
         writer.execute(
-            "INSERT INTO sessions VALUES (?,?,?,?)", ("wal-session", "Only in WAL", "wal", now())
+            "INSERT INTO sessions (id,name,scene_group,created_at) VALUES (?,?,?,?)",
+            ("wal-session", "Only in WAL", "wal", now()),
         )
         writer.commit()
         assert Path(str(workspace.db_path) + "-wal").stat().st_size > 0

@@ -902,9 +902,9 @@
       });
       svg.append(
         svgNode("image", {
-          href:
+          href: projectURL(
             frame.image_url ||
-            `/api/datasets/${safe(view.detail.dataset_id)}/frames/${safe(view.frameId)}/image`,
+            `/api/datasets/${safe(view.detail.dataset_id)}/frames/${safe(view.frameId)}/image`),
           width: frame.width,
           height: frame.height,
           preserveAspectRatio: "none",

@@ -443,7 +443,7 @@ def test_schema_11_upgrade_preserves_all_existing_rows(saved):
         table: reopened.list(table) for table in reopened.columns if table != "experiment_reports"
     } == before
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     assert not list_experiments(reopened)
 

@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import threading
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -67,8 +68,9 @@ from iris.inference import (
 from iris.jobs import JobManager
 from iris.media import import_asset, preview_extraction
 from iris.models import catalog
+from iris.projects import create_project, project_records, record_project
 from iris.review_queue import review_queue
-from iris.store import Store, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, Store, new_id, now
 from iris.training import create_training, preview_training, training_detail
 from iris.video_reviews import (
     get_review,
@@ -90,6 +92,12 @@ class WorkspaceRestoreInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     inspection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     folder_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
+
+
+class ProjectInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
 
 
 class SessionInput(BaseModel):
@@ -347,6 +355,7 @@ class _WorkspaceArchiveResponse(FileResponse):
 def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAPI:
     store = Store(data_dir or Path(os.getenv("IRIS_DATA_DIR", ".iris")))
     jobs = JobManager(store)
+    active_project = ContextVar("iris_request_project", default=DEFAULT_PROJECT_ID)
     workspace_operations = WorkspaceOperations(store)
     import_lock = threading.Lock()
     export_lock = threading.Lock()
@@ -436,6 +445,17 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                     {"detail": "Not enough local disk space to receive and inspect this archive"},
                     507,
                 )
+        project_id = request.query_params.get("project_id", DEFAULT_PROJECT_ID)
+        global_request = request.url.path in {
+            "/api/system",
+            "/api/annotation-providers",
+            "/api/assistance-status",
+        } or request.url.path.startswith(("/api/projects", "/api/workspace/"))
+        if request.url.path.startswith("/api/") and not global_request:
+            if len(request.query_params.getlist("project_id")) > 1:
+                return JSONResponse({"detail": "Choose one project per request"}, 422)
+            if not store.get("projects", project_id):
+                return JSONResponse({"detail": "Project not found"}, 404)
         mutation = request.method not in {
             "GET",
             "HEAD",
@@ -446,9 +466,11 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 workspace_operations.gate.enter()
             except WorkspaceBusy as exc:
                 return JSONResponse({"detail": str(exc)}, 409)
+        token = active_project.set(project_id)
         try:
             response = await call_next(request)
         finally:
+            active_project.reset(token)
             if mutation:
                 workspace_operations.gate.leave()
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -465,8 +487,32 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     def require(table: str, record_id: str):
         record = store.get(table, record_id)
+        if record is None or record_project(store, table, record) != active_project.get():
+            raise HTTPException(404, "Record not found in this project")
+        return record
+
+    def require_models(model_ids):
+        for model_id in model_ids:
+            trained = store.get("trained_models", model_id)
+            if trained and record_project(store, "trained_models", trained) != active_project.get():
+                raise HTTPException(404, "Trained model not found in this project")
+
+    @app.get("/api/projects")
+    def projects():
+        return store.list("projects")
+
+    @app.post("/api/projects", status_code=201)
+    def add_project(payload: ProjectInput):
+        try:
+            return create_project(store, **payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}")
+    def project(project_id: str):
+        record = store.get("projects", project_id)
         if record is None:
-            raise HTTPException(404, "Record not found")
+            raise HTTPException(404, "Project not found")
         return record
 
     @app.get("/api/system")
@@ -475,6 +521,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             "version": __version__,
             "data_dir": str(store.root),
             "capabilities": {
+                "projects": True,
                 "media_import": True,
                 "frame_extraction": True,
                 "video_sampling_preview": True,
@@ -562,16 +609,22 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/sessions")
     def sessions():
-        return store.list("sessions")
+        return project_records(store, "sessions", active_project.get())
 
     @app.get("/api/models")
     def models():
-        return catalog(store.root)
+        owned = {
+            row["id"] for row in project_records(store, "trained_models", active_project.get())
+        }
+        trained = {row["id"] for row in store.list("trained_models")}
+        return [
+            row for row in catalog(store.root) if row["id"] not in trained or row["id"] in owned
+        ]
 
     @app.get("/api/dataset-candidates")
     def candidates():
         try:
-            return dataset_candidates(store)
+            return dataset_candidates(store, project_id=active_project.get())
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -590,7 +643,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                         raise HTTPException(413, "Dataset ZIP exceeds the 64 MiB limit")
                     target.write(chunk)
             with import_lock:
-                return preview_import(store, staged, file.filename or "dataset.zip")
+                return preview_import(
+                    store, staged, file.filename or "dataset.zip", project_id=active_project.get()
+                )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except (OSError, RuntimeError) as exc:
@@ -608,7 +663,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 for key, value in import_detail(store, row["id"]).items()
                 if key != "images"
             }
-            for row in store.list("dataset_imports")
+            for row in project_records(store, "dataset_imports", active_project.get())
         ]
 
     @app.get("/api/dataset-imports/{import_id}")
@@ -641,12 +696,16 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/datasets")
     def datasets():
-        return [public(row) for row in store.list("dataset_versions")]
+        return [
+            public(row) for row in project_records(store, "dataset_versions", active_project.get())
+        ]
 
     @app.post("/api/datasets", status_code=201)
     def freeze_dataset(payload: DatasetInput):
         try:
-            return public(create_dataset(store, **payload.model_dump()))
+            return public(
+                create_dataset(store, project_id=active_project.get(), **payload.model_dump())
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except (OSError, RuntimeError) as exc:
@@ -720,11 +779,15 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/trainings")
     def trainings():
-        return [training_detail(store, row["id"]) for row in store.list("training_runs")]
+        return [
+            training_detail(store, row["id"])
+            for row in project_records(store, "training_runs", active_project.get())
+        ]
 
     @app.post("/api/trainings", status_code=202)
     def train(payload: TrainingInput):
         require("dataset_versions", payload.dataset_id)
+        require_models([payload.parent_model_id])
         try:
             return create_training(store, jobs, **payload.model_dump())
         except ValueError as exc:
@@ -735,6 +798,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.post("/api/trainings/preview")
     def training_preview(payload: TrainingInput):
         require("dataset_versions", payload.dataset_id)
+        require_models([payload.parent_model_id])
         try:
             return preview_training(store, **payload.model_dump())
         except ValueError as exc:
@@ -749,11 +813,17 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/evaluations")
     def evaluations():
-        return [evaluation_summary(store, row) for row in store.list("evaluations")]
+        return [
+            evaluation_summary(store, row)
+            for row in project_records(store, "evaluations", active_project.get())
+        ]
 
     @app.post("/api/evaluations/preview")
     def evaluation_preview(payload: EvaluationInput):
         require("dataset_versions", payload.dataset_id)
+        require_models(payload.model_ids)
+        if payload.validation_evaluation_id:
+            require("evaluations", payload.validation_evaluation_id)
         try:
             return preview_evaluation(store, **payload.model_dump())
         except ValueError as exc:
@@ -764,6 +834,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.post("/api/evaluations", status_code=202)
     def evaluate(payload: EvaluationInput):
         require("dataset_versions", payload.dataset_id)
+        require_models(payload.model_ids)
+        if payload.validation_evaluation_id:
+            require("evaluations", payload.validation_evaluation_id)
         try:
             return create_evaluation(store, jobs, **payload.model_dump())
         except ValueError as exc:
@@ -811,7 +884,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/experiments")
     def experiments():
-        return experiment_action(lambda: list_experiments(store))
+        return experiment_action(lambda: list_experiments(store, project_id=active_project.get()))
 
     @app.post("/api/experiments", status_code=201)
     def experiment_create(payload: ExperimentInput):
@@ -879,7 +952,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/model-references")
     def references():
-        return reference_history(store)
+        return reference_history(store, project_id=active_project.get())
 
     @app.post("/api/model-references", status_code=201)
     def select_reference(payload: ReferenceInput):
@@ -902,6 +975,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.post("/api/sessions/{session_id}/comparisons/preview")
     def compare_preview(session_id: str, payload: ComparisonInput):
         require("sessions", session_id)
+        require_models(payload.model_ids)
         try:
             return preview_comparison(store, session_id, **payload.model_dump())
         except ValueError as exc:
@@ -910,6 +984,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.post("/api/sessions/{session_id}/comparisons", status_code=202)
     def compare(session_id: str, payload: ComparisonInput):
         require("sessions", session_id)
+        require_models(payload.model_ids)
         try:
             return create_comparison(store, jobs, session_id, **payload.model_dump())
         except ValueError as exc:
@@ -925,7 +1000,13 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.post("/api/sessions", status_code=201)
     def create_session(payload: SessionInput):
         return store.insert(
-            "sessions", {"id": new_id(), **payload.model_dump(), "created_at": now()}
+            "sessions",
+            {
+                "id": new_id(),
+                **payload.model_dump(),
+                "project_id": active_project.get(),
+                "created_at": now(),
+            },
         )
 
     @app.get("/api/sessions/{session_id}")
@@ -1112,10 +1193,12 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/assistance-batches/{batch_id}")
     def batch_get(batch_id: str):
+        require("assistance_batches", batch_id)
         return batch_action(lambda: batch_detail(store, batch_id))
 
     @app.post("/api/assistance-batches/{batch_id}/cancel")
     def batch_cancel(batch_id: str):
+        require("assistance_batches", batch_id)
         return batch_action(lambda: cancel_batch(store, jobs, batch_id))
 
     @app.get("/api/assets/{asset_id}/media")
@@ -1271,7 +1354,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/jobs")
     def list_jobs():
-        return store.list("jobs")
+        return project_records(store, "jobs", active_project.get())
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel(job_id: str):

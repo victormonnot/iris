@@ -17,7 +17,7 @@ from PIL import Image, UnidentifiedImageError
 from iris.annotations import MAX_BOXES, TAXONOMY, _coordinates
 from iris.datasets import CLASS_MAPPING, MAX_FRAMES, SCHEMA_VERSION, _canonical
 from iris.media import _pixel_hash
-from iris.store import Store
+from iris.store import DEFAULT_PROJECT_ID, Store
 
 PROTOCOL = "iris-coco-export-v1"
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
@@ -103,6 +103,8 @@ def _validate(manifest: dict, row: dict):
         or manifest.get("class_mapping") != CLASS_MAPPING
     ):
         raise ValueError("Frozen manifest has an unsupported format or taxonomy")
+    if manifest.get("project_id", DEFAULT_PROJECT_ID) != row.get("project_id", DEFAULT_PROJECT_ID):
+        raise ValueError("Frozen manifest belongs to a different project")
     _text(manifest.get("name"), "dataset name", 160)
     frames, splits = manifest.get("frames"), manifest.get("splits")
     if not isinstance(frames, list) or not 1 <= len(frames) <= MAX_FRAMES:

@@ -154,7 +154,7 @@ def _prepare_comparison(
     for frame_id in frame_ids:
         frame = store.get("frames", frame_id)
         if frame is None or frame["session_id"] != session_id:
-            raise ValueError("Every frame must belong to this flight session")
+            raise ValueError("Every frame must belong to this session")
         frames.append(frame)
     for model_id in model_ids:
         get_spec(model_id, store.root)

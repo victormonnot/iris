@@ -344,8 +344,10 @@ def _counts(counts, identifiers, *, summary=False):
     return result
 
 
-def _references(store, evaluation_id, captured_at):
-    rows = store.list("model_references")
+def _references(store, evaluation_id, captured_at, project_id):
+    from iris.projects import project_records
+
+    rows = project_records(store, "model_references", project_id)
     return {
         "historical": True,
         "captured_at": captured_at,
@@ -484,7 +486,9 @@ def _prepare(store, evaluation_id, captured_at):
                 else None,
                 "summary": _counts(analysis["summary"], identifiers, summary=True),
             },
-            "reference_decisions": _references(store, evaluation_id, captured_at),
+            "reference_decisions": _references(
+                store, evaluation_id, captured_at, dataset["project_id"]
+            ),
             "examples": [],
         }
         available = [
@@ -732,9 +736,16 @@ def experiment_detail(store: Store, report_id: str) -> dict:
     }
 
 
-def list_experiments(store: Store) -> list[dict]:
+def list_experiments(store: Store, project_id: str | None = None) -> list[dict]:
+    from iris.projects import project_records
+
+    rows = (
+        store.list("experiment_reports")
+        if project_id is None
+        else project_records(store, "experiment_reports", project_id)
+    )
     result = []
-    for row in reversed(store.list("experiment_reports")):
+    for row in reversed(rows):
         record = _verified_record(store, row["id"])
         snapshot = record["snapshot"]
         result.append(

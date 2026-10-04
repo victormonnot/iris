@@ -49,7 +49,7 @@
     };
   }
 
-  function create(root, { onSelectFrame = () => {} } = {}) {
+  function create(root, { onSelectFrame = () => {}, urlFor = (url) => url } = {}) {
     if (!(root instanceof HTMLElement))
       throw new TypeError("A replay mount element is required.");
     const prefix = `comparison-replay-${++instanceCount}`;
@@ -118,7 +118,7 @@
     const headingText = element("div");
     headingText.append(
       element("span", "eyebrow", "Video replay"),
-      element("h3", "", "Follow the flight. Inspect saved frames."),
+      element("h3", "", "Follow the video. Inspect saved frames."),
     );
     header.append(
       headingText,
@@ -430,7 +430,7 @@
           !url.pathname.startsWith("/api/assets/")
         )
           return null;
-        return url.href;
+        return new URL(urlFor(url.href), location.href).href;
       } catch {
         return null;
       }

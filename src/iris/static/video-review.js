@@ -202,7 +202,7 @@
     const url = new URL(item.url, window.location.href);
     if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/video-reviews/"))
       throw new Error("Preview images must be stored by IRIS. Prepare a new preview.");
-    return url.href;
+    return projectURL(url.href);
   }
 
   function imageStatus() {

@@ -1,4 +1,4 @@
-# Architecture and V1 delivery
+# Architecture
 
 Workspace backup uses a streamed ZIP64 archive and a consistent SQLite snapshot.
 An admission gate rejects new HTTP mutations while an idle workspace is copied;
@@ -9,10 +9,11 @@ publishes a new directory without replacing an existing destination. It preserve
 the active workspace and starts no model jobs. The same archive services support
 the UI and recovery CLI; see [backup and recovery](workspace-backup.md).
 
-IRIS is a local workbench for improving object detectors from flight recordings.
-V1 covers import, model comparison, assisted annotation, human review, dataset
-versions, fine-tuning, and comparison against earlier checkpoints. Onboard
-deployment, drone control, tracking, and segmentation are outside this version.
+IRIS is a local workbench for improving object detectors from images and videos.
+Projects organize import, model comparison, assisted annotation, human review,
+dataset versions, fine-tuning, and comparison against earlier checkpoints. The
+current task is bounding-box detection; full segmentation and tracking workflows
+are outside this version. No ARGOS or drone integration is required.
 
 ## Application boundary
 
@@ -33,6 +34,34 @@ reported as success.
 The server binds to loopback by default. A remote workstation can be reached
 through an SSH tunnel; computation and storage remain on that workstation.
 This is a single-user application, not an authenticated public service.
+
+## Projects and compatibility
+
+SQLite schema 13 adds `projects` and a project foreign key on sessions, dataset
+versions and COCO imports. Other ownership follows the existing session, dataset
+and evaluation relationships; immutable saved payloads are not rewritten. Opening
+an older workspace atomically attaches existing records to `default`. IDs, hashes,
+annotation revisions, checkpoints and experiment snapshots retain their meaning.
+Each project currently references the same `iris-objects-v1` class definition;
+custom taxonomies are a later capability.
+
+The HTTP layer resolves a request-local project from `project_id` (defaulting to
+`default` for existing clients). Lists are scoped before rendering, record reads
+and mutations check ownership, and trained models cannot be selected from another
+project. Reference selection is project-local. Official detector weights, provider
+availability, the sequential worker and workspace transfers remain shared.
+
+The browser keeps its project fixed for the lifetime of the page and changes
+projects through local navigation. Existing unsaved-work protections apply, each
+project remembers its session, and API, media and download URLs carry the project.
+This avoids retaining another project's selection, modal or pending preview.
+
+Scene-group reservations are project-local, while exact-pixel split reservations
+span the workspace. Creating a project cannot turn an existing training image into
+an independent test image. Related scenes still need human grouping and review.
+Archive validation recognizes the exact structures of schemas 12 and 13. Restore
+preserves archive payload bytes; opening a restored schema-12 workspace performs
+the normal schema-13 migration. See [project behavior](projects.md).
 
 ## Model and annotation choices
 
@@ -271,7 +300,7 @@ Model files, datasets, private media, and credentials stay outside Git.
   distinct. A validated empty image is an explicit negative, never a missing label.
 - Dataset manifests freeze image hashes, annotation revisions, taxonomy, and
   train/validation/test assignments. Subsequent edits create new versions. Split
-  by flight or related scene group; reject duplicate content crossing splits and
+  by session or related scene group; reject duplicate content crossing splits and
   require review of near-duplicate scenes. Never split adjacent frames randomly.
 - Validation supports model and threshold selection. A fixed test reference is
   excluded from training and tuning; reusing its examples for improvement retires
@@ -287,7 +316,7 @@ Model files, datasets, private media, and credentials stay outside Git.
   inference, postprocessing, and total time. Confidence and model disagreement are
   inspection aids, not accuracy measurements. Promotion of a checkpoint is manual.
 
-## Five testable increments
+## Existing improvement loop
 
 Annotated external data can enter the same loop through a bounded COCO ZIP
 importer. Preview verifies images and geometry, then explicit class mapping and
@@ -316,13 +345,13 @@ explicit runtime provisioning. The README records setup commands and verificatio
 
 | Increment | Usable result | Acceptance check |
 | --- | --- | --- |
-| 1. Flight data workspace | Import images/video into sessions, extract frames, inspect provenance, select images, inspect and cancel jobs. | Import a generated video fixture, extract and select frames, restart, and recover metadata and job outcomes. Fixtures exercise the pipeline; they are not flight data. |
+| 1. Local data workspace | Import images/video into sessions, extract frames, inspect provenance, select images, inspect and cancel jobs. | Import a generated video fixture, extract and select frames, restart, and recover metadata and job outcomes. Fixtures exercise the pipeline; they are not field data. |
 | 2. Saved model comparisons | Run both detectors on identical frames, persist raw predictions and timing, overlay results and inspect disagreements. | Execute both real checkpoints on a small authorized sample and reopen the comparison after restart; missing weights are a visible dependency. |
 | 3. Assisted and manual annotation | Create, move, resize, reclassify, and delete boxes; request local multimodal suggestions and accept, correct, or reject them. | Complete one real Ollama request and human review; test invalid responses, coordinate conversions, and validated empty images. Test doubles are identified as fixtures. |
 | 4. Dataset versions and training | Freeze reviewed labels and group-based splits; run bounded Faster R-CNN fine-tuning; register the resulting checkpoint. | Reject leakage and unreviewed labels, preserve old manifests after edits, and complete a real short training job that produces a reloadable checkpoint. |
-| 5. Before/after evaluation | Reuse the comparator for parent and trained checkpoints, compute metrics on a common held-out reference, and inspect regressions. | Reproduce the full chain from a new flight to a checkpoint and evaluation after restart. Report gains or regressions as measured; never require an improvement to declare the loop functional. |
+| 5. Before/after evaluation | Reuse the comparator for parent and trained checkpoints, compute metrics on a common held-out reference, and inspect regressions. | Reproduce the full chain from new source data to a checkpoint and evaluation after restart. Report gains or regressions as measured; never require an improvement to declare the loop functional. |
 
-The full demonstration on real flights needs authorized recordings, independent scene groups,
+The full demonstration on real data needs authorized recordings, independent scene groups,
 human-reviewed labels, installed detector weights, a working multimodal runtime,
 and suitable compute. Missing dependencies block the corresponding live
 verification, not manual data handling or fixture tests. Large downloads and

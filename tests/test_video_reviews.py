@@ -604,7 +604,7 @@ def test_schema_10_upgrade_preserves_every_existing_row(workspace):
         table: reopened.list(table) for table in reopened.columns if table != "video_reviews"
     } == snapshot
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     assert reopened.list("video_reviews") == []
 

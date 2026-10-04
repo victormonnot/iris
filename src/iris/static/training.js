@@ -323,7 +323,7 @@
         .join(" · ");
       warnings("#dataset-detail-warnings", detail.summary.warnings);
       $("#dataset-manifest-download").href =
-        `/api/datasets/${encodeURIComponent(id)}/manifest`;
+        projectURL(`/api/datasets/${encodeURIComponent(id)}/manifest`);
       $("#dataset-manifest").textContent = JSON.stringify(
         { manifest_sha256: detail.manifest_sha256, manifest: detail.manifest },
         null,
@@ -379,7 +379,7 @@
       let response;
       try {
         response = await fetch(
-          `/api/datasets/${encodeURIComponent(id)}/export/coco`,
+          projectURL(`/api/datasets/${encodeURIComponent(id)}/export/coco`),
           { signal: controller.signal, mode: "same-origin", redirect: "error" },
         );
       } catch (error) {

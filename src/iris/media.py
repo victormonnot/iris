@@ -177,7 +177,7 @@ def _frame_record(
 def import_asset(store: Store, session_id: str, source: Path, filename: str) -> dict:
     """Preserve an original locally and create an EXIF-normalized frame for still images.
 
-    Byte-identical imports are idempotent within a session. Distinct flights retain
+    Byte-identical imports are idempotent within a session. Distinct sessions retain
     their own provenance, even when their source files contain identical pixels.
     """
     if store.get("sessions", session_id) is None:

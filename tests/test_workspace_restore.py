@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from iris import workspace_restore as restore
-from iris.store import TABLES, Store, new_id, now
+from iris.store import SCHEMA_VERSION, TABLES, Store, new_id, now
 from iris.workspace_archive import ArchiveCancelled, ArchiveError, ArchiveLimitError
 
 
@@ -105,6 +105,7 @@ def _payload(store):
 def _manifest(files):
     with sqlite3.connect(":memory:") as connection:
         connection.deserialize(files["iris.sqlite3"])
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
         counts = {
             table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             for table in sorted(TABLES)
@@ -113,7 +114,7 @@ def _manifest(files):
         "protocol": "iris-workspace-archive-v1",
         "format_version": 1,
         "app_version": "0.19.0",
-        "schema_version": 12,
+        "schema_version": version,
         "created_at": now(),
         "file_count": len(files),
         "total_bytes": sum(len(data) for data in files.values()),
@@ -178,7 +179,7 @@ def test_restore_round_trip_bytes_ids_history_and_permissions(archive, workspace
             assert path.read_bytes() == saved.read(item["path"])
             assert stat.S_IMODE(path.stat().st_mode) == 0o600
     with sqlite3.connect(target / "iris.sqlite3") as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert (
             connection.execute("SELECT id FROM frames").fetchone()[0]
             == workspace.list("frames")[0]["id"]

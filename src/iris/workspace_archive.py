@@ -19,11 +19,12 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from iris import __version__
-from iris.store import JSON_FIELDS, SCHEMA, TABLES, now
+from iris.store import JSON_FIELDS, SCHEMA, SCHEMA_V12, SCHEMA_VERSION, TABLES, now
 
 PROTOCOL = "iris-workspace-archive-v1"
 FORMAT_VERSION = 1
-SCHEMA_VERSION = 12
+SCHEMAS = {12: SCHEMA_V12, SCHEMA_VERSION: SCHEMA}
+SCHEMA_TABLES = {12: TABLES - {"projects"}, SCHEMA_VERSION: TABLES}
 CHUNK_BYTES = 1024 * 1024
 MAX_ARCHIVE_BYTES = 64 * 1024**3
 MAX_TOTAL_BYTES = 64 * 1024**3
@@ -201,7 +202,7 @@ def validate_manifest(value: dict) -> dict:
         or type(value["format_version"]) is not int
         or value["format_version"] != FORMAT_VERSION
         or type(value["schema_version"]) is not int
-        or value["schema_version"] != SCHEMA_VERSION
+        or value["schema_version"] not in SCHEMAS
     ):
         raise ArchiveError("Unsupported workspace archive or database version")
     if not isinstance(value["app_version"], str) or not 1 <= len(value["app_version"]) <= 64:
@@ -216,7 +217,7 @@ def validate_manifest(value: dict) -> dict:
         raise ArchiveError("Archive creation time must include a timezone") from exc
     if (
         not isinstance(value["counts"], dict)
-        or set(value["counts"]) != TABLES
+        or set(value["counts"]) != SCHEMA_TABLES[value["schema_version"]]
         or any(type(number) is not int or number < 0 for number in value["counts"].values())
     ):
         raise ArchiveError("Archive table counts are incomplete or invalid")
@@ -368,9 +369,9 @@ def _readonly_database(path):
     return connection
 
 
-def _schema_signature(connection):
+def _schema_signature(connection, tables):
     result = {}
-    for table in sorted(TABLES):
+    for table in sorted(tables):
         columns = {
             row[1]: tuple(row[2:]) for row in connection.execute(f'PRAGMA table_info("{table}")')
         }
@@ -435,14 +436,15 @@ def validate_database(
         )
         with connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version != SCHEMA_VERSION:
+            if version not in SCHEMAS:
                 raise ArchiveError(
                     "Workspace database version is unsupported; open it in IRIS first"
                 )
+            tables = SCHEMA_TABLES[version]
             objects = connection.execute(
                 "SELECT name,type,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"
             ).fetchall()
-            if {row["name"] for row in objects if row["type"] == "table"} != TABLES or any(
+            if {row["name"] for row in objects if row["type"] == "table"} != tables or any(
                 row["type"] in {"view", "trigger"}
                 or "CREATE VIRTUAL TABLE" in (row["sql"] or "").upper()
                 for row in objects
@@ -450,8 +452,8 @@ def validate_database(
                 raise ArchiveError("Workspace database has unsupported tables, views or triggers")
             reference = sqlite3.connect(":memory:")
             try:
-                reference.executescript(SCHEMA)
-                if _schema_signature(connection) != _schema_signature(reference):
+                reference.executescript(SCHEMAS[version])
+                if _schema_signature(connection, tables) != _schema_signature(reference, tables):
                     raise ArchiveError(
                         "Workspace database schema does not match the supported layout"
                     )
@@ -464,9 +466,9 @@ def validate_database(
                 raise ArchiveError("Workspace database integrity checks failed")
             counts = {
                 table: connection.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
-                for table in sorted(TABLES)
+                for table in sorted(tables)
             }
-            for table in sorted(TABLES):
+            for table in sorted(tables):
                 columns = [
                     row[1]
                     for row in connection.execute(f'PRAGMA table_info("{table}")')
@@ -659,6 +661,7 @@ def preview_workspace(root: Path) -> dict:
         required = _required_bytes(total, inventory["iris.sqlite3"]["size_bytes"], len(inventory))
         free = shutil.disk_usage(root).free
         result.update(
+            schema_version=checked["schema_version"],
             counts=checked["counts"],
             file_count=len(inventory),
             total_bytes=total,

@@ -317,7 +317,7 @@ def review_queue(
         saved = _comparison(conn, session_id, comparison_id) if comparison_id is not None else None
         if saved:
             comparison, summary, runs, predictions = saved
-        reserved_groups, reserved_pixels = _reservations(store, conn)
+        reserved_groups, reserved_pixels = _reservations(store, conn, session["project_id"])
         for row in conn.execute(
             "SELECT f.*, a.filename AS source_filename FROM frames f "
             "JOIN assets a ON a.id=f.asset_id WHERE f.session_id=? AND f.selected=1 "

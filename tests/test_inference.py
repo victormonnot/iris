@@ -199,9 +199,16 @@ def test_v1_migration_preserves_sources_selection_and_job_outcomes(tmp_path):
         }
     migrated = Store(root)
     with migrated.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 13
         after = {
-            table: [tuple(row) for row in connection.execute(f"SELECT * FROM {table}")]
+            table: [
+                tuple(row)
+                for row in connection.execute(
+                    "SELECT id,name,scene_group,created_at FROM sessions"
+                    if table == "sessions"
+                    else f"SELECT * FROM {table}"
+                )
+            ]
             for table in before
         }
     assert after == before

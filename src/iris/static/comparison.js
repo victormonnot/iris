@@ -24,6 +24,7 @@
   };
   const svgNamespace = "http://www.w3.org/2000/svg";
   const replay = window.IRISComparisonReplay.create($("#comparison-replay"), {
+    urlFor: projectURL,
     onSelectFrame(frameId) {
       const position = comparison.detail?.frame_ids.indexOf(frameId) ?? -1;
       if (position < 0 || position === comparison.position) return;
@@ -43,7 +44,7 @@
       intake: [
         "01",
         "Data intake",
-        "From flight to frames.",
+        "From sources to useful frames.",
         "Import source footage, sample frames and select the data worth keeping.",
       ],
       comparison: [
@@ -563,7 +564,7 @@
     });
     svg.append(
       svgNode("image", {
-        href: `/api/frames/${encodeURIComponent(frame.id)}/image`,
+        href: projectURL(`/api/frames/${encodeURIComponent(frame.id)}/image`),
         width: frame.width,
         height: frame.height,
         preserveAspectRatio: "none",

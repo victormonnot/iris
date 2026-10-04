@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta
       name="description"
-      content="IRIS — a local computer vision workbench for flight data."
+      content="IRIS — a local workbench to improve detectors with your images and videos."
     />
     <title>IRIS · Vision workbench</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="/static/experiments.css" />
     <link rel="stylesheet" href="/static/workspace-backup.css" />
     <link rel="stylesheet" href="/static/comparison-replay.css" />
+    <script src="/static/project-scope.js" defer></script>
     <script src="/static/app.js" defer></script>
     <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison-replay.js" defer></script>
@@ -43,17 +44,38 @@
       </div>
     </header>
     <div class="shell">
-      <aside class="sidebar" aria-label="Flight sessions">
+      <aside class="sidebar" aria-label="Sessions">
         <div class="sidebar-heading">
           <span class="eyebrow">Workspace</span
           ><span class="local-label">LOCAL</span>
         </div>
+        <section class="project-picker" aria-label="Current project">
+          <label for="project-select">Project</label>
+          <select id="project-select" aria-describedby="project-description" disabled>
+            <option>Loading projects…</option>
+          </select>
+          <p id="project-description" class="field-hint"></p>
+          <details id="project-create" class="project-create">
+            <summary>+ New project</summary>
+            <form id="project-form">
+              <label for="project-name">Project name</label>
+              <input id="project-name" name="name" required maxlength="160"
+                placeholder="e.g. Field observations or Workshop inventory" autocomplete="off" />
+              <label for="project-new-description">Description <span class="optional">optional</span></label>
+              <textarea id="project-new-description" name="description" maxlength="2000"
+                rows="2" placeholder="What will this detector help you recognize?"></textarea>
+              <p id="project-error" class="job-error" role="alert" hidden></p>
+              <button class="button button-secondary full-width" type="submit">Create project</button>
+            </form>
+          </details>
+          <p class="project-class-note">Projects currently use the <strong>person</strong> and <strong>car</strong> detector classes.</p>
+        </section>
         <div class="section-heading">
-          <h2>Flight sessions</h2>
+          <h2>Sessions</h2>
           <span class="count" id="session-count">0</span>
         </div>
         <p class="sidebar-description">
-          Keep each flight and its source files together.
+          Keep each collection and its source files together.
         </p>
         <div id="session-list" class="session-list">
           <p class="muted small">Loading sessions…</p>
@@ -80,7 +102,7 @@
             aria-describedby="scene-group-hint"
           />
           <p id="scene-group-hint" class="field-hint">
-            Group flights from the same scene so they stay together in dataset
+            Group sessions from the same scene so they stay together in dataset
             splits.
           </p>
           <button class="button button-secondary full-width" type="submit">
@@ -102,7 +124,7 @@
             class="text-button workspace-backup-launch"
             type="button"
           >
-            Workspace backup <span aria-hidden="true">↗</span>
+            Backup all projects <span aria-hidden="true">↗</span>
           </button>
           <span id="workspace-backup-open-state" role="status"></span>
         </div>
@@ -113,7 +135,7 @@
             <div class="eyebrow" id="workspace-step">
               <span class="step-marker">01</span> Data intake
             </div>
-            <h1 id="workspace-title">From flight to frames.</h1>
+            <h1 id="workspace-title">From sources to useful frames.</h1>
             <p class="page-description" id="workspace-description">
               Import source footage, sample frames and select the data worth
               keeping.
@@ -135,10 +157,10 @@
           hidden
         >
           <div class="empty-scope" aria-hidden="true"><span></span></div>
-          <div class="eyebrow">Your first flight starts here</div>
+          <div class="eyebrow">Your project starts here</div>
           <h2 id="welcome-title">Build a useful collection.</h2>
           <p>
-            Create a flight session, then add images or video from your machine.
+            Create a session, then add images or video from your machine.
             Imported files stay on this computer.
           </p>
           <button
@@ -166,7 +188,7 @@
         <div id="session-workspace" hidden>
           <section class="session-summary" aria-label="Current session">
             <div>
-              <div class="eyebrow">Active flight session</div>
+              <div class="eyebrow">Active session</div>
               <h2 id="active-session-name"></h2>
               <p id="active-session-group" class="muted small"></p>
             </div>
@@ -347,7 +369,7 @@
                   <p>
                     The optional CPU runtime and pretrained weights are
                     installed separately. These commands download software and
-                    model weights; your flight data stays local. No download
+                    model weights; your source data stays local. No download
                     starts from this page.
                   </p>
                   <pre id="model-setup-commands"></pre>
@@ -453,7 +475,7 @@
                   hidden
                 ></p>
                 <div id="comparison-empty" class="comparison-empty">
-                  <strong>A shared view of the same flight.</strong>
+                  <strong>A shared view of the same data.</strong>
                   <p>
                     Choose your frames and models above to create a comparison.
                     Saved results can be reopened even when the models are
@@ -1224,8 +1246,8 @@ ollama pull qwen3-vl:4b-instruct</pre
             hidden
           >
             <p class="dataset-scope">
-              Workspace-wide: build releases from validated, selected frames
-              across all flight sessions. Flights in the same scene group stay
+              Project-wide: build releases from validated, selected frames
+              across all sessions in this project. Sessions in the same scene group stay
               together in every release.
             </p>
             <section
@@ -1278,7 +1300,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   selection; test is optional and stays held out. Assign at
                   least one group to train and another to validation. Once used,
                   a group's split is reserved across releases. Put nearby scenes
-                  and similar flights in the same group to avoid leakage.
+                  and similar captures in the same group to avoid leakage.
                 </p>
                 <div id="dataset-warnings" class="dataset-warnings"></div>
                 <div class="comparison-launch">
@@ -1629,8 +1651,8 @@ ollama pull qwen3-vl:4b-instruct</pre
             aria-label="Quality evaluation"
           >
             <p class="dataset-scope">
-              Evaluate frozen validation frames across the whole workspace.
-              Human-validated boxes are the reference; the active flight session
+              Evaluate frozen validation frames across the current project.
+              Human-validated boxes are the reference; the active session
               does not restrict this view.
             </p>
             <section
@@ -1840,7 +1862,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     AP and mAP are shown as percentages. A class without labeled
                     examples has N/A AP and is excluded from mAP; inspect its
                     support and false positives. Small or unrepresentative
-                    datasets do not establish flight performance.
+                    datasets do not establish real-world performance.
                   </p>
                   <section
                     id="evaluation-analysis"
@@ -2310,7 +2332,7 @@ ollama pull qwen3-vl:4b-instruct</pre
           <div id="job-list"></div>
         </section>
         <footer class="page-footer">
-          <span>IRIS / Computer vision for flight data</span
+          <span>IRIS / Local detector improvement</span
           ><span
             >Data intake / Comparison / Annotation / Training / Evaluation / Experiments</span
           >
@@ -2337,7 +2359,7 @@ ollama pull qwen3-vl:4b-instruct</pre
         </button>
       </div>
       <p class="workspace-backup-intro">
-        Preserve the complete local workspace, or restore a verified archive into a
+        Preserve all projects in the local workspace, or restore a verified archive into a
         separate folder. Files stay on your machine.
       </p>
       <div

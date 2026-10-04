@@ -1,7 +1,14 @@
 "use strict";
 
 const $ = (selector, root = document) => root.querySelector(selector);
+const projectScope = window.IRISProjectScope.create(window.location.href, {
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
+});
+const projectURL = (path) => projectScope.url(path);
 const state = {
+  projectId: projectScope.id,
+  projects: [],
   sessions: [],
   sessionId: null,
   assets: [],
@@ -33,7 +40,7 @@ async function api(path, options = {}) {
   }
   let response;
   try {
-    response = await fetch(path, { ...options, headers });
+    response = await fetch(projectURL(path), { ...options, headers });
   } catch {
     throw new Error(
       "Cannot reach IRIS. Check that the local server is running and try again.",
@@ -99,19 +106,37 @@ function isActive(job) {
 }
 
 function rememberSession(id) {
-  try {
-    localStorage.setItem("iris.session", String(id));
-  } catch {
-    /* Storage is optional. */
-  }
+  projectScope.rememberSession(id);
 }
 
 function recalledSession() {
-  try {
-    return localStorage.getItem("iris.session");
-  } catch {
-    return null;
+  return projectScope.recalledSession();
+}
+
+function renderProjects() {
+  const select = $("#project-select");
+  select.replaceChildren();
+  for (const project of state.projects) {
+    const option = node("option", "", project.name);
+    option.value = project.id;
+    select.append(option);
   }
+  select.value = state.projectId;
+  select.disabled = !state.projects.length;
+  const active = state.projects.find((project) => project.id === state.projectId);
+  select.title = active?.name || "Choose a project";
+  $("#project-description").textContent = active?.description ||
+    "Sessions, datasets and results stay together in this project.";
+  document.title = active ? `${active.name} · IRIS` : "IRIS · Vision workbench";
+}
+
+function openProject(id) {
+  // Keep the current selector and scope intact if beforeunload is cancelled.
+  $("#project-select").value = state.projectId;
+  if (id === state.projectId) return;
+  // Navigation resets every module, pending preview and modal in one operation.
+  // Existing annotation/report beforeunload handlers protect unsaved edits.
+  window.location.assign(projectScope.location(id));
 }
 
 function renderSessions() {
@@ -119,7 +144,7 @@ function renderSessions() {
   list.replaceChildren();
   $("#session-count").textContent = state.sessions.length;
   if (!state.sessions.length) {
-    list.append(node("p", "session-empty", "No flight sessions yet."));
+    list.append(node("p", "session-empty", "No sessions in this project yet."));
   }
   for (const session of state.sessions) {
     const button = node(
@@ -127,6 +152,7 @@ function renderSessions() {
       `session-item${session.id === state.sessionId ? " active" : ""}`,
     );
     button.type = "button";
+    button.title = `${session.name} · ${session.scene_group || "No scene group"}`;
     button.setAttribute(
       "aria-current",
       session.id === state.sessionId ? "true" : "false",
@@ -161,7 +187,7 @@ async function selectSession(id) {
   const session = state.sessions.find((item) => item.id === id);
   $("#welcome").hidden = true;
   $("#session-workspace").hidden = false;
-  $("#active-session-name").textContent = session?.name || "Flight session";
+  $("#active-session-name").textContent = session?.name || "Session";
   $("#active-session-group").textContent = session?.scene_group
     ? `Scene group / ${session.scene_group}`
     : "No scene group assigned";
@@ -205,7 +231,7 @@ function renderAssets() {
       node(
         "p",
         "",
-        "Import images or a flight video. Source files stay on this machine, with their original content preserved.",
+        "Import images or a video. Source files stay on this machine, with their original content preserved.",
       ),
     );
     list.append(empty);
@@ -330,7 +356,7 @@ function frameCard(frame) {
     `Inspect ${source?.filename || "frame"}${source?.kind === "video" ? ` at ${timestamp(frame.timestamp_seconds)}` : ""}`,
   );
   const image = node("img");
-  image.src = `/api/frames/${encodeURIComponent(frame.id)}/image`;
+  image.src = projectURL(`/api/frames/${encodeURIComponent(frame.id)}/image`);
   image.alt = "";
   image.loading = "lazy";
   image.decoding = "async";
@@ -650,7 +676,7 @@ function renderInspection() {
   const frame = state.frames.find((item) => item.id === state.inspecting);
   if (!frame) return;
   const source = sourceFor(frame);
-  $("#inspect-image").src = `/api/frames/${encodeURIComponent(frame.id)}/image`;
+  $("#inspect-image").src = projectURL(`/api/frames/${encodeURIComponent(frame.id)}/image`);
   $("#inspect-image").alt =
     `${source?.filename || "Frame"}${source?.kind === "video" ? ` at approximately ${timestamp(frame.timestamp_seconds)}` : ""}`;
   renderInspectionSelection();
@@ -662,7 +688,7 @@ function renderInspection() {
   const session = state.sessions.find((item) => item.id === frame.session_id);
   const metadata = [
     ["Original source", source?.filename || frame.asset_id],
-    ["Flight session", session?.name || frame.session_id],
+    ["Session", session?.name || frame.session_id],
     ["Dimensions", `${frame.width} × ${frame.height}`],
     [
       "Source position",
@@ -722,7 +748,7 @@ function renderInspection() {
   $("#video-preview").hidden = source?.kind !== "video";
   $("#video-error").hidden = true;
   if (source?.kind === "video") {
-    const url = `/api/assets/${encodeURIComponent(source.id)}/media`;
+    const url = projectURL(`/api/assets/${encodeURIComponent(source.id)}/media`);
     if (video.getAttribute("src") !== url) video.src = url;
     seekOriginal();
   } else {
@@ -730,7 +756,7 @@ function renderInspection() {
     video.load();
   }
   $("#download-source").href =
-    `/api/assets/${encodeURIComponent(frame.asset_id)}/media`;
+    projectURL(`/api/assets/${encodeURIComponent(frame.asset_id)}/media`);
   $("#download-source").download = source?.filename || "original";
 }
 
@@ -814,7 +840,7 @@ function renderJobs() {
       logs.dataset.jobId = String(job.id);
       logs.open = expanded.has(String(job.id));
       const download = node("a", "text-button", "Download full worker log ↗");
-      download.href = `/api/jobs/${encodeURIComponent(job.id)}/log`;
+      download.href = projectURL(`/api/jobs/${encodeURIComponent(job.id)}/log`);
       download.download = `${job.id}.log`;
       logs.append(
         node("summary", "", "View processing log"),
@@ -1058,12 +1084,22 @@ $("#frame-dialog").addEventListener("keydown", (event) => {
 
 async function initialize() {
   try {
-    const [system, sessions] = await Promise.all([
+    const [system, projects] = await Promise.all([
       api("/api/system"),
-      api("/api/sessions"),
+      api("/api/projects"),
     ]);
     $("#version").textContent = system.version ? `v${system.version}` : "";
     $("#storage-path").textContent = system.data_dir;
+    state.projects = projects;
+    if (!projects.some((project) => project.id === state.projectId)) {
+      window.location.replace(projectScope.location(projects[0]?.id || "default"));
+      return;
+    }
+    projectScope.remember();
+    // Keep browser history and separate tabs pinned to their own project.
+    window.history.replaceState(null, "", projectScope.location(state.projectId));
+    renderProjects();
+    const sessions = await api("/api/sessions");
     state.sessions = sessions;
     renderSessions();
     const recalled = recalledSession();
@@ -1082,5 +1118,32 @@ async function initialize() {
     }
   }
 }
+
+$("#project-select").addEventListener("change", (event) => openProject(event.target.value));
+$("#project-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("button[type=submit]", event.currentTarget);
+  const name = $("#project-name").value.trim();
+  if (!name) return $("#project-name").focus();
+  button.disabled = true;
+  $("#project-error").hidden = true;
+  try {
+    const project = await api("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ name, description: $("#project-new-description").value.trim() }),
+    });
+    state.projects.push(project);
+    renderProjects();
+    $("#project-form").reset();
+    $("#project-create").open = false;
+    notify(`Project “${project.name}” is ready.`);
+    openProject(project.id);
+  } catch (error) {
+    $("#project-error").textContent = error.message;
+    $("#project-error").hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
 
 initialize();

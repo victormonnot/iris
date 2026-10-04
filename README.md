@@ -1,20 +1,20 @@
 # IRIS
 
-A local computer vision workbench for drone imagery. IRIS is being built around
-the full improvement loop: flight data → frame selection → assisted annotation →
+A local computer vision workbench for improving object detectors from your own
+images and videos. IRIS follows the full improvement loop: sources → frame selection → assisted annotation →
 human validation → versioned dataset → fine-tuning → model comparison.
 
-IRIS currently provides **data intake, COCO dataset import, detector comparison, assisted annotation,
+IRIS currently provides **projects, data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
 explicit model reference selection, saved experiment reports, and workspace backup/restoration**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
-[the architecture and V1 plan](docs/architecture.md).
+[the architecture](docs/architecture.md).
 
 ## Run locally
 
 Requires Linux or WSL, Python 3.12 or 3.13, and [uv](https://docs.astral.sh/uv/).
-No GPU, model weights, API key, drone connection, or external account is needed
+No GPU, model weights, API key, or external account is needed
 for data intake or manual annotation.
 
 ```sh
@@ -34,9 +34,23 @@ is excluded from Git. `IRIS_DATA_DIR` also sets the data location. Original
 files are copied into this workspace; keep enough disk space for both originals
 and extracted PNGs. Use **Workspace backup** to create and restore verified archives.
 
+## Projects
+
+Use the **Project** selector in the sidebar to switch projects, or **New project**
+to create one with a name and optional description. Each project contains its own
+sessions, dataset versions, trained models, evaluations, reference selection and
+reports. Existing work appears in **Default project** after upgrading. Official
+pretrained checkpoints are shared; workspace backup includes every project.
+
+The current annotation and training classes remain **person** and **car** with the
+versioned `iris-objects-v1` definitions. Custom classes are not available yet.
+IRIS has no dependency on ARGOS, flight telemetry or a drone-specific file format;
+recordings from any supported source can use the same local workflow.
+See [projects and compatibility](docs/projects.md).
+
 ## First workflow
 
-1. Create a flight session and give related flights the same **scene group**.
+1. Choose a project, create a session, and give related sessions the same **scene group**.
    These groups will be used to separate training, validation, and test data.
 2. Import images or videos. Each upload is limited to 2 GiB. Sources are kept
    with a SHA-256 checksum; importing an identical file into the same session
@@ -230,7 +244,7 @@ and timings remain in each saved prediction's `metadata.tiles`, accessible in
 the comparison API. Run provenance includes the complete tile plan and merge
 settings. Cropping and merging are timed separately; forward time is the sum
 over all tiles. Total excludes warmup, weight loading, progress reporting and
-database writes. These sequential local measurements are not a drone FPS benchmark.
+database writes. These sequential local measurements are not an exported-model FPS benchmark.
 
 Cancellation is checked between tiles and during merging. Only complete image
 results are published; earlier completed results survive. In **Annotation** and
@@ -384,13 +398,13 @@ API keys are read only by the server/worker and are never returned to the UI.
 
 ## Freeze a dataset and fine-tune
 
-**Dataset & training** works across all flight sessions. It requires no API key.
+**Dataset & training** works across all sessions in the selected project. It requires no API key.
 
 1. Select frames and validate their annotations, including empty negative images.
    Drafts, unselected frames, and images with unresolved proposals are excluded.
 2. Refresh dataset candidates and assign scene groups to **Train**, **Validation**,
    or **Test**. At least two distinct groups are required for train and validation;
-   test is optional, and its absence is reported. Related flights belong in the
+   test is optional, and its absence is reported. Related scenes belong in the
    same group. Never distribute neighboring frames randomly across splits.
 3. Name and freeze the version, optionally linking a previous release as its parent.
    IRIS copies normalized PNGs and records image hashes, full annotation revisions,
@@ -409,8 +423,9 @@ API keys are read only by the server/worker and are never returned to the UI.
    its checkpoint and SHA-256, parent, dataset version and settings. Use it in
    **Model comparison** alongside its parent on the same held-out frames.
 
-Scene-group assignments and exact pixel hashes retain their split across all
-versions in a workspace. Crossing these reservations is rejected, including when
+Scene-group assignments retain their split across versions within a project.
+Exact pixel hashes retain their split across the whole workspace, including other
+projects. Crossing these reservations is rejected, including when
 an image is imported again under another session name. Duplicate pixels within
 one release are also rejected. Perceptual-hash warnings help review similar
 images; they do not establish independence. There is currently no operation to
@@ -515,7 +530,7 @@ plus inference and total processing times. Saved partial predictions remain
 inspectable after cancellation or failure; an incomplete comparison cannot
 support reference selection.
 
-After a complete validation run, select a model and inference mode as the workspace reference with
+After a complete validation run, select a model and inference mode as the project reference with
 your reviewer name and reason. The choice and its evidence are appended to a
 history; previous references and checkpoints remain available. Nothing selects
 the latest training or the highest score automatically. A new training run does
@@ -578,7 +593,8 @@ publish or upload the report. See [the report format and limits](docs/experiment
 
 ## Back up or restore a workspace
 
-Open **Workspace backup** under **Storage** in the sidebar. Review the included
+Open **Workspace backup** under **Storage** in the sidebar. This includes all
+projects, regardless of the selected project. Review the included
 data, installed model weights and disk space, then create a local ZIP archive.
 Save pending edits first and wait for queued or running jobs to finish. IRIS
 temporarily blocks changes while saving; reading saved results remains available.
@@ -643,7 +659,7 @@ workspace archive integrity, restoration, interrupted transfers and write admiss
 job lifecycle, cancellation, migration, and
 persistence. Detector and multimodal doubles are confined to tests and are never
 exposed as models in the application. Tests establish software behavior, not
-detection or annotation quality on real drone data. No datasets or model weights
+detection or annotation quality on real-world data. No datasets or model weights
 are bundled.
 
 After explicitly installing the runtime and both checkpoints, opt into the live
@@ -669,7 +685,7 @@ unchanged frozen layers and normalization buffers, then reload the checkpoints.
 The worker check performs three more steps across two generations, compares the
 checkpoint with its parent, evaluates both on frozen validation and test splits,
 records an explicit reference, and checks persistence after restart. All images
-and review records are generated fixtures, not human-validated flight data. It
+and review records are generated fixtures, not human-validated field data. It
 downloads nothing. Without `IRIS_TEST_TRAINING=1`, these tests are skipped.
 
 After separately provisioning and starting local Ollama, opt into a real
@@ -685,7 +701,7 @@ Without `IRIS_TEST_OLLAMA=1`, it is skipped. It verifies the response structure
 and provenance, not semantic accuracy. Qwen3-VL 4B has also completed the real
 local worker/UI workflow on a synthetic fixture using an RTX 4060. Hosted API
 behavior is covered by offline transport and workflow fixtures; no paid request
-or real drone annotation quality is claimed by those tests.
+or real-world annotation quality is claimed by those tests.
 
 The web UI and API are served by FastAPI; metadata lives in SQLite and media
 in local files. The browser uses plain JavaScript without external assets.

@@ -188,7 +188,7 @@
     image.alt = `Source image ${item.filename}`;
     image.width = item.width;
     image.height = item.height;
-    image.src = source.href;
+    image.src = projectURL(source.href);
     $("#dataset-import-image-select").value = String(importer.imageIndex);
     $("#dataset-import-image-info").textContent =
       `${importer.imageIndex + 1} / ${importer.detail.images.length} · ${item.width} × ${item.height} · ${item.annotation_count} source boxes`;

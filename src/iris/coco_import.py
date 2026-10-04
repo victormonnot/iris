@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 from PIL import Image, UnidentifiedImageError
 
 from iris.media import _file_hash, _perceptual_hash, _pixel_hash
-from iris.store import Store, _decode, _encode, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, Store, _decode, _encode, new_id, now
 
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EXPANDED_BYTES = 256 * 1024 * 1024
@@ -312,8 +312,12 @@ def _normalize_image(source: Path, output: Path, expected: dict) -> dict:
         ) from exc
 
 
-def preview_import(store: Store, source: Path, filename: str) -> dict:
+def preview_import(
+    store: Store, source: Path, filename: str, *, project_id: str = DEFAULT_PROJECT_ID
+) -> dict:
     """Validate and retain a local archive without creating reviewable frames yet."""
+    if store.get("projects", project_id) is None:
+        raise ValueError("Project does not exist")
     source = Path(source)
     if not source.is_file() or not 0 < source.stat().st_size <= MAX_ARCHIVE_BYTES:
         raise ValueError("Provide a nonempty ZIP archive of at most 64 MiB.")
@@ -368,7 +372,7 @@ def preview_import(store: Store, source: Path, filename: str) -> dict:
                 "Imported labels are proposals. Every image, including images without boxes, "
                 "requires human review before dataset publication.",
                 "One import creates one scene group. Keep related captures in the same group; "
-                "the importer cannot establish independence between flights.",
+                "the importer cannot establish independence between scenes.",
                 "COCO segmentation is preserved as source metadata; only bounding boxes are used.",
             ]
             if len({image["sha256"] for image in normalized}) < len(normalized):
@@ -396,6 +400,7 @@ def preview_import(store: Store, source: Path, filename: str) -> dict:
             "dataset_imports",
             {
                 "id": import_id,
+                "project_id": project_id,
                 "path": archive_path.relative_to(store.root).as_posix(),
                 "sha256": _file_hash(archive_path),
                 "summary": summary,
@@ -450,6 +455,7 @@ def import_detail(store: Store, import_id: str) -> dict:
         )
     return {
         "id": row["id"],
+        "project_id": row["project_id"],
         "sha256": row["sha256"],
         "created_at": row["created_at"],
         "status": "imported" if row["result"] is not None else "preview",
@@ -600,7 +606,7 @@ def commit_import(
                 raise ValueError("This import is already committed with a different configuration.")
             return row["result"]
         _verify_artifacts(store, row)
-        groups, pixels = _reservations(store, conn)
+        groups, pixels = _reservations(store, conn, row["project_id"])
         assignments = {
             source_split,
             groups.get(config["scene_group"]),
@@ -616,6 +622,7 @@ def commit_import(
             "sessions",
             {
                 "id": session_id,
+                "project_id": row["project_id"],
                 "name": config["name"],
                 "scene_group": config["scene_group"],
                 "created_at": created_at,

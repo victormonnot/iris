@@ -16,7 +16,12 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA = """
+SCHEMA_VERSION = 13
+DEFAULT_PROJECT_ID = "default"
+
+# Keep the previous layout available for strict, read-only archive validation.
+# Restoring an old archive must not silently migrate its saved database bytes.
+SCHEMA_V12 = """
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, scene_group TEXT NOT NULL, created_at TEXT NOT NULL
 );
@@ -169,6 +174,20 @@ CREATE TABLE IF NOT EXISTS experiment_reports (
 CREATE INDEX IF NOT EXISTS experiment_reports_evaluation ON experiment_reports(evaluation_id);
 """
 
+PROJECTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+    taxonomy_id TEXT NOT NULL, created_at TEXT NOT NULL
+);
+"""
+PROJECT_TABLES = ("sessions", "dataset_versions", "dataset_imports")
+PROJECT_COLUMN = "project_id TEXT NOT NULL DEFAULT 'default' REFERENCES projects(id)"
+SCHEMA = PROJECTS_SCHEMA + SCHEMA_V12
+for _table in PROJECT_TABLES:
+    _declaration = f"CREATE TABLE IF NOT EXISTS {_table} (\n"
+    SCHEMA = SCHEMA.replace(_declaration, _declaration + f"    {PROJECT_COLUMN},\n")
+    SCHEMA += f"CREATE INDEX IF NOT EXISTS {_table}_project ON {_table}(project_id);\n"
+
 IMPORTED_SUGGESTIONS_MIGRATION = """
 CREATE TABLE annotation_suggestions_v7 (
     id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
@@ -236,6 +255,7 @@ JSON_FIELDS = {
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = {
+    "projects",
     "sessions",
     "assets",
     "frames",
@@ -290,8 +310,17 @@ class Store:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+            if version not in range(SCHEMA_VERSION + 1):
                 raise RuntimeError(f"Unsupported database version: {version}")
+            project_migration = ""
+            for table in PROJECT_TABLES:
+                columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if columns and "project_id" not in columns:
+                    project_migration += f"ALTER TABLE {table} ADD COLUMN {PROJECT_COLUMN};\n"
+            if project_migration:
+                # SQLite cannot add a non-NULL REFERENCES default with FK checks
+                # enabled. Validate all references in the same transaction below.
+                conn.execute("PRAGMA foreign_keys=OFF")
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
             ).fetchone()
@@ -330,7 +359,17 @@ class Store:
                 )
             try:
                 conn.executescript(
-                    "BEGIN IMMEDIATE;\n" + SCHEMA + migration + "\nPRAGMA user_version=12;"
+                    "BEGIN IMMEDIATE;\n"
+                    + PROJECTS_SCHEMA
+                    + project_migration
+                    + SCHEMA
+                    + migration
+                    + f"\nPRAGMA user_version={SCHEMA_VERSION};"
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO projects (id,name,description,taxonomy_id,created_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (DEFAULT_PROJECT_ID, "Default project", "", "iris-objects-v1", now()),
                 )
                 if conn.execute("PRAGMA foreign_key_check").fetchone():
                     raise RuntimeError("Database migration found broken foreign keys")

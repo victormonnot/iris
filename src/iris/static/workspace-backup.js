@@ -31,7 +31,8 @@
     restore: "New workspace restoration",
   };
   const countNames = {
-    sessions: "Flight sessions",
+    projects: "Projects",
+    sessions: "Sessions",
     assets: "Source files",
     frames: "Extracted images",
     dataset_versions: "Dataset versions",

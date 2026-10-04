@@ -537,6 +537,38 @@ def test_imported_split_reservations_apply_to_groups_and_duplicate_pixels(worksp
     assert review_queue(store, another["id"])["frames"][0]["reserved_split"] == "test"
 
 
+def test_project_group_reservations_and_global_pixel_reservations(workspace):
+    store, original, frames = workspace
+    project = store.insert(
+        "projects",
+        {
+            "id": new_id(),
+            "name": "Second synthetic project",
+            "description": "Independent review queue",
+            "taxonomy_id": "iris-objects-v1",
+            "created_at": now(),
+        },
+    )
+    other = add_session(store, group=original["scene_group"])
+    store.update("sessions", other["id"], {"project_id": project["id"]})
+    other_frames = [add_frame(store, other, color) for color in (70, 80)]
+    for frame, split in ((frames[0], "train"), (other_frames[0], "val")):
+        store.update(
+            "assets", frame["asset_id"], {"metadata": {"dataset_import": {"source_split": split}}}
+        )
+    assert {frame["reserved_split"] for frame in review_queue(store, original["id"])["frames"]} == {
+        "train"
+    }
+    assert {frame["reserved_split"] for frame in review_queue(store, other["id"])["frames"]} == {
+        "val"
+    }
+    duplicate_session = add_session(store, group="duplicate-in-other-project")
+    store.update("sessions", duplicate_session["id"], {"project_id": project["id"]})
+    add_frame(store, duplicate_session, 10)
+    duplicate_queue = review_queue(store, duplicate_session["id"])
+    assert duplicate_queue["frames"][0]["reserved_split"] == "train"
+
+
 def test_frozen_splits_remain_reserved_after_new_draft(workspace):
     store, session, frames = workspace
     validation = add_session(store, group="validation")
@@ -574,9 +606,9 @@ def test_queue_uses_one_snapshot_even_when_other_connection_changes_selection(
     store, session, frames = workspace
     actual = module._reservations
 
-    def concurrent_change(store, conn):
+    def concurrent_change(store, conn, project_id):
         store.update("frames", frames[0]["id"], {"selected": False})
-        return actual(store, conn)
+        return actual(store, conn, project_id)
 
     monkeypatch.setattr(module, "_reservations", concurrent_change)
     result = review_queue(store, session["id"])

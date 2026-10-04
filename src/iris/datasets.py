@@ -8,7 +8,7 @@ from pathlib import Path
 from iris.annotations import TAXONOMY, _coordinates, _latest
 from iris.inference import _load_verified_frame
 from iris.media import _file_hash
-from iris.store import Store, _decode, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, Store, _decode, new_id, now
 
 SCHEMA_VERSION = 1
 CLASS_MAPPING = {"person": 1, "car": 2}
@@ -17,10 +17,11 @@ MAX_FRAMES = 1000
 SPLIT_POLICY = (
     "Assign complete scene groups to train, validation or test. Group assignments and exact "
     "image pixels retain their split across dataset versions and declared source splits "
-    "of imported datasets in this workspace."
+    "of imported datasets. Scene groups belong to their project; exact image pixels retain "
+    "their split across this workspace."
 )
 INDEPENDENCE_WARNING = (
-    "Different scene groups are not proof of independent data. Group related flights and "
+    "Different scene groups are not proof of independent data. Group related sessions and "
     "visually similar scenes together before freezing a dataset."
 )
 
@@ -46,6 +47,8 @@ def _manifest_from_row(store: Store, row: dict, *, verify_images: bool = False) 
     if (
         manifest.get("schema_version") != SCHEMA_VERSION
         or manifest.get("id") != row["id"]
+        or manifest.get("project_id", DEFAULT_PROJECT_ID)
+        != row.get("project_id", DEFAULT_PROJECT_ID)
         or manifest.get("taxonomy") != TAXONOMY
         or manifest.get("class_mapping") != CLASS_MAPPING
         or not isinstance(manifest.get("frames"), list)
@@ -86,10 +89,11 @@ def dataset_detail(store: Store, dataset_id: str) -> dict:
     return {**row, "manifest": _manifest_from_row(store, row)}
 
 
-def _reservations(store: Store, conn) -> tuple[dict, dict]:
+def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> tuple[dict, dict]:
+    """Scope group names to a project while retaining workspace-wide pixel protection."""
     groups, pixels = {}, {}
     for raw_row in conn.execute(
-        "SELECT s.scene_group, f.sha256, a.metadata FROM frames f "
+        "SELECT s.scene_group, s.project_id, f.sha256, a.metadata FROM frames f "
         "JOIN sessions s ON s.id=f.session_id JOIN assets a ON a.id=f.asset_id"
     ):
         row = _decode(raw_row)
@@ -99,18 +103,27 @@ def _reservations(store: Store, conn) -> tuple[dict, dict]:
         group, digest = row["scene_group"], row["sha256"]
         if split not in SPLITS:
             raise ValueError("An imported dataset has an invalid source split")
-        if groups.get(group, split) != split or pixels.get(digest, split) != split:
+        in_project = row["project_id"] == project_id
+        if (in_project and groups.get(group, split) != split) or pixels.get(digest, split) != split:
             raise ValueError("Imported datasets have conflicting source split assignments")
-        groups[group], pixels[digest] = split, split
+        if in_project:
+            groups[group] = split
+        pixels[digest] = split
     for raw_row in conn.execute("SELECT * FROM dataset_versions ORDER BY created_at,id"):
-        manifest = _manifest_from_row(store, _decode(raw_row))
+        row = _decode(raw_row)
+        manifest = _manifest_from_row(store, row)
+        in_project = row["project_id"] == project_id
         for frame in manifest["frames"]:
             group, digest, split = frame["scene_group"], frame["sha256"], frame["split"]
             if split not in SPLITS:
                 raise ValueError("An existing dataset has an invalid split")
-            if groups.get(group, split) != split or pixels.get(digest, split) != split:
+            if (in_project and groups.get(group, split) != split) or pixels.get(
+                digest, split
+            ) != split:
                 raise ValueError("Existing dataset versions have conflicting split assignments")
-            groups[group], pixels[digest] = split, split
+            if in_project:
+                groups[group] = split
+            pixels[digest] = split
     return groups, pixels
 
 
@@ -133,20 +146,28 @@ def _eligibility(conn, frame: dict) -> tuple[dict | None, str | None]:
     return latest, None
 
 
-def dataset_candidates(store: Store) -> dict:
+def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> dict:
     """Return only currently selected, fully reviewed images, grouped for split assignment."""
+    if store.get("projects", project_id) is None:
+        raise ValueError("Project does not exist")
     excluded = {
         reason: 0 for reason in ("unselected", "unannotated", "draft", "pending_suggestions")
     }
     groups = {}
     with store.connect() as conn:
         conn.execute("BEGIN")
-        reserved_groups, reserved_pixels = _reservations(store, conn)
+        reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
         sessions = {
             row["id"]: dict(row)
-            for row in conn.execute("SELECT * FROM sessions ORDER BY created_at,id")
+            for row in conn.execute(
+                "SELECT * FROM sessions WHERE project_id=? ORDER BY created_at,id", (project_id,)
+            )
         }
-        for row in conn.execute("SELECT * FROM frames ORDER BY created_at,id"):
+        for row in conn.execute(
+            "SELECT f.* FROM frames f JOIN sessions s ON s.id=f.session_id "
+            "WHERE s.project_id=? ORDER BY f.created_at,f.id",
+            (project_id,),
+        ):
             frame = _decode(row)
             annotation, reason = _eligibility(conn, frame)
             if reason:
@@ -234,6 +255,7 @@ def create_dataset(
     frame_ids: list[str],
     splits: dict[str, str],
     parent_id: str | None = None,
+    project_id: str = DEFAULT_PROJECT_ID,
 ) -> dict:
     """Copy a reviewed snapshot and publish it atomically; later edits create new releases."""
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 160:
@@ -266,20 +288,31 @@ def create_dataset(
             # This lock prevents annotation/suggestion changes and competing split
             # reservations while the exact reviewed snapshot is copied and published.
             conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone() is None:
+                raise ValueError("Project does not exist")
             if parent_id is not None:
                 parent = conn.execute(
                     "SELECT * FROM dataset_versions WHERE id=?", (parent_id,)
                 ).fetchone()
                 if parent is None:
                     raise ValueError("Parent dataset version does not exist")
+                if parent["project_id"] != project_id:
+                    raise ValueError("Parent dataset version belongs to a different project")
                 _manifest_from_row(store, _decode(parent))
-            reserved_groups, reserved_pixels = _reservations(store, conn)
+            reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
             snapshots, selected_groups, seen_pixels = [], set(), {}
             for frame_id in frame_ids:
                 raw_frame = conn.execute("SELECT * FROM frames WHERE id=?", (frame_id,)).fetchone()
                 if raw_frame is None:
                     raise ValueError(f"Frame {frame_id} does not exist")
                 frame = _decode(raw_frame)
+                session = dict(
+                    conn.execute(
+                        "SELECT * FROM sessions WHERE id=?", (frame["session_id"],)
+                    ).fetchone()
+                )
+                if session["project_id"] != project_id:
+                    raise ValueError(f"Frame {frame_id} belongs to a different project")
                 annotation, reason = _eligibility(conn, frame)
                 if reason:
                     raise ValueError(f"Frame {frame_id} is not eligible for freezing: {reason}")
@@ -291,11 +324,6 @@ def create_dataset(
                     if box["label"] not in CLASS_MAPPING:
                         raise ValueError("Dataset annotations contain an unsupported class")
                     _coordinates(box["box"], frame)
-                session = dict(
-                    conn.execute(
-                        "SELECT * FROM sessions WHERE id=?", (frame["session_id"],)
-                    ).fetchone()
-                )
                 asset = _decode(
                     conn.execute("SELECT * FROM assets WHERE id=?", (frame["asset_id"],)).fetchone()
                 )
@@ -357,6 +385,7 @@ def create_dataset(
             manifest = {
                 "schema_version": SCHEMA_VERSION,
                 "id": identifier,
+                "project_id": project_id,
                 "name": name.strip(),
                 "parent_id": parent_id,
                 "created_at": created_at,
@@ -374,10 +403,11 @@ def create_dataset(
             published = True
             conn.execute(
                 "INSERT INTO dataset_versions "
-                "(id,name,parent_id,path,manifest_sha256,summary,created_at) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "(id,project_id,name,parent_id,path,manifest_sha256,summary,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 (
                     identifier,
+                    project_id,
                     name.strip(),
                     parent_id,
                     str(relative_dir / "manifest.json"),

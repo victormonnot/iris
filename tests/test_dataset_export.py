@@ -260,6 +260,23 @@ def test_missing_dataset_is_not_found(release):
     assert not (store.root / "exports").exists()
 
 
+def test_foreign_project_is_rejected_even_with_rehashed_manifest(release):
+    store, dataset, _ = release
+    _rewrite_manifest(store, dataset, lambda doc: doc.update(project_id="another-project"))
+    with pytest.raises(ValueError, match="different project"):
+        build_coco_export(store, dataset["id"])
+    assert list((store.root / "exports").glob("*")) == []
+
+
+def test_legacy_default_project_manifest_exports_without_rewriting(release):
+    store, dataset, _ = release
+    _rewrite_manifest(store, dataset, lambda doc: doc.pop("project_id"))
+    original = store.artifact_path(dataset["path"]).read_bytes()
+    members = _members(build_coco_export(store, dataset["id"]))
+    assert members["iris-manifest.json"] == original
+    assert store.artifact_path(dataset["path"]).read_bytes() == original
+
+
 @pytest.mark.parametrize("target", ["manifest", "image"])
 @pytest.mark.parametrize("operation", ["remove", "change"])
 def test_missing_or_tampered_snapshot_is_rejected_and_cleaned(release, target, operation):

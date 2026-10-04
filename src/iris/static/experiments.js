@@ -72,7 +72,7 @@
     const url = new URL(value, location.href);
     if (url.origin !== location.origin || !url.pathname.startsWith("/api/"))
       throw new Error("This image is not available from the local workspace.");
-    return url.href;
+    return projectURL(url.href);
   }
 
   function orderedLanes(snapshot) {
@@ -172,7 +172,7 @@
         ? preferredId
         : rows[0]?.id || null;
       field("status").textContent =
-        `${rows.length} saved experiment${rows.length === 1 ? "" : "s"} · across the whole workspace`;
+        `${rows.length} saved experiment${rows.length === 1 ? "" : "s"} · across the current project`;
       if (library.activeId) await selectReport(library.activeId);
       else {
         ++library.detailRequest;
@@ -950,7 +950,7 @@
     error("export-error", null);
     try {
       const response = await fetch(
-        `/api/experiments/${safe(detail.id)}/export?include_images=${include}&expected_revision=${detail.revision}`,
+        projectURL(`/api/experiments/${safe(detail.id)}/export?include_images=${include}&expected_revision=${detail.revision}`),
         {
           signal: controller.signal,
           mode: "same-origin",

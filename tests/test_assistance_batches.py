@@ -209,7 +209,7 @@ def test_unknown_session_and_foreign_frame_rejected(workspace):
     with pytest.raises(KeyError):
         preview_batch(store, "missing", **options(frames))
     foreign = add_frame(store, add_session(store)["id"], 80)
-    with pytest.raises(ValueError, match="flight session"):
+    with pytest.raises(ValueError, match="this session"):
         preview_batch(store, session["id"], **options([*frames, foreign]))
 
 
@@ -752,6 +752,6 @@ def test_schema_seven_migration_preserves_existing_data(workspace):
         conn.execute("PRAGMA user_version=7")
     reopened = Store(store.root)
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
     assert reopened.list("assistance_batches") == []
     assert {table: reopened.list(table) for table in before} == before
