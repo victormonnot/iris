@@ -57,6 +57,16 @@ class SegmentationSettings(StrictInput):
     device: Literal["cuda"] = "cuda"
 
 
+class CombinedSegmentationSettings(StrictInput):
+    threshold: float = Field(default=0.5, ge=0, le=1)
+    device: Literal["cuda"] = "cuda"
+
+
+class CombinedSettings(StrictInput):
+    multimodal: MultimodalSettings = Field(default_factory=MultimodalSettings)
+    segmentation: CombinedSegmentationSettings = Field(default_factory=CombinedSegmentationSettings)
+
+
 class ConfigPreview(StrictInput):
     model_id: str = Field(min_length=1, max_length=128)
     threshold: float = Field(default=0.5, ge=0, le=1)
@@ -67,6 +77,7 @@ class ConfigPreview(StrictInput):
     approach: Literal["local_detector", "multimodal", "segmentation", "combined"] = "local_detector"
     multimodal: MultimodalSettings | None = None
     segmentation: SegmentationSettings | None = None
+    combined: CombinedSettings | None = None
 
 
 class ConfigCreate(ConfigPreview):
@@ -127,16 +138,22 @@ def install_benchmark_routes(app, store, jobs, require, active_project):
 
     @app.get("/api/benchmark-providers")
     def providers():
+        from iris.benchmark_combined import provider_catalog as combined_catalog
         from iris.benchmark_multimodal import provider_catalog
         from iris.benchmark_segmentation import provider_catalog as sam_catalog
 
-        return action(lambda: {**provider_catalog(), **sam_catalog(store)})
+        return action(
+            lambda: {**provider_catalog(), **sam_catalog(store), **combined_catalog(store)}
+        )
 
     @app.get("/api/benchmark-configs/{config_id}/frames/{frame_id}/input-image")
     def external_input_image(config_id: str, frame_id: str):
         from iris.benchmark_multimodal import input_image
 
         require("benchmark_configs", config_id)
+        if store.get("benchmark_configs", config_id)["approach"] == "combined":
+            from iris.benchmark_combined import input_image
+
         return Response(
             action(lambda: input_image(store, config_id, frame_id)),
             media_type="image/png",

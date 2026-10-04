@@ -20,8 +20,8 @@ record the reference reviewer and independence declaration, then freeze candidat
 settings. Lock the configuration set before evaluating the held-out images.
 
 Choose an installed local detector as the control, **A · Multimodal · OpenAI**
-using `gpt-6-astra`, or **B · SAM 3** for local text-prompted native boxes.
-The combined approach remains a future integration.
+using `gpt-6-astra`, **B · SAM 3** for local text-prompted native boxes, or
+**C · Astra + SAM 3** for a bounded planning, grounding and review pipeline.
 Successful complete trials report proposal precision,
 recall, false positives, misses, class conflicts and matched-box IoU at the
 recorded operating point. Failures and missing outputs remain explicit.
@@ -39,9 +39,18 @@ pinned checkpoint and a separate CUDA environment configured through
 automatically. Real SAM execution and hardware measurements remain deferred.
 See [the SAM adapter and setup requirements](docs/sam-preannotation-adapter.md).
 
+The combined path lets Astra choose one SAM phrase per class, then accept,
+reject or reclassify SAM's native boxes. Geometry stays fixed, with one local
+grounding pass and at most two external requests per image. Preview the exact
+planning request, the bounded review template and the total planning allowance
+before approving a trial. Every stage keeps its raw response, decisions and
+available usage; failures stop further stages and images without automatic
+retries. This protocol cannot recover objects SAM missed and makes no claim of
+better quality. See [the combined adapter](docs/combined-preannotation-adapter.md).
+
 The OpenAI path is optional and sends images outside this computer. Configure
 `IRIS_OPENAI_API_KEY` (or `OPENAI_API_KEY`) in the server environment, then restart
-IRIS. Key presence does not verify account access. Every trial shows the exact
+IRIS. Key presence does not verify account access. Every OpenAI-only trial shows the exact
 outgoing images and prompt, a planning estimate and a fresh consent/budget control.
 The budget limits admitted requests; it is not a guaranteed provider invoice cap.
 Failures stop the remaining requests, and ambiguous outcomes are never retried
@@ -733,6 +742,7 @@ comparison snapshots, raw outputs, annotation revisions, human validation,
 tiled coverage, coordinate restoration, merging, work limits and variant selection,
 multimodal response validation, exact outgoing previews, explicit API consent,
 SAM native-box validation, isolated runtime transport and offline recovery,
+bounded combined-stage planning, dynamic review inputs and per-call reservations,
 local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
 training-depth contracts, read-only workload previews and frozen-layer preservation,

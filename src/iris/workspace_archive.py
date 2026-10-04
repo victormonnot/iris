@@ -484,7 +484,7 @@ def _validate_benchmarks(connection, root, require):
         except ValueError as exc:
             raise ArchiveError("Benchmark frozen configuration is invalid") from exc
         configurations[row["id"]] = row
-    external_trials, sam_trials = {}, {}
+    external_trials, sam_trials, combined_trials = {}, {}, {}
     for row in connection.execute(
         "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params,j.result AS job_result "
         "FROM benchmark_trials t JOIN benchmark_configs c ON c.id=t.config_id "
@@ -524,6 +524,27 @@ def _validate_benchmarks(connection, root, require):
                 ) from exc
             job_result = _parse_json(row["job_result"]) if row["job_result"] is not None else {}
             external_trials[row["id"]] = {
+                "trial": {**dict(row), "config": frozen},
+                "plan": plan,
+                "frames": set(),
+                "reserved": 0,
+                "attempt": job_result.get("benchmark_attempt_id")
+                if isinstance(job_result, dict)
+                else None,
+            }
+        elif config["approach"] == "combined":
+            from iris.benchmark_combined_dispatch import validate_external_trial
+
+            try:
+                plan = validate_external_trial(
+                    frozen,
+                    config["config"],
+                    [frame for frame in manifest["frames"] if frame["role"] == row["split"]],
+                )
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError("Combined benchmark consent or frozen plan is invalid") from exc
+            job_result = _parse_json(row["job_result"]) if row["job_result"] else {}
+            combined_trials[row["id"]] = {
                 "trial": {**dict(row), "config": frozen},
                 "plan": plan,
                 "frames": set(),
@@ -576,6 +597,24 @@ def _validate_benchmarks(connection, root, require):
                 raise ArchiveError("External benchmark dispatch receipt is invalid") from exc
             external["frames"].add(row["frame_id"])
             external["reserved"] += saved["metadata"]["budget"]["reserved_microusd"]
+        elif row["trial_id"] in combined_trials:
+            from iris.benchmark_combined_dispatch import validate_output_row
+
+            combined = combined_trials[row["trial_id"]]
+            try:
+                pipeline = validate_output_row(
+                    _decode(row), combined["trial"], validated_plan=combined["plan"]
+                )
+                for stage in pipeline["stages"].values():
+                    if (
+                        stage.get("attempt_id") is not None
+                        and stage["attempt_id"] != combined["attempt"]
+                    ):
+                        raise ValueError("Combined stage attempt does not own its job")
+                    combined["reserved"] += stage["budget"]["reserved_microusd"]
+                combined["frames"].add(row["frame_id"])
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError("Combined benchmark stage evidence is invalid") from exc
         elif row["trial_id"] in sam_trials:
             from iris.benchmark_segmentation import validate_saved_output
 
@@ -590,7 +629,7 @@ def _validate_benchmarks(connection, root, require):
                 )
             except (ValueError, TypeError, AttributeError) as exc:
                 raise ArchiveError("SAM benchmark native output evidence is invalid") from exc
-    for external in external_trials.values():
+    for external in (*external_trials.values(), *combined_trials.values()):
         if (
             external["frames"] != {request["frame_id"] for request in external["plan"]["requests"]}
             or external["reserved"] > external["plan"]["approval"]["budget_microusd"]

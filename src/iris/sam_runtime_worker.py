@@ -261,6 +261,9 @@ class _Runtime:
         started = time.perf_counter()
         identity = _identity()
         self.prompts = _prompts(config.get("prompts"))
+        self.allow_dynamic_prompts = config.get("allow_dynamic_prompts", False)
+        if type(self.allow_dynamic_prompts) is not bool:
+            raise ValueError("The SAM dynamic-prompt mode must be explicit")
         settings = config.get("settings", {})
         self.threshold = _threshold(settings.get("threshold"))
         if settings.get("device") != "cuda" or settings.get("precision") != "bfloat16":
@@ -298,11 +301,7 @@ class _Runtime:
             after.st_ctime_ns,
         ):
             raise ValueError("SAM checkpoint changed while loading")
-        text_encoder = self.model.backbone.language_backbone
-        limit = min(MAX_PROMPT_TOKENS, text_encoder.context_length - 2)
-        for prompt in self.prompts:
-            if len(text_encoder.tokenizer.encode(prompt["text"])) > limit:
-                raise ValueError(f"SAM class prompt exceeds {limit} tokenizer tokens")
+        self._validate_tokens(self.prompts)
         # The upstream builder toggles TF32 globally on Ampere; this frozen profile
         # explicitly disables it while using the declared bfloat16 autocast path.
         torch.backends.cuda.matmul.allow_tf32 = False
@@ -321,7 +320,25 @@ class _Runtime:
             "segmentation_enabled": False,
             "masks_retained": False,
             "warmup": "none; the first measured image includes first-forward initialization",
+            **({"allow_dynamic_prompts": True} if self.allow_dynamic_prompts else {}),
         }
+
+    def _validate_tokens(self, prompts):
+        text_encoder = self.model.backbone.language_backbone
+        limit = min(MAX_PROMPT_TOKENS, text_encoder.context_length - 2)
+        for prompt in prompts:
+            if len(text_encoder.tokenizer.encode(prompt["text"])) > limit:
+                raise ValueError(f"SAM class prompt exceeds {limit} tokenizer tokens")
+
+    def set_prompts(self, prompts):
+        if not self.allow_dynamic_prompts:
+            raise ValueError("This SAM runtime keeps its original frozen prompts")
+        checked = _prompts(prompts)
+        if [p["class_id"] for p in checked] != [p["class_id"] for p in self.prompts]:
+            raise ValueError("Dynamic SAM prompts must preserve the frozen class order")
+        self._validate_tokens(checked)
+        self.prompts = checked
+        return {"prompts": checked}
 
     def predict(self, request):
         from PIL import Image
@@ -416,6 +433,8 @@ def main():
                 value = {"metadata": runtime.metadata}
             elif operation == "predict" and runtime is not None:
                 value = {"raw": runtime.predict(request)}
+            elif operation == "set_prompts" and runtime is not None:
+                value = runtime.set_prompts(request.get("prompts"))
             else:
                 raise ValueError("SAM worker operation is invalid or the model is already loaded")
             response = _finite_json({"id": identifier, "ok": True, "value": value})

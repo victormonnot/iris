@@ -4444,6 +4444,16 @@ select:focus-visible {
 .benchmark-sam-saved-prompts summary, .benchmark-local-plan summary { font-size: 12px; cursor: pointer; line-height: 1.6; }
 .benchmark-local-plan { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 6px; }
 .benchmark-local-plan pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: 11px; }
+.benchmark-combined-protocol { margin: 18px 0; padding: 16px; background: #fff; border: 1px solid var(--line); border-radius: 7px; }
+.benchmark-combined-protocol h3 { margin: 0 0 12px; font-size: 15px; }
+.benchmark-combined-protocol ol { padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.benchmark-combined-protocol li + li { margin-top: 8px; }
+.benchmark-combined-disclosure { padding: 12px; border-left: 3px solid #93a977; background: #fff; font-size: 13px; line-height: 1.7; }
+.benchmark-pipeline { margin: 16px 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.benchmark-pipeline > li { border-left: 3px solid var(--line); padding: 10px 12px; background: #f7f9f3; border-radius: 4px; }
+.benchmark-pipeline > li.unknown { border-color: #b58638; background: #faf3e3; }
+.benchmark-pipeline summary { cursor: pointer; font-size: 12px; line-height: 1.6; }
+.benchmark-pipeline pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
 .benchmark-configs, .benchmark-outputs { display: grid; gap: 12px; margin: 20px 0; }
 .benchmark-config, .benchmark-output { border: 1px solid var(--line); border-radius: 7px; padding: 16px; overflow-wrap: anywhere; }
 .benchmark-trial-setup, .benchmark-results { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }

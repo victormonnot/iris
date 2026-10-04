@@ -46,7 +46,10 @@ The three approaches are displayed separately:
   and budget approval for each trial.
 - **B · Segmentation**: local SAM 3 with one frozen text prompt per class. This
   adapter uses native box output; it does not calculate or save masks.
-- **C · Combined**: not connected yet.
+- **C · Combined**: Astra generates class prompts, local SAM 3 produces native
+  boxes, then Astra accepts, rejects or relabels existing candidates. Each image
+  uses at most two external calls and one local SAM pass, with explicit preview
+  and budget approval.
 
 The **local detector control** is executable using an already available checkpoint.
 It exercises the benchmark workflow and does not substitute for evidence about
@@ -171,12 +174,76 @@ you to saved trials and Project jobs; preparing another trial can incur another
 charge. Model aliases may change behind the same name; the raw response and returned
 model identity remain part of the saved evidence.
 
+## Prepare and approve a combined trial
+
+Choose **C · Astra + SAM 3**. The configuration reuses A's image long edge,
+reasoning effort and output-token limit, and B's SAM native-score threshold and
+CUDA device. Class IDs and definitions come from the frozen benchmark reference.
+There are no manually entered class prompts for C: Astra generates them for each
+image. B's saved manual prompts do not carry over to C.
+
+The frozen protocol has exactly three stages and no iterative refinement:
+
+1. **Planning — Astra:** send the image and class definitions to generate one
+   bounded text phrase per class. Reference boxes and human review notes remain
+   excluded.
+2. **Grounding — local SAM 3:** encode the original image once and evaluate the
+   generated class prompts. Keep native boxes above the frozen SAM threshold.
+   No masks are computed or saved.
+3. **Review — Astra:** send the image again, together with the generated prompts
+   and candidate IDs, coordinates, labels and native scores. Astra must accept,
+   reject or relabel every candidate ID exactly once. It cannot invent a new
+   candidate, move a box or request another model pass. Invalid decisions fail
+   validation; they do not silently become an empty successful output.
+
+**Preview configuration** shows work for each role: image count, the maximum of
+two external calls per image, one SAM encoding per image and one prompt evaluation
+per class. **Save frozen configuration** saves both provider profiles, settings,
+class definitions, model/code/weight identities and the planning/review schemas.
+Preparation does not require a server key or installed SAM runtime. Execution
+requires both; missing setup remains visible and blocks launch. See the
+[SAM setup guide](sam-preannotation-adapter.md) for local requirements. The UI
+neither installs models nor tests provider access automatically.
+
+**Preview trial** stays local and shows the exact first outgoing PNG and planning
+prompt. The second request is deliberately displayed as a **review template**:
+generated class prompts and SAM candidates do not exist yet. Its frozen prompt,
+schema/settings, template hash and maximum **128 KiB of dynamic text** are
+inspectable. The exact second request and its hash are retained after those data
+exist. Both calls use the displayed transformed PNG; SAM uses the original frozen
+image locally. The trial work plan also exposes the checked SAM runtime identity.
+
+The explicit approval names the image set, both kinds of outgoing data, maximum
+call count, provider/model and total USD planning budget. Approval requires every
+image preview to load and a current signed preview, as for A. The total estimate
+covers both planning and bounded review calls. It is a conservative admission
+budget, not a guaranteed invoice cap. Changing the budget clears the checkbox;
+each new trial requires fresh consent. A local cancellation cannot retract an
+already submitted external call or prove zero charges.
+
+The output retains separate **planning**, **grounding** and **review** records,
+including raw responses, generated prompts, native SAM evidence, review decisions
+and normalization errors. Open a stage's details from the saved trial to inspect
+them. Planning and review also have separate external dispatch and usage receipts;
+their counts refer to calls, not images. A saved planning response or a saved SAM
+output is a partial result until the whole protocol succeeds. Failures,
+cancellation and unknown delivery outcomes never trigger an automatic retry.
+
+C's final proposals have no confidence score. Native SAM scores remain in source
+provenance and are not comparable to calibrated probabilities or detector scores.
+Final geometry is copied from SAM; only the retained class may change during
+review. A usable output opens the same isolated human correction editor, without
+changing its reference or model-stage records. Implementation tests and simulated
+provider responses do not establish the quality or speed of real Astra/SAM runs.
+
 ## Read results and retained evidence
 
 The table keeps configuration and scene role separate. It displays extra and missed
 boxes, class conflicts, precision, recall and matched-box IoU. Local detectors and
 SAM use their respective frozen native-score thresholds; multimodal trials include
-all valid proposed boxes. SAM masks are not part of this measurement.
+all valid proposed boxes. Combined trials measure the boxes retained by the final
+review after SAM thresholding, without a second confidence filter. SAM masks are
+not part of this measurement.
 This is operating-point geometry matching, not AP. Native provider scores
 are not calibrated or comparable probabilities. The saved scoring protocol explains
 one-to-one matching and the IoU threshold.
@@ -193,6 +260,10 @@ warm-up; SAM has no warm-up and includes the first pass. External
 trials record observed image/request processing. The number of measured versus
 planned images is shown. Failed attempts can also have recorded processing time.
 Missing durations are unmeasured, not zero. Local monetary cost is unmeasured.
+Combined image time covers planning, local SAM and review end to end, including
+the first model load. Its displayed SAM loading duration is a **subset** of that
+time and must not be added again. Approach B continues to report model loading
+separately from its image-processing duration.
 
 External trial details show each image's dispatch state: **Not sent**, **Request in
 progress**, **Response received**, or **Delivery outcome unknown**. A received

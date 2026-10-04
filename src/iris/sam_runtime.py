@@ -261,8 +261,13 @@ def prepare_image(image):
 class SamRuntime:
     """One explicitly loaded local model per trial, with no reference-data access."""
 
-    def __init__(self, config, checkpoint_path, *, cancelled=lambda: False):
+    def __init__(
+        self, config, checkpoint_path, *, cancelled=lambda: False, allow_dynamic_prompts=False
+    ):
         self.process = None
+        if type(allow_dynamic_prompts) is not bool:
+            raise ValueError("The SAM dynamic-prompt mode must be explicit")
+        self.allow_dynamic_prompts = allow_dynamic_prompts
         self.config = deepcopy(config)
         self.prompts = deepcopy(wire._prompts(config.get("prompts")))
         self.threshold = wire._threshold(config.get("settings", {}).get("threshold"))
@@ -284,6 +289,7 @@ class SamRuntime:
                             key: config["settings"].get(key)
                             for key in ("threshold", "device", "precision")
                         },
+                        **({"allow_dynamic_prompts": True} if allow_dynamic_prompts else {}),
                     },
                     "checkpoint_path": str(path),
                 },
@@ -297,6 +303,21 @@ class SamRuntime:
         except Exception:
             self.close()
             raise
+
+    def set_prompts(self, prompts, *, cancelled=lambda: False):
+        """Update C's phrases between images, keeping class order and model settings fixed."""
+        if not self.allow_dynamic_prompts or self.process is None:
+            raise SamRuntimeError("This SAM runtime does not permit dynamic class prompts")
+        checked = deepcopy(wire._prompts(prompts))
+        if [p["class_id"] for p in checked] != [p["class_id"] for p in self.prompts]:
+            raise SamRuntimeError("Dynamic SAM prompts must preserve the frozen class order")
+        response = self.process.exchange(
+            {"op": "set_prompts", "prompts": checked}, timeout=_TIMEOUT, cancelled=cancelled
+        )
+        if response != {"prompts": checked}:
+            self.close()
+            raise SamRuntimeError("The SAM runtime did not acknowledge the exact class prompts")
+        self.prompts = checked
 
     def predict(self, image, class_prompts, threshold, cancelled=lambda: False):
         if self.process is None:

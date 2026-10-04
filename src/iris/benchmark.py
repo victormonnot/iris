@@ -59,11 +59,13 @@ def _digest(value):
 
 
 def benchmark_approaches(root=None):
+    from iris.benchmark_combined import provider_status as combined_status
     from iris.multimodal_provider import provider_status
     from iris.sam_provider import provider_status as sam_status
 
     multimodal = provider_status()
     segmentation = sam_status(root) if root is not None else None
+    combined = combined_status(root) if root is not None else None
     return [
         {"id": "local_detector", "name": "Installed local detector control", "available": True},
         {
@@ -80,15 +82,13 @@ def benchmark_approaches(root=None):
             "available": bool(segmentation and segmentation["status"] == "ready"),
             "reason": segmentation["reason"] if segmentation else "Check local SAM setup",
         },
-        *[
-            {
-                "id": key,
-                "name": name,
-                "available": False,
-                "reason": "Future adapter; not implemented or runnable in this benchmark",
-            }
-            for key, name in (("combined", "C — multimodal and segmentation"),)
-        ],
+        {
+            "id": "combined",
+            "name": "C — Astra + SAM 3",
+            "implemented": True,
+            "available": bool(combined and combined["status"] == "ready"),
+            "reason": combined["reason"] if combined else "Check OpenAI and local SAM setup",
+        },
     ]
 
 
@@ -509,6 +509,7 @@ def preview_benchmark_config(
     approach="local_detector",
     multimodal=None,
     segmentation=None,
+    combined=None,
 ):
     row = store.get("benchmarks", benchmark_id)
     if row is None:
@@ -519,6 +520,20 @@ def preview_benchmark_config(
         raise ValueError("SAM settings require the segmentation approach")
     if multimodal is not None and approach != "multimodal":
         raise ValueError("Multimodal settings require the multimodal approach")
+    if combined is not None and approach != "combined":
+        raise ValueError("Combined settings require the combined approach")
+    if approach == "combined":
+        from iris.benchmark_combined import preview_config
+
+        if (threshold, device, inference_mode, tile_size, overlap) != (
+            0.5,
+            "cpu",
+            "full",
+            640,
+            0.2,
+        ):
+            raise ValueError("Use nested combined settings; detector settings do not apply")
+        return preview_config(store, benchmark_id, model_id=model_id, combined=combined)
     if approach == "segmentation":
         from iris.benchmark_segmentation import preview_config
 
@@ -649,7 +664,7 @@ def validate_benchmark_config(row, benchmark, manifest):
     config = row["config"]
     if (
         row["benchmark_id"] != benchmark["id"]
-        or row["approach"] not in {"local_detector", "multimodal", "segmentation"}
+        or row["approach"] not in {"local_detector", "multimodal", "segmentation", "combined"}
         or config.get("protocol") != PROTOCOL
         or config.get("approach") != row["approach"]
         or _digest(config) != row["fingerprint"]
@@ -662,6 +677,10 @@ def validate_benchmark_config(row, benchmark, manifest):
         return validate_config(config, manifest)
     if row["approach"] == "segmentation":
         from iris.benchmark_segmentation import validate_config
+
+        return validate_config(config, manifest)
+    if row["approach"] == "combined":
+        from iris.benchmark_combined import validate_config
 
         return validate_config(config, manifest)
     if config.get("scoring") != SCORING:

@@ -44,7 +44,7 @@ def _context(store, benchmark_id, config_id, role, *, check_phase=True):
 
 def _ready_config(store, config, manifest):
     frozen = config["config"]
-    if config["approach"] in {"multimodal", "segmentation"}:
+    if config["approach"] in {"multimodal", "segmentation", "combined"}:
         # Frozen profiles and previews can be prepared before runtime setup.
         # Launch admission and the adapter enforce provider readiness.
         return
@@ -70,14 +70,14 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
     frames = [frame for frame in manifest["frames"] if frame["role"] == role]
     for frame in frames:
         with open_benchmark_image(store, frame) as image:
-            if config["approach"] == "segmentation":
+            if config["approach"] in {"segmentation", "combined"}:
                 from iris.sam_runtime import prepare_image
 
                 prepare_image(image)
     frozen = config["config"]
     work = (
         {"image_count": len(frames), "request_count": len(frames)}
-        if (config["approach"] in {"multimodal", "segmentation"})
+        if (config["approach"] in {"multimodal", "segmentation", "combined"})
         else _work_plan(
             [{**frame, "id": frame["frame_id"]} for frame in frames],
             [{"model_id": frozen["model_id"], "variant": frozen["inference"]["mode"]}],
@@ -86,6 +86,10 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
     )
     if config["approach"] == "segmentation":
         from iris.benchmark_segmentation import work_plan
+
+        work = work_plan(frozen, len(frames))
+    if config["approach"] == "combined":
+        from iris.benchmark_combined import work_plan
 
         work = work_plan(frozen, len(frames))
     with store.connect() as conn:
@@ -135,6 +139,10 @@ def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, 
         from iris.benchmark_segmentation import attach_preview
 
         return attach_preview(store, preview, config["config"])
+    if config["approach"] == "combined":
+        from iris.benchmark_combined import attach_preview
+
+        return attach_preview(store, preview, config, frames)
     return preview
 
 
@@ -171,7 +179,7 @@ def create_benchmark_trial(
             if config["approach"] == "segmentation" and not preview["launch_allowed"]:
                 raise ValueError(preview["launch_reason"])
             external_plan = None
-            if config["approach"] == "multimodal":
+            if config["approach"] in {"multimodal", "combined"}:
                 from iris.benchmark_multimodal import approve_plan
 
                 external_plan = approve_plan(
@@ -219,6 +227,9 @@ def create_benchmark_trial(
             if external_plan:
                 from iris.benchmark_dispatch import initialize_outputs
 
+                if config["approach"] == "combined":
+                    from iris.benchmark_combined_dispatch import initialize_outputs
+
                 trial = {
                     "id": identifier,
                     "job_id": job_id,
@@ -252,6 +263,10 @@ def run_benchmark_trial(store: Store, trial_id: str, progress, cancelled, detect
         return run_trial(store, trial_id, progress, cancelled)
     if trial["config"].get("candidate_config", {}).get("approach") == "segmentation":
         from iris.benchmark_segmentation import run_trial
+
+        return run_trial(store, trial_id, progress, cancelled)
+    if trial["config"].get("candidate_config", {}).get("approach") == "combined":
+        from iris.benchmark_combined import run_trial
 
         return run_trial(store, trial_id, progress, cancelled)
     job = store.get("jobs", trial["job_id"])
@@ -555,6 +570,9 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
             "mean_ms": sum(timings) / len(timings) if timings else None,
             "includes": "OpenAI request and response round trip, including provider processing"
             if config["approach"] == "multimodal"
+            else "end-to-end planning, local grounding and review; includes first model "
+            "loading and cold prediction, with no warmup"
+            if config["approach"] == "combined"
             else "image decode and local SAM prediction; includes cold first prediction, "
             "excludes separately recorded model loading; no warmup"
             if config["approach"] == "segmentation"
@@ -562,7 +580,7 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
             "note": "Saved image attempts, including failures; missing measurements are not zero.",
             **(
                 {"model_load_ms": (job.get("result") or {}).get("model_load_ms")}
-                if config["approach"] == "segmentation"
+                if config["approach"] in {"segmentation", "combined"}
                 else {}
             ),
         },
@@ -572,6 +590,10 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
     detail["corrections"] = correction_summaries(store, trial_id)
     if config["approach"] == "multimodal":
         from iris.benchmark_dispatch import dispatch_summary
+
+        detail["external_dispatch"] = dispatch_summary(store, trial_id)
+    if config["approach"] == "combined":
+        from iris.benchmark_combined_dispatch import dispatch_summary
 
         detail["external_dispatch"] = dispatch_summary(store, trial_id)
     return detail

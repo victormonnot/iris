@@ -464,3 +464,28 @@ normalization, and partial images cannot publish successful proposals. Archives
 validate the frozen protocol without probing SAM. They preserve the pinned
 checkpoint when present, while histories can be restored without it or the
 external runtime. See [the SAM adapter](sam-preannotation-adapter.md).
+
+The combined candidate uses `benchmark_combined.py` to run a single three-stage
+pipeline: Astra plans one phrase per class, SAM grounds those phrases, and Astra
+reviews the identified SAM candidates. `combined_provider.py` freezes the prompt
+and schema contracts, produces exact planning requests and bounded review
+templates, and validates decisions without accepting generated geometry.
+`combined_sam.py` reuses one loaded model. Only this path explicitly enables
+phrase updates between images; the standalone SAM path retains fixed prompts.
+
+`benchmark_combined_dispatch.py` stores the three stage receipts and raw responses
+inside each existing benchmark output row, using schema 15. External stages have
+separate budget reservations committed before transport. Each exact review input
+is derived from the saved planning and grounding results and checked against the
+approved template. A claimed trial or started stage cannot be automatically
+resent. Cancellation preserves completed evidence and prevents later publication.
+Recovery classifies interrupted external sends as unknown outcomes and never
+restarts the pipeline. Total image timing includes all stages and the first model
+load; initialization is also recorded as a subset of that elapsed time.
+
+Archives reconstruct safe input digests and normalized stage results offline.
+The full POST digest remains a recorded transport identity; verifying it from
+metadata alone cannot reconstruct the encoded image bytes. Final boxes retain
+SAM geometry, while their confidence is null and the original native score stays
+in provenance. This avoids treating two provider outputs as a calibrated score.
+See [the combined protocol](combined-preannotation-adapter.md).

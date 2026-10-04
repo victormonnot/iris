@@ -5,6 +5,7 @@
   const tools = window.IRISBenchmarkTools;
   const externalTools = window.IRISBenchmarkExternalTools;
   const samTools = window.IRISBenchmarkSAMTools;
+  const combinedTools = window.IRISBenchmarkCombinedTools;
   const taxonomy = window.IRISTaxonomyTools;
   const view = {
     active: false, candidates: null, roles: new Map(), chosen: new Set(), models: [],
@@ -21,10 +22,13 @@
   const locked = () => view.detail?.status === "locked";
   const multimodal = () => field("approach").value === "multimodal";
   const segmentation = () => field("approach").value === "segmentation";
-  const configOptions = () => multimodal() ? { approach: "multimodal", model_id: view.providers?.multimodal?.model || "gpt-6-astra",
-    multimodal: { image_long_edge: Number(field("image-edge").value), reasoning_effort: field("reasoning").value, max_output_tokens: Number(field("output-tokens").value) } }
+  const combined = () => field("approach").value === "combined";
+  const multimodalSettings = () => ({ image_long_edge: Number(field("image-edge").value), reasoning_effort: field("reasoning").value, max_output_tokens: Number(field("output-tokens").value) });
+  const samSettings = () => ({ threshold: Number(field("sam-threshold").value), device: field("sam-device").value });
+  const configOptions = () => combined() ? { approach: "combined", model_id: "gpt-6-astra+sam3", combined: { multimodal: multimodalSettings(), segmentation: samSettings() } }
+    : multimodal() ? { approach: "multimodal", model_id: view.providers?.multimodal?.model || "gpt-6-astra", multimodal: multimodalSettings() }
     : segmentation() ? { approach: "segmentation", model_id: view.providers?.segmentation?.model_id || "sam3",
-      segmentation: { class_prompts: samTools.promptPayload(view.samPrompts, view.detail?.manifest.taxonomy), threshold: Number(field("sam-threshold").value), device: field("sam-device").value } }
+      segmentation: { class_prompts: samTools.promptPayload(view.samPrompts, view.detail?.manifest.taxonomy), ...samSettings() } }
     : ({ approach: "local_detector", model_id: field("model").value,
     threshold: Number(field("threshold").value), device: field("device").value,
     inference_mode: field("mode").value, tile_size: field("mode").value === "tiled" ? Number(field("tile-size").value) : 640,
@@ -32,9 +36,13 @@
   const trialOptions = () => ({ config_id: field("trial-config").value, role: field("trial-role").value });
   const selectedConfig = () => view.detail?.configs.find((config) => config.id === field("trial-config").value);
   const trialApproach = () => selectedConfig()?.approach || selectedConfig()?.config?.approach || "local_detector";
-  const externalTrial = () => selectedConfig()?.approach === "multimodal" || selectedConfig()?.config?.approach === "multimodal";
+  const externalTrial = () => ["multimodal", "combined"].includes(trialApproach());
   const externalBudget = () => field("external-budget").value.trim() ? Number(field("external-budget").value) : NaN;
-  const approval = () => externalTools.approval(view.trialPreview, { budget: externalBudget(), consent: field("external-consent").checked, loaded: view.externalImages });
+  const approval = () => {
+    const incomplete = trialApproach() === "combined" && combinedTools.planError(view.trialPreview?.external_plan);
+    return incomplete ? { allowed: false, reason: incomplete }
+      : externalTools.approval(view.trialPreview, { budget: externalBudget(), consent: field("external-consent").checked, loaded: view.externalImages });
+  };
   const referenceOptions = () => {
     const { frame_ids, roles } = selection();
     return { frame_ids, roles, reviewer: field("reviewer").value.trim(), independence_notes: field("notes").value.trim(),
@@ -71,12 +79,16 @@
     field("detail").hidden = !view.detail;
     const full = (view.detail?.configs.length || 0) >= 8;
     for (const input of field("config-form").querySelectorAll("input,select,textarea,button")) input.disabled = busy || view.loading || locked() || full || !view.detail;
-    field("config-preview").disabled ||= multimodal() ? !view.providers?.multimodal_settings : segmentation() ? !view.providers?.segmentation_settings : !view.models.some((model) => model.id === field("model").value && model.status === "ready");
+    field("config-preview").disabled ||= combined() ? !view.providers?.combined || !view.providers?.multimodal_settings || !view.providers?.segmentation_settings : multimodal() ? !view.providers?.multimodal_settings : segmentation() ? !view.providers?.segmentation_settings : !view.models.some((model) => model.id === field("model").value && model.status === "ready");
     field("config-create").disabled ||= !view.configPreview || view.configPreview.key !== tools.canonical(configOptions()) || !field("config-name").value.trim();
-    field("local-settings").hidden = multimodal() || segmentation();
-    field("multimodal-settings").hidden = !multimodal();
-    field("sam-settings").hidden = !segmentation();
-    field("tiling").hidden = multimodal() || segmentation() || field("mode").value !== "tiled";
+    field("local-settings").hidden = multimodal() || segmentation() || combined();
+    field("multimodal-settings").hidden = !(multimodal() || combined());
+    field("sam-settings").hidden = !(segmentation() || combined());
+    field("sam-manual-prompts").hidden = combined();
+    field("combined-protocol").hidden = !combined();
+    field("output-tokens-label").textContent = combined() ? "Maximum output tokens · per external call" : "Maximum output tokens";
+    field("multimodal-image-hint").textContent = `Images are resized as configured and converted to PNG without source metadata. Reference boxes, review notes and independence notes are not sent. ${combined() ? "C sends the image twice: first to generate class prompts, then with the generated SAM candidate data for review. Final proposal scores are unavailable; original SAM scores remain in provenance." : "Multimodal proposals have no detector confidence score."}`;
+    field("tiling").hidden = multimodal() || segmentation() || combined() || field("mode").value !== "tiled";
     field("lock").disabled = busy || view.loading || !view.detail?.configs.length || locked() || Boolean(view.detail.trials.some((trial) => isActive(trial.job || {})));
     field("lock-status").textContent = locked()
       ? "Configurations are locked. Only evaluation trials can be created; all tuning records remain available."
@@ -94,8 +106,11 @@
     field("external-consent").disabled = busy || !view.trialPreview?.external_plan;
     if (view.trialPreview?.external_plan) {
       field("external-status").textContent = approval().reason;
-      field("external-consent-label").textContent = `I approve sending these ${view.trialPreview.external_plan.requests.length} images and their displayed prompts to ${view.trialPreview.external_plan.provider} / ${view.trialPreview.external_plan.model}, with a planning budget of ${externalTools.money(externalBudget())} for this trial.`;
-      field("external-image-status").textContent = `${view.externalImages.size}/${view.trialPreview.external_plan.requests.length} outgoing images displayed. Inspect every image and prompt before approving.`;
+      const plan = view.trialPreview.external_plan, count = plan.requests?.length || 0;
+      field("external-consent-label").textContent = trialApproach() === "combined"
+        ? `I approve up to ${count * 2} external calls to ${plan.provider} / ${plan.model}: these ${count} images with the displayed planning prompts, then the same images with generated SAM candidate data under the displayed review template. I approve a planning budget of ${externalTools.money(externalBudget())} for this trial.`
+        : `I approve sending these ${count} images and their displayed prompts to ${plan.provider} / ${plan.model}, with a planning budget of ${externalTools.money(externalBudget())} for this trial.`;
+      field("external-image-status").textContent = `${view.externalImages.size}/${count} outgoing images displayed. Inspect every image and ${trialApproach() === "combined" ? "both request stages" : "prompt"} before approving.`;
     }
     field("protocol").disabled = busy || view.loading || !view.detail;
     field("trial-raw").disabled = busy || view.loading || !tools.currentTrial(view.trial, view.id, view.trialId) || view.trialLoading;
@@ -194,6 +209,8 @@
       const sam = providers.segmentation_settings;
       field("sam-provider-status").textContent = samTools.availability(providers.segmentation);
       field("sam-availability").textContent = samTools.availability(providers.segmentation);
+      field("combined-provider-status").textContent = combinedTools.availability(providers.combined);
+      field("combined-availability").textContent = combinedTools.availability(providers.combined);
       if (sam) {
         field("sam-threshold").min = sam.threshold.min;
         field("sam-threshold").max = sam.threshold.max;
@@ -212,6 +229,8 @@
       field("provider-status").textContent = failure.message;
       field("sam-provider-status").textContent = failure.message;
       field("sam-availability").textContent = failure.message;
+      field("combined-provider-status").textContent = failure.message;
+      field("combined-availability").textContent = failure.message;
     }
     update();
   }
@@ -220,7 +239,11 @@
     if (next === view.samPrompts) return;
     view.samPrompts = next;
     const container = field("sam-prompts"); container.replaceChildren();
+    const combinedClasses = field("combined-classes"); combinedClasses.replaceChildren();
     for (const [index, category] of (view.detail?.manifest.taxonomy.classes || []).entries()) {
+      const savedClass = node("p", "field-hint");
+      savedClass.append(node("strong", "", `${category.name} · ${category.id}: `), document.createTextNode(category.definition));
+      combinedClasses.append(savedClass);
       const row = node("div", "benchmark-sam-prompt");
       const label = node("label", "", `${category.name} · ${category.id}`);
       const input = node("textarea", ""); input.id = `benchmark-sam-prompt-${index}`;
@@ -246,8 +269,11 @@
     clearExternalPreview();
     const preview = view.trialPreview, plan = preview?.external_plan;
     if (!plan) return;
+    const pipeline = trialApproach() === "combined";
     field("external-preview").hidden = false;
-    field("external-provider").textContent = `${plan.provider} / ${plan.model} · ${plan.requests.length} image requests · preview expires ${new Date(preview.expires_at).toLocaleString()}. ${externalTools.providerStatus(plan.provider_status)}`;
+    field("combined-disclosure").hidden = !pipeline;
+    field("combined-disclosure").textContent = pipeline ? "C sends each displayed image twice at most. The first prompt is exact. The second preview is a template: generated class prompts and SAM candidate IDs, boxes, labels and native scores are only known after the local SAM step. Those data and the image are sent to Astra for review, with at most 128 KiB of dynamic text. One pass only; review can accept, reject or relabel existing candidates, never move or invent boxes." : "";
+    field("external-provider").textContent = `${plan.provider} / ${plan.model} · ${plan.requests?.length || 0} images · ${pipeline ? `at most ${(plan.requests?.length || 0) * 2}` : plan.requests?.length || 0} external calls · preview expires ${new Date(preview.expires_at).toLocaleString()}. ${pipeline ? combinedTools.availability(plan.provider_status) : externalTools.providerStatus(plan.provider_status)}`;
     field("external-cost").textContent = `Conservative planning estimate: ${externalTools.money(plan.estimate?.upper_bound_usd)} for this trial.`;
     field("external-basis").textContent = typeof plan.estimate?.basis === "string" ? plan.estimate.basis : JSON.stringify(plan.estimate?.basis || "");
     const amount = plan.estimate?.upper_bound_usd;
@@ -255,11 +281,13 @@
       field("external-budget").value = String(amount);
       field("external-budget").min = String(amount);
     }
-    for (const [index, request] of plan.requests.entries()) {
+    for (const [index, request] of (plan.requests || []).entries()) {
       const figure = node("figure", "benchmark-external-image");
       const image = node("img", ""); image.alt = `Outgoing image ${index + 1} for frame ${request.frame_id}`;
-      const info = request.input.image;
-      const caption = node("figcaption", "", `Image ${index + 1} · ${info.width ?? info.original_width} × ${info.height ?? info.original_height} original → ${info.sent_width} × ${info.sent_height} sent · ${externalTools.money(request.estimate?.upper_bound_usd)} planning estimate`);
+      const input = pipeline ? request.planning?.input : request.input;
+      const info = input?.image || {};
+      const estimate = pipeline ? request.planning?.estimate : request.estimate;
+      const caption = node("figcaption", "", `Image ${index + 1} · ${info.width ?? info.original_width} × ${info.height ?? info.original_height} original → ${info.sent_width} × ${info.sent_height} sent · ${pipeline ? "first call: " : ""}${externalTools.money(estimate?.upper_bound_usd)} planning estimate${pipeline ? ` · review call: ${externalTools.money(request.review?.estimate?.upper_bound_usd)} planning estimate` : ""}`);
       image.addEventListener("load", () => {
         if (preview !== view.trialPreview) return;
         if (image.naturalWidth > 0) view.externalImages.add(request.frame_id);
@@ -271,8 +299,15 @@
         caption.textContent += " · Image could not be loaded. Prepare a new preview before sending."; update();
       });
       const details = node("details", "benchmark-request-details");
-      details.append(node("summary", "", "Exact prompt, class definitions and image transform"), node("pre", "", request.input.prompt), node("pre", "", JSON.stringify({ image: info, request_sha256: request.input.request_sha256, estimate: request.estimate }, null, 2)));
+      details.append(node("summary", "", pipeline ? "1 · Exact planning prompt, class definitions and image transform" : "Exact prompt, class definitions and image transform"), node("pre", "", input?.prompt || "Exact prompt unavailable"), node("pre", "", JSON.stringify({ image: info, request_sha256: input?.request_sha256, estimate }, null, 2)));
       figure.append(image, caption, details); field("external-images").append(figure);
+      if (pipeline) {
+        const review = node("details", "benchmark-request-details");
+        review.append(node("summary", "", "3 · Review template and bounded dynamic data — not the final request"),
+          node("p", "field-hint", "The exact second request is saved with the trial after SAM has produced its candidates. This preview shows the frozen template and its maximum planning allowance."),
+          node("pre", "", JSON.stringify(request.review, null, 2)));
+        figure.append(review);
+      }
       try { image.src = projectURL(request.image_url); }
       catch { caption.textContent += " · Invalid local preview image URL; sending is blocked."; }
     }
@@ -363,7 +398,10 @@
       const section = node("article", "benchmark-config");
       const external = config.config.approach === "multimodal";
       const sam = config.config.approach === "segmentation";
-      section.append(node("strong", "", config.name), node("p", "field-hint", external
+      const pipeline = config.config.approach === "combined";
+      section.append(node("strong", "", config.name), node("p", "field-hint", pipeline
+        ? `C · Astra → SAM 3 → Astra · at most two external calls per image · one local image encoding · SAM score > ${config.config.provider_config.sam_config.settings.threshold} · generated class prompts · review preserves candidate geometry · final scores unavailable`
+        : external
         ? `A · ${config.config.model_name || config.config.model_id} · external API · image edge ${config.config.provider_config.image_encoding.long_edge}px · reasoning ${config.config.provider_config.settings.reasoning.effort} · output limit ${config.config.provider_config.settings.max_output_tokens} tokens · no detector confidence scores`
         : sam ? `B · ${config.config.model_name || config.config.model_id} · local ${config.config.provider_config.settings.device.toUpperCase()} · ${config.config.provider_config.prompts.length} class prompts · native SAM score > ${config.config.provider_config.settings.threshold} · boxes only; no masks`
         : `${config.config.model_name || config.config.model_id} · ${config.config.inference.mode} · proposal score ≥ ${config.config.threshold}`));
@@ -392,7 +430,8 @@
     head.append(row); table.append(head); const body = node("tbody", "");
     for (const trial of view.detail.trials) {
       const metrics = trial.quality?.metrics?.summary, corrections = trial.corrections;
-      const modelLoading = trial.config?.candidate_config?.approach === "segmentation" ? ` · model loading ${tools.duration(trial.latency?.model_load_ms)} separately` : "";
+      const modelLoading = trial.config?.candidate_config?.approach === "combined" ? ` · includes ${tools.duration(trial.latency?.model_load_ms)} model loading`
+        : trial.config?.candidate_config?.approach === "segmentation" ? ` · model loading ${tools.duration(trial.latency?.model_load_ms)} separately` : "";
       const tr = node("tr", "");
       const values = [`${trial.config_name} · ${roleName(trial.split)}`, `${trial.job?.status || "saved"} · ${trial.counts?.ready || 0}/${trial.counts?.total || 0} outputs`,
         metrics ? `${metrics.fp} extra / ${metrics.fn} missed` : "Incomplete · not scored", metrics ? String(metrics.class_conflicts) : "N/A", metrics ? `${percentage(metrics.precision)} / ${percentage(metrics.recall)}` : "N/A",
@@ -403,6 +442,7 @@
     container.append(node("p", "field-hint", "Operating-point box matching against the frozen reference; see the saved scoring protocol for matching rules. Native model scores are not comparable probabilities. Incomplete outputs are never counted as successful empty predictions."));
   }
   function configValid() {
+    if (combined()) return Boolean(field("image-edge").value && field("reasoning").value && field("output-tokens").value.trim() && field("output-tokens").reportValidity() && field("sam-device").value && field("sam-threshold").value.trim() && field("sam-threshold").reportValidity());
     if (multimodal()) return Boolean(field("image-edge").value && field("reasoning").value && field("output-tokens").value.trim() && field("output-tokens").reportValidity());
     if (segmentation()) {
       const promptError = samTools.promptError(view.samPrompts, view.detail?.manifest.taxonomy, view.providers?.segmentation_settings?.prompt_limits);
@@ -416,6 +456,10 @@
     const options = configOptions(); invalidate("config");
     await operation("config-preview", () => api(`${base()}/configs/preview`, { method: "POST", body: JSON.stringify(options) }), (result) => {
       view.configPreview = { ...result, key: tools.canonical(options) };
+      if (options.approach === "combined") {
+        field("config-preview-summary").textContent = `C · ${result.config.model_name || result.config.model_id}. Tuning: ${combinedTools.workSummary(result.work.tuning)}. Evaluation: ${combinedTools.workSummary(result.work.evaluation)}. ${combinedTools.availability(result.provider_status)} Saving freezes both model profiles and the three-stage protocol. It sends nothing externally and runs no model. Each trial needs a fresh two-call preview and explicit budget approval. ${(result.warnings || []).join(" ")}`;
+        return;
+      }
       if (options.approach === "multimodal") {
         field("config-preview-summary").textContent = `A · ${result.config.model_name || result.config.model_id} · ${result.work.tuning.request_count} tuning / ${result.work.evaluation.request_count} evaluation image requests. Saving this configuration sends nothing externally. Each trial requires its own exact-image preview and explicit budget approval. ${(result.warnings || []).join(" ")}`;
         return;
@@ -444,12 +488,13 @@
     const options = trialOptions(); invalidate("trial");
     await operation("trial-preview", () => api(`${base()}/trials/preview`, { method: "POST", body: JSON.stringify(options) }), (result) => {
       view.trialPreview = { ...result, key: tools.canonical(options) };
-      const work = result.external_plan ? `${result.external_plan.requests.length} external image requests`
+      const pipeline = trialApproach() === "combined";
+      const work = pipeline ? combinedTools.workSummary(result.work) : result.external_plan ? `${result.external_plan.requests.length} external image requests`
         : result.local_plan ? `local SAM · ${samTools.workSummary(result.work)}` : `${result.work.total_forward_passes} detector passes including warm-up`;
       field("trial-preview-summary").textContent = `${result.frame_ids.length} ${roleName(options.role).toLowerCase()} images · ${work}. Reference labels are withheld from the candidate. ${result.launch_allowed === false ? `Launch unavailable: ${result.launch_reason || "Local setup must be completed."} ` : ""}${(result.warnings || []).join(" ")}`;
-      field("local-plan").hidden = !result.local_plan;
+      field("local-plan").hidden = !result.local_plan && !pipeline;
       field("local-plan").open = false;
-      field("local-plan-record").textContent = result.local_plan ? JSON.stringify({ local_plan: result.local_plan, work: result.work, configuration: selectedConfig()?.config, provider_status: result.provider_status }, null, 2) : "";
+      field("local-plan-record").textContent = result.local_plan || pipeline ? JSON.stringify({ local_plan: result.local_plan, runtime_identity: result.external_plan?.runtime_identity, work: result.work, configuration: selectedConfig()?.config, provider_status: result.provider_status }, null, 2) : "";
       renderExternalPreview();
     });
   }
@@ -495,17 +540,20 @@
     const trial = view.trial;
     field("trial-summary").textContent = `${trial.config_name} · ${roleName(trial.split)} · ${trial.job?.status || "saved"} · ${trial.counts.ready}/${trial.counts.total} usable outputs${trial.quality?.reason ? `. ${trial.quality.reason}` : ""}`;
     const measured = (trial.outputs || []).map((output) => output.metadata?.timing?.elapsed_ms).filter((value) => typeof value === "number" && Number.isFinite(value) && value >= 0);
-    const remote = trial.config?.candidate_config?.approach === "multimodal" || Boolean(trial.external_dispatch);
+    const pipeline = trial.config?.candidate_config?.approach === "combined";
+    const remote = trial.config?.candidate_config?.approach === "multimodal" || pipeline || Boolean(trial.external_dispatch);
     const sam = trial.config?.candidate_config?.approach === "segmentation";
     field("trial-summary").textContent += ` · ${remote ? "API/image processing" : "Local image processing"}: ${measured.length ? tools.duration(measured.reduce((sum, value) => sum + value, 0)) : "unmeasured"} across ${measured.length}/${trial.counts.total} images. ${remote ? "Includes observed request processing; separate from human correction time." : "Includes image decode and local inference; separate from human correction time. Monetary cost is not measured."}`;
     if (remote) field("trial-summary").textContent += ` ${externalTools.costPresentation(trial.external_dispatch)}. Usage-based estimates are not the provider's invoice.`;
     if (sam) field("trial-summary").textContent += ` SAM 3 model loading: ${tools.duration(trial.latency?.model_load_ms)}, recorded separately from image processing. Image times include the first pass; there is no warm-up pass. Native SAM scores are not calibrated probabilities. Metrics cover native boxes; masks are neither calculated nor saved.`;
+    if (pipeline) field("trial-summary").textContent += ` C uses one planning call, one local SAM stage and at most one review call per image. End-to-end image time includes ${tools.duration(trial.latency?.model_load_ms)} of SAM model loading; do not add it again. Final scores are unavailable; original SAM scores remain in provenance and are not calibrated probabilities. The review cannot invent or move boxes. Inspect stage records for partial or failed attempts.`;
     field("outputs").replaceChildren();
     if (trial.external_dispatch) {
       const dispatch = trial.external_dispatch, presentation = window.IRISJobTools.dispatchPresentation(dispatch);
       const receipt = node("section", `benchmark-dispatch${presentation.unknown ? " unknown" : ""}`);
       receipt.append(node("strong", "", presentation.label), node("p", "field-hint", presentation.explanation),
         node("p", "field-hint", `Approved planning budget: ${externalTools.money(dispatch.budget_microusd / 1000000)} · reserved for recorded attempts: ${externalTools.money(dispatch.reserved_microusd / 1000000)}. These reservations are not provider charges.`));
+      if (pipeline) receipt.append(node("p", "field-hint", "Dispatch counts refer to external calls: planning and review are separate receipts for each image. The local SAM stage makes no provider request. Unknown outcomes are not retried automatically."));
       field("outputs").append(receipt);
     }
     if (trial.quality?.metrics?.per_class) {
@@ -520,11 +568,26 @@
       const row = node("article", "benchmark-output");
       const correction = trial.corrections?.frames.find((entry) => entry.output_id === frame.output_id);
       row.append(node("strong", "", frame.source_filename || frame.frame_id), node("p", "field-hint", `${frame.state} · ${frame.proposal_count} candidate boxes${frame.error ? ` · ${frame.error}` : ""}${correction ? ` · correction ${correction.status}, revision ${correction.revision} · ${tools.duration(correction.timing?.elapsed_ms)} recorded` : " · correction not measured"}`));
-      const dispatch = trial.external_dispatch?.outputs?.find((item) => item.frame_id === frame.frame_id);
-      if (dispatch) {
+      if (pipeline) {
+        const output = trial.outputs?.find((item) => item.id === frame.output_id || item.frame_id === frame.frame_id);
+        const stages = node("ol", "benchmark-pipeline");
+        for (const stage of combinedTools.stages(output)) {
+          const item = node("li", stage.unknown ? "unknown" : "");
+          item.append(node("strong", "", `${stage.label} · ${stage.state.replaceAll("_", " ")}`));
+          if (stage.stage?.error) item.append(node("p", "field-hint", typeof stage.stage.error === "string" ? stage.stage.error : JSON.stringify(stage.stage.error)));
+          if (stage.stage || stage.raw !== null) {
+            const record = node("details", "");
+            record.append(node("summary", "", "Inspect saved stage, native output and request evidence"), node("pre", "", JSON.stringify({ stage: stage.stage, raw_response: stage.raw }, null, 2)));
+            item.append(record);
+          }
+          stages.append(item);
+        }
+        row.append(stages);
+      }
+      for (const dispatch of combinedTools.dispatches(trial.external_dispatch, frame.frame_id)) {
         const presentation = window.IRISJobTools.dispatchPresentation({ ...dispatch, external: true });
         const detail = node("div", `benchmark-dispatch${presentation.unknown ? " unknown" : ""}`);
-        detail.append(node("strong", "", presentation.label), node("p", "field-hint", presentation.explanation),
+        detail.append(node("strong", "", `${dispatch.stage ? `${combinedTools.stageNames[dispatch.stage] || dispatch.stage} · ` : ""}${presentation.label}`), node("p", "field-hint", presentation.explanation),
           node("p", "field-hint", typeof dispatch.usage_cost_usd === "number" ? `${externalTools.money(dispatch.usage_cost_usd)} estimated from recorded usage; not an invoice.` : "Usage cost unknown; no zero charge is inferred."));
         const record = node("details", "");
         record.append(node("summary", "", "Dispatch and usage receipt"), node("pre", "", JSON.stringify(dispatch, null, 2)));
@@ -551,7 +614,7 @@
   field("name").addEventListener("input", update); field("config-name").addEventListener("input", update);
   for (const name of ["model", "threshold", "device", "mode", "tile-size", "overlap"]) field(name).addEventListener(["threshold", "tile-size", "overlap"].includes(name) ? "input" : "change", () => invalidate("config"));
   field("approach").addEventListener("change", () => {
-    if (["Local detector control", "A · GPT-6 Astra", "B · SAM 3"].includes(field("config-name").value)) field("config-name").value = multimodal() ? "A · GPT-6 Astra" : segmentation() ? "B · SAM 3" : "Local detector control";
+    if (["Local detector control", "A · GPT-6 Astra", "B · SAM 3", "C · Astra + SAM 3"].includes(field("config-name").value)) field("config-name").value = combined() ? "C · Astra + SAM 3" : multimodal() ? "A · GPT-6 Astra" : segmentation() ? "B · SAM 3" : "Local detector control";
     invalidate("config");
   });
   for (const name of ["sam-threshold", "sam-device"]) field(name).addEventListener(name === "sam-threshold" ? "input" : "change", () => invalidate("config"));

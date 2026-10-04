@@ -32,7 +32,7 @@
           : "No request dispatch has been recorded.";
     if (dispatch.counts) {
       const counts = dispatch.counts;
-      explanation = `Image requests: ${counts.response_received || 0} responses recorded · ${counts.dispatching || 0} in progress · ${counts.outcome_unknown || 0} outcomes unknown · ${counts.not_started || 0} not sent. ${explanation}`;
+      explanation = `External requests: ${counts.response_received || 0} responses recorded · ${counts.dispatching || 0} in progress · ${counts.outcome_unknown || 0} outcomes unknown · ${counts.not_started || 0} not sent. ${explanation}`;
     }
     return { label: labels[dispatch.state] || statusName(dispatch.state), explanation, unknown: dispatch.state === "outcome_unknown" };
   }

@@ -242,6 +242,10 @@ def dispatch_summary(store: Store, job: dict) -> dict | None:
 
         trials = store.list("benchmark_trials", job_id=job["id"])
         if trials and trials[0]["config"].get("external_plan"):
+            if trials[0]["config"].get("candidate_config", {}).get("approach") == "combined":
+                from iris.benchmark_combined_dispatch import dispatch_summary as combined_summary
+
+                return combined_summary(store, trials[0]["id"])
             return benchmark_dispatch_summary(store, trials[0]["id"])
         return None
     table = _TABLES.get(job.get("kind"))
@@ -269,9 +273,11 @@ def dispatch_summary(store: Store, job: dict) -> dict | None:
 
 def reconcile_dispatches(store: Store) -> None:
     """Call after interrupting jobs on shutdown/startup; never send or clear evidence."""
+    from iris.benchmark_combined_dispatch import recover_combined_dispatches
     from iris.benchmark_dispatch import recover_benchmark_dispatches
 
     recover_benchmark_dispatches(store)
+    recover_combined_dispatches(store)
     with store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         for kind, table in _TABLES.items():
