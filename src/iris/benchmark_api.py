@@ -128,6 +128,10 @@ class TimerInput(StrictInput):
 
 
 def install_benchmark_routes(app, store, jobs, require, active_project):
+    from iris.benchmark_report_api import install_benchmark_report_routes
+
+    install_benchmark_report_routes(app, store, require)
+
     def action(function):
         try:
             return function()

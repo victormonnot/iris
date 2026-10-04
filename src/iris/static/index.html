@@ -37,6 +37,8 @@
     <script src="/static/benchmark-external-tools.js" defer></script>
     <script src="/static/benchmark-sam-tools.js" defer></script>
     <script src="/static/benchmark-combined-tools.js" defer></script>
+    <script src="/static/benchmark-report-tools.js" defer></script>
+    <script src="/static/benchmark-report.js" defer></script>
     <script src="/static/benchmark.js" defer></script>
     <script src="/static/benchmark-editor.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
@@ -2286,6 +2288,26 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <div class="benchmark-actions"><button id="benchmark-trial-preview" type="button" class="button button-secondary">Preview trial</button><button id="benchmark-trial-create" type="button" class="button" disabled>Run checked trial</button></div></section>
                   <p id="benchmark-action-error" class="inline-error" role="alert" hidden></p>
                   <section class="benchmark-results"><h3>Results by configuration and role</h3><p class="field-hint">Results compare candidate output with the frozen reference. Human corrections are separate records; they never replace the reference. Missing times and unavailable costs remain unmeasured.</p><div id="benchmark-results-table" class="benchmark-table-wrap"></div><label for="benchmark-trial-history">Saved trial</label><select id="benchmark-trial-history"><option value="">No saved trials</option></select><div id="benchmark-trial-detail" hidden><p id="benchmark-trial-summary" role="status"></p><div class="benchmark-actions"><button id="benchmark-trial-raw" type="button" class="text-button">Inspect trial inputs, outputs and protocol</button><button id="benchmark-trial-job" type="button" class="text-button">Job details and cancellation</button></div><div id="benchmark-outputs" class="benchmark-outputs"></div></div></section>
+                  <section class="benchmark-report" aria-labelledby="benchmark-report-heading">
+                    <div class="benchmark-actions"><h3 id="benchmark-report-heading">Compare approaches and keep a report</h3><button id="benchmark-report-refresh" type="button" class="text-button">Refresh comparison and reports</button></div>
+                    <p class="field-hint">Compare every frozen configuration and every saved trial in one scene role. Failed and missing evidence stays visible. No trial is run and no winning approach is selected here.</p>
+                    <label for="benchmark-report-role">Comparison role</label><select id="benchmark-report-role"><option value="tuning">Tuning scenes</option><option value="evaluation">Evaluation scenes</option></select>
+                    <p id="benchmark-report-status" class="field-hint" role="status"></p><p id="benchmark-report-error" class="inline-error" role="alert" hidden></p>
+                    <details class="benchmark-report-live" open><summary>Current saved evidence · refreshable comparison</summary><div id="benchmark-report-comparison"></div></details>
+                    <section class="benchmark-report-compose" aria-labelledby="benchmark-report-compose-heading">
+                      <h4 id="benchmark-report-compose-heading">Record your analysis</h4><p class="field-hint">The report freezes the displayed role, all its saved trials, image evidence and correction revisions at preview time. Author conclusions are separate from measurements.</p>
+                      <label for="benchmark-report-title">Report title</label><input id="benchmark-report-title" maxlength="160" />
+                      <label for="benchmark-report-objective">Objective</label><textarea id="benchmark-report-objective" rows="2" maxlength="4000" placeholder="What does this comparison need to establish?"></textarea>
+                      <label for="benchmark-report-conclusion">Author conclusion and limitations</label><textarea id="benchmark-report-conclusion" rows="3" maxlength="4000" placeholder="Interpret the evidence, missing measurements and limitations."></textarea>
+                      <label for="benchmark-report-evidence">Origin of this evidence</label><select id="benchmark-report-evidence"><option value="not_declared">Not declared</option><option value="simulation">Simulation · software checks only</option><option value="real_data">Real data · author declaration</option></select>
+                      <p class="field-hint">This declaration is not verified automatically. Simulations do not establish real model quality, speed or cost. One complete run cannot establish repeatability.</p>
+                      <button id="benchmark-report-preview" type="button" class="button button-secondary" disabled>Preview immutable report</button>
+                      <div id="benchmark-report-preview-result" class="benchmark-report-preview" hidden><h4>Report preview · not yet saved</h4><p id="benchmark-report-preview-context"></p><p id="benchmark-report-preview-objective" class="benchmark-report-prose"></p><p id="benchmark-report-preview-conclusion" class="benchmark-report-prose"></p><p id="benchmark-report-preview-note" class="field-hint"></p><details><summary>Inspect all evidence frozen in this preview</summary><div id="benchmark-report-preview-comparison"></div></details><button id="benchmark-report-save" type="button" class="button" disabled>Save immutable report</button></div>
+                    </section>
+                    <section class="benchmark-report-library" aria-labelledby="benchmark-report-library-heading"><h4 id="benchmark-report-library-heading">Immutable reports</h4><label for="benchmark-report-history">Saved report</label><select id="benchmark-report-history" disabled><option value="">No saved reports</option></select>
+                      <article id="benchmark-report-saved" class="benchmark-report-saved" hidden><h4 id="benchmark-report-saved-title"></h4><p id="benchmark-report-saved-context" class="field-hint"></p><h5>Objective</h5><p id="benchmark-report-saved-objective" class="benchmark-report-prose"></p><h5>Author conclusion</h5><p id="benchmark-report-saved-conclusion" class="benchmark-report-prose"></p><p id="benchmark-report-saved-hash" class="field-hint monospace"></p><p class="field-hint">This saved snapshot stays unchanged when live results or corrections change. The JSON contains full report evidence; the standalone HTML contains a readable summary without images or external resources.</p><div class="benchmark-actions"><a id="benchmark-report-export-json" class="text-button" download>Download JSON</a><a id="benchmark-report-export-html" class="text-button" download>Download standalone HTML</a><button id="benchmark-report-inspect" type="button" class="text-button">Inspect saved snapshot</button></div><details><summary>Evidence retained in this immutable report</summary><div id="benchmark-report-saved-comparison"></div></details></article>
+                    </section>
+                  </section>
                 </div>
               </div>
             </section>

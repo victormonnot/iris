@@ -32,6 +32,16 @@ outputs modify the reference or ordinary annotations. Recorded review intervals
 are separate from model latency, and missing time is never reported as zero.
 See [the benchmark protocol and limitations](docs/benchmark.md).
 
+**Compare approaches and save a report** groups every recorded attempt by frozen
+configuration and scene role. Inspect the same image beside its reference and
+each candidate, compare omissions, class errors and box geometry, and review
+correction coverage, observed processing time and available API usage costs.
+Repeated trials expose descriptive ranges and geometry changes; they are not
+independent test sets or an automatic ranking. Save an immutable report with its
+evidence declaration and your interpretation, then reopen it or download a JSON
+snapshot or standalone HTML summary. Later trials and corrections leave saved
+reports unchanged. Report preparation and export run locally without a model.
+
 The SAM path uses one short phrase per frozen class and an independent score
 threshold. Configurations can be saved before setup; execution requires the
 pinned checkpoint and a separate CUDA environment configured through

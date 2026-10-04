@@ -84,7 +84,7 @@ def test_schema15_is_additive_repeatable_and_preserves_every_old_row_and_artifac
     assert artifacts(schema14) == files
     assert all(store.list(table) == [] for table in BENCHMARK_TABLES)
     with store.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 15
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     Store(schema14)
     assert rows(schema14) == original

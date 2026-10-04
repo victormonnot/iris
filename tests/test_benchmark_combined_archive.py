@@ -10,7 +10,7 @@ from test_benchmarks_archive import records
 
 from iris import benchmark_combined_dispatch as dispatch
 from iris import combined_provider, multimodal_provider, sam_provider, sam_runtime
-from iris.store import Store
+from iris.store import SCHEMA_VERSION, Store
 from iris.workspace_archive import ArchiveError, create_archive
 from iris.workspace_restore import inspect_archive, restore_archive
 
@@ -69,7 +69,7 @@ def test_combined_archive_is_offline_byte_exact_and_never_resumes(
     monkeypatch.setattr(sam_runtime, "runtime_status", forbidden)
     monkeypatch.setattr(sam_runtime, "SamRuntime", forbidden)
     archive = create_archive(store.root, tmp_path / "combined.zip")
-    assert archive["manifest"]["schema_version"] == 15
+    assert archive["manifest"]["schema_version"] == SCHEMA_VERSION
     restored = tmp_path / "restored"
     with monkeypatch.context() as context:
         context.setattr(Store, "__init__", forbidden)

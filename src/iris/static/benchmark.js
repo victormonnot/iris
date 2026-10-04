@@ -17,6 +17,14 @@
     providers: null, providerRequest: 0, externalImages: new Set(), externalExpiry: null,
     samPrompts: null,
   };
+  const reportView = window.IRISBenchmarkReport.create({ onBusy: () => update(), showRecord,
+    onOpenTrial: (id) => {
+      if (!view.detail?.trials.some((trial) => trial.id === id)) return;
+      view.trialId = id; view.trial = null; view.trialRequest++;
+      field("trial-history").value = id; renderTrial(); loadTrial();
+      field("trial-history").scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+  });
   const base = () => `/api/benchmarks/${encodeURIComponent(view.id)}`;
   const selection = () => tools.referenceSelection(view.candidates?.groups || [], view.roles, view.chosen);
   const locked = () => view.detail?.status === "locked";
@@ -67,7 +75,8 @@
     update();
   }
   function update() {
-    const busy = Boolean(view.busy), selected = selection();
+    const busy = Boolean(view.busy) || reportView.busy(), selected = selection();
+    reportView.setBlocked(Boolean(view.busy) || view.loading);
     for (const input of field("prepare").querySelectorAll("input,select,textarea")) input.disabled = busy || view.candidateLoading;
     field("refresh-candidates").disabled = busy || view.candidateLoading;
     field("preview").disabled = busy || view.candidateLoading || !selected.valid || !field("reviewer").value.trim() || !field("notes").value.trim() || !field("independent").checked;
@@ -420,7 +429,7 @@
     for (const trial of detail.trials) field("trial-history").append(new Option(`${trial.config_name} · ${roleName(trial.split)} · ${trial.job?.status || "saved"} · ${new Date(trial.created_at).toLocaleString()}`, trial.id));
     if (!view.trialId && detail.trials.length) view.trialId = detail.trials[0].id;
     field("trial-history").value = view.trialId || "";
-    renderResults(); update();
+    renderResults(); reportView.setContext(detail); update();
   }
   function renderResults() {
     const container = field("results-table"); container.replaceChildren();
@@ -629,6 +638,7 @@
   for (const name of ["trial-config", "trial-role"]) field(name).addEventListener("change", () => invalidate("trial"));
   field("history").addEventListener("change", () => {
     view.id = field("history").value || null; view.detail = null; view.trialId = null; view.trial = null;
+    reportView.setContext(null);
     view.detailRequest++; view.trialRequest++; view.loading = false; view.trialLoading = false; invalidate("config"); invalidate("trial"); renderTrial();
     if (view.id) loadDetail();
   });

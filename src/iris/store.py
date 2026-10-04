@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -211,8 +211,9 @@ BENCHMARK_TABLES = {
     "benchmark_outputs",
     "benchmark_corrections",
     "benchmark_timers",
+    "benchmark_reports",
 }
-SCHEMA = (
+SCHEMA_V15 = (
     SCHEMA_V14
     + """
 CREATE TABLE IF NOT EXISTS benchmarks (
@@ -256,6 +257,18 @@ CREATE TABLE IF NOT EXISTS benchmark_timers (
     segments TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+"""
+)
+
+SCHEMA = (
+    SCHEMA_V15
+    + """
+CREATE TABLE IF NOT EXISTS benchmark_reports (
+    id TEXT PRIMARY KEY, benchmark_id TEXT NOT NULL REFERENCES benchmarks(id),
+    snapshot TEXT NOT NULL, snapshot_sha256 TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(benchmark_id,snapshot_sha256)
+);
+CREATE INDEX IF NOT EXISTS benchmark_reports_benchmark ON benchmark_reports(benchmark_id);
 """
 )
 

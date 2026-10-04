@@ -32,6 +32,7 @@ PARENTS = {
     "benchmark_outputs": ("benchmark_trials", "trial_id"),
     "benchmark_corrections": ("benchmark_outputs", "output_id"),
     "benchmark_timers": ("benchmark_outputs", "output_id"),
+    "benchmark_reports": ("benchmarks", "benchmark_id"),
 }
 DIRECT = {"sessions", "dataset_versions", "dataset_imports", "taxonomy_versions", "benchmarks"}
 JOB_PARENTS = {

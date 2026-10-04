@@ -489,3 +489,35 @@ metadata alone cannot reconstruct the encoded image bytes. Final boxes retain
 SAM geometry, while their confidence is null and the original native score stays
 in provenance. This avoids treating two provider outputs as a calibrated score.
 See [the combined protocol](combined-preannotation-adapter.md).
+
+## Saved benchmark comparisons
+
+Schema 16 adds only `benchmark_reports`. Its owner is an existing benchmark, so
+project access follows the same foreign-key chain as configurations and trials.
+Schema 12–15 archives retain their original database bytes on restoration and
+migrate only when the workspace is opened. No benchmark outputs or correction
+revisions are rewritten by this addition.
+
+`benchmark_analysis.py` reads one SQLite transaction for a single reference role,
+including every configuration and attempt. It recomputes box quality from saved
+normalized outputs instead of trusting the job's cached summary. Only terminal
+successful trials with complete image coverage contribute to quality ranges;
+failed and missing outputs remain visible. Repetition comparisons preserve box
+order and exclude IDs, scores and explanations from geometry equality. Local,
+external and combined timings retain their different measurement scopes.
+
+`benchmark_reports.py` freezes the comparison together with its evidence-origin
+declaration and author interpretation. Preview/save compare a canonical digest
+under a write transaction; new trials, corrections or edited text require a new
+preview. Saving is idempotent for the same current snapshot. Reports do not run
+models, and the evidence declaration is the author's statement, not automatic
+verification of model execution. A report requires at least one terminal trial
+and no active trials in its selected role.
+
+Saved snapshots reference their exact correction revisions and normalized source
+digests. Read and archive validation reconstruct their measurements against those
+historical sources, allowing later corrections and trials without rewriting the
+report. `benchmark_report_api.py` applies project ownership to previews, saved
+reports and downloads. `benchmark_report_export.py` renders the saved values as
+JSON or escaped, script-free standalone HTML; it performs no provider calls or
+image requests. Image comparison stays in IRIS using the frozen reference images.

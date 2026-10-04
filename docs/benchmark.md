@@ -320,6 +320,70 @@ Only explicitly completed reviews contribute to completed correction summaries.
 An incomplete or unmeasured timing record remains visible as such. These human
 corrections are separate from both the immutable reference and original proposals.
 
+## Compare approaches and save a report
+
+Open **Compare approaches and keep a report** in a saved benchmark. The comparison
+includes every frozen configuration and every saved trial for the selected role.
+Tuning and evaluation stay separate; a locked benchmark opens on evaluation.
+Switching roles only reads saved evidence. **Refresh comparison and reports**
+updates this view without running a candidate, calling a provider or selecting a
+winning approach.
+
+Each configuration shows every attempt, including failures and missing outputs,
+with image coverage, extra and missed boxes, class conflicts, precision, recall
+and matched IoU. Expand **Class results and saved settings** for per-class counts
+and full identities. Headline quality requires a succeeded job with a usable output
+for every image. Partial outputs remain inspectable. They are not scored as empty
+images or included as complete measurements.
+
+Repeated complete trials show the number of measurements and descriptive ranges
+and means. Box-set equality preserves proposal order but ignores proposal IDs,
+scores and explanations. A single complete trial cannot establish stability.
+Repeated trials on the same reference images are not independent datasets, and
+their ranges are not confidence intervals. Changed runtime or returned-model
+identities remain visible. The interface never silently chooses the best repetition.
+
+Processing duration includes its measured-image coverage and timing scope. SAM
+loading is separate for B and included in C's end-to-end image duration; adding C's
+loading time again would double-count it. Human correction time stays separate,
+with reviewed-image coverage and incomplete timing visible. A newer draft does not
+count as a completed review. Local monetary cost remains unmeasured. External
+costs use recorded usage and the frozen pricing basis, never a provider invoice;
+known subtotals and unknown outcomes are distinct.
+
+**Image evidence** displays one frozen image across the independent reference and
+every configuration. Select the image once and choose any saved repetition within
+each configuration. The first listed trial is displayed initially without quality
+ranking. Missing or failed proposals remain unavailable, and saved human correction
+status and revision are shown separately. **Open saved trial** returns to the
+original trial record. Viewing reference labels can influence a later correction;
+the application does not verify reviewer independence.
+
+To retain an analysis, enter a title, objective and optional author conclusion.
+Declare the evidence origin as **Not declared**, **Simulation**, or **Real data**.
+The last choice is the author's declaration, not an automatic verification.
+Simulation reports demonstrate the software workflow, not real model quality,
+speed or cost. **Preview immutable report** freezes the selected role, all candidate
+settings and attempts, reference identities, proposal boxes, scores, timing, usage,
+and the latest correction revisions in an inspectable snapshot. Author conclusions
+remain separate from the measured records.
+
+Saving requires at least one terminal trial and no queued or running trial in that
+role. It does not require successful inference or complete human correction: a
+report can document failures and missing measurements. Changed results, corrections,
+form fields or roles invalidate the preview; prepare it again before saving.
+Concurrent changes are checked by the server as well. If a save response is lost,
+IRIS looks up the exact snapshot fingerprint and opens a matching saved receipt;
+it does not repeat the save automatically.
+
+The **Immutable reports** area displays the saved snapshot separately from the
+refreshable comparison. Later trials or correction edits cannot change a saved
+report. **Download JSON** exports full report evidence and its identities; it does
+not include source image bytes or raw provider bodies. **Download standalone HTML**
+exports a readable summary containing no images, scripts or external resources.
+Frozen images stay available in the application's comparison view and workspace
+backup. Export and inspection are scoped to the report's project.
+
 ## API and storage
 
 The routes are project-scoped:
@@ -332,6 +396,12 @@ The routes are project-scoped:
 - `POST /api/benchmarks/{id}/lock`
 - `POST /api/benchmarks/{id}/trials/preview` and `/trials`
 - `GET /api/benchmark-trials/{id}`
+- `GET /api/benchmarks/{id}/comparison?role=tuning|evaluation`
+- `GET /api/benchmarks/{id}/frames/{frame_id}/image` (frozen reference image)
+- `POST /api/benchmarks/{id}/reports/preview` and `/reports`
+- `GET /api/benchmarks/{id}/reports`
+- `GET /api/benchmark-reports/{id}`
+- `GET /api/benchmark-reports/{id}/export.json` and `/export.html`
 - `GET /api/benchmark-configs/{id}/frames/{frame_id}/input-image` (exact local PNG)
 - `GET` and `PUT /api/benchmark-outputs/{id}/correction`
 - `POST /api/benchmark-outputs/{id}/timer`
@@ -339,6 +409,8 @@ The routes are project-scoped:
 
 Creation uses preview fingerprints; external trials additionally require a signed,
 unexpired preview token, `approve_external: true` and `max_cost_usd`. Correction and
-timer changes use revision checks. Schema 15 stores independent benchmarks, configurations, trials, outputs,
-correction revisions and timer receipts. Workspace backups include these records
-and frozen benchmark images. No new background service is required.
+timer changes use revision checks. Schema 16 stores independent benchmarks, configurations,
+trials, outputs, correction revisions, timer receipts and immutable comparison reports.
+Workspace backups include these records and frozen benchmark images. Report creation
+uses the preview fingerprint and an atomic read of the comparison evidence.
+No new background service is required.

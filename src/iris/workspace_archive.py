@@ -26,6 +26,7 @@ from iris.store import (
     SCHEMA_V12,
     SCHEMA_V13,
     SCHEMA_V14,
+    SCHEMA_V15,
     SCHEMA_VERSION,
     TABLES,
     now,
@@ -34,11 +35,18 @@ from iris.taxonomies import validate_taxonomy_records
 
 PROTOCOL = "iris-workspace-archive-v1"
 FORMAT_VERSION = 1
-SCHEMAS = {12: SCHEMA_V12, 13: SCHEMA_V13, 14: SCHEMA_V14, SCHEMA_VERSION: SCHEMA}
+SCHEMAS = {
+    12: SCHEMA_V12,
+    13: SCHEMA_V13,
+    14: SCHEMA_V14,
+    15: SCHEMA_V15,
+    SCHEMA_VERSION: SCHEMA,
+}
 SCHEMA_TABLES = {
     12: TABLES - BENCHMARK_TABLES - {"projects", "taxonomy_versions"},
     13: TABLES - BENCHMARK_TABLES - {"taxonomy_versions"},
     14: TABLES - BENCHMARK_TABLES,
+    15: TABLES - {"benchmark_reports"},
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -643,6 +651,22 @@ def _validate_benchmarks(connection, root, require):
             or not isinstance(_parse_json(row["segments"]), list)
         ):
             raise ArchiveError("Benchmark timer has invalid measured intervals")
+    if connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='benchmark_reports'"
+    ).fetchone():
+        from iris.benchmark_reports import validate_report_row
+
+        for row in connection.execute("SELECT * FROM benchmark_reports"):
+            try:
+                validate_report_row(
+                    _decode(row),
+                    connection=connection,
+                    manifest=benchmark_rows[row["benchmark_id"]][1],
+                )
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError(
+                    "Benchmark report snapshot or original evidence is invalid"
+                ) from exc
 
 
 def validate_database(

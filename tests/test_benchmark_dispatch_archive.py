@@ -13,7 +13,7 @@ from iris import benchmark_dispatch as dispatch
 from iris import multimodal_provider as provider
 from iris.benchmark import PROTOCOL, open_benchmark_image
 from iris.benchmark_multimodal import MULTIMODAL_SCORING, prepared_input
-from iris.store import Store, _encode, new_id, now
+from iris.store import SCHEMA_VERSION, Store, _encode, new_id, now
 from iris.workspace_archive import ArchiveError, create_archive
 from iris.workspace_restore import inspect_archive, restore_archive
 
@@ -159,7 +159,7 @@ def test_external_journal_round_trip_is_offline_and_preserves_every_byte(
     monkeypatch.setattr(provider, "OpenAIPreannotator", forbidden)
     monkeypatch.setattr(provider.http.client, "HTTPSConnection", forbidden)
     archive = create_archive(store.root, tmp_path / "external.zip")
-    assert archive["manifest"]["schema_version"] == 15
+    assert archive["manifest"]["schema_version"] == SCHEMA_VERSION
     restored = tmp_path / "restored"
     with monkeypatch.context() as context:
         context.setattr(Store, "__init__", forbidden)
