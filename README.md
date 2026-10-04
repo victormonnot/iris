@@ -46,8 +46,8 @@ Use **Manage classes** to publish custom class IDs, names and definitions for
 manual annotation and COCO imports. Each image retains its saved class version;
 adopting newer definitions creates a draft that requires human review. The initial
 `iris-objects-v1` Person / Car definitions remain available. Custom datasets can
-be frozen, trained, evaluated and exported as COCO. Multimodal candidate review
-and disagreement ranking still require the original definitions. See [class versions](docs/classes.md) for the supported workflow.
+be frozen, trained, evaluated and exported as COCO. Multimodal candidate review still requires the original definitions. Direct detector
+preannotation and review signals support compatible custom definitions. See [class versions](docs/classes.md) for the supported workflow.
 IRIS has no dependency on ARGOS, flight telemetry or a drone-specific file format;
 recordings from any supported source can use the same local workflow.
 See [projects and compatibility](docs/projects.md).
@@ -299,6 +299,20 @@ Every save creates a revision with provenance. Concurrent edits produce a reload
 conflict instead of silently replacing another revision. Editing a validated frame
 requires a fresh human validation.
 
+### Generate new proposals
+
+In **Annotation → Generate proposals**, choose selected images and an installed
+local detector. Preview the class coverage and work, then explicitly start the
+run. No existing boxes or prior comparison are required. Official detectors use
+explicit COCO mappings; a trained detector requires the image's exact saved class
+version. Uncovered classes remain a manual task.
+
+Completed image outputs retain their raw predictions and reviewable proposals. Inspect low-score
+or uncertain proposals, correct classes and geometry, add missed objects and save
+your review. An empty detector output never becomes a validated negative image.
+No model downloads or external calls occur in this workflow. See
+[preannotation and provider contracts](docs/preannotation.md).
+
 ### Local review batches
 
 Expand **Local batch review** in Annotation to choose up to 25 selected frames
@@ -513,12 +527,13 @@ current single-JSON COCO importer can directly restore.
 
 Open **Annotation** to see the selected frames in the current session and how
 many still need review. Filter unannotated images, drafts, pending proposals or
-validated frames. New proposals make a previously validated image need review
+validated frames, or focus on uncertain proposals and possible omissions. These
+filters are inspection hints, not accuracy measurements. New proposals make a previously validated image need review
 again. An explicitly validated empty image counts as reviewed.
 
 Optionally choose a completed comparison of two models or two inference variants
 of the same model and **Model disagreement
-first**. The queue compares saved person/car boxes by class and overlap at the
+first**. The queue compares saved boxes mapped to the image's saved class definitions by class and overlap at the
 displayed confidence and IoU thresholds. Each image explains its unmatched
 detections or class conflicts. Equal detection counts can still disagree about
 positions. Missing predictions and two empty outputs have distinct explanations;

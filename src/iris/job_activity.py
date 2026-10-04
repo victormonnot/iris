@@ -120,6 +120,16 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             )
         ]
     parent_id = job["params"].get("recovery_of")
+    preannotation = bool(
+        job["kind"] == "infer" and target and target.get("config", {}).get("preannotation")
+    )
+    if preannotation:
+        add(
+            "suggestions",
+            "Proposals saved for human review",
+            len(store.list("annotation_suggestions", job_id=job_id)),
+            target["id"],
+        )
     if parent_id:
         parent = store.get("jobs", parent_id)
         if parent is None or record_project(store, "jobs", parent) != project_id:
@@ -154,6 +164,11 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "A new extraction uses a new sampling plan; it does not resume the earlier attempt."
         ),
     }[job["kind"]]
+    if preannotation:
+        next_reason = (
+            "Preview an explicit new proposal run. Saved predictions, proposals and human "
+            "corrections from this attempt remain available."
+        )
     return {
         "job": job,
         "context": {
@@ -178,7 +193,7 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         },
         "recovery": {"can_check": can_check, "reason": reason},
         "next_action": {
-            "workspace": WORKSPACES[job["kind"]],
+            "workspace": "annotation" if preannotation else WORKSPACES[job["kind"]],
             "label": "Prepare a new run",
             "reason": next_reason,
         },

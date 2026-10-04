@@ -153,9 +153,26 @@ Publication uses compare-and-swap on the project's current version. Adoption cre
 a new draft revision, retains earlier revisions and requires human validation again.
 Custom detector proposal mappings use explicitly configured COCO IDs. Frozen datasets
 and COCO exports support custom classes, as do Faster R-CNN training, inference,
-evaluation and reports. Multimodal candidate review and disagreement ranking retain
+evaluation, disagreement review and reports. Multimodal candidate review retains
 the original definitions. See [class version behavior](classes.md).
 An unsupported class is not silently mapped to a superficially similar class.
+
+Direct detector preannotation reuses comparison runs and the sequential inference
+worker. `config.preannotation` freezes each frame's source hash, saved annotation
+revision, class version, explicit output mapping and threshold. Preparation is
+read-only; confirmation rechecks its fingerprint under a write transaction. Repeated
+confirmation returns the same receipt, while a fresh preview permits another run.
+Native predictions are saved before proposal validation. Each frame's publication
+receipt and proposals are committed together; a changed annotation is a visible
+conflict that preserves raw output and human work. Cancellation preserves partial
+results and never automatically restarts the detector.
+
+`preannotation_contracts.py` describes implemented capabilities and validates
+bounded box outputs, source class identity and explicit coordinate transforms.
+The real detector uses this normalization boundary. Fixtures exercise possible
+future adapter shapes; they are not exposed as executable providers. Candidate
+reviewers declare their existing geometry and class limits. See
+[preannotation](preannotation.md). These records use schema 14 without migration.
 
 Assisted annotation uses a configurable local Ollama endpoint, initially
 [Qwen3-VL 4B Instruct](https://ollama.com/library/qwen3-vl:4b-instruct). The

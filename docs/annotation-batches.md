@@ -1,8 +1,15 @@
-# Local annotation batches
+# Local candidate review batches
 
 A batch prepares model review proposals for several selected frames in one
 session. Each image has its own durable assistance record and processing job.
 Saved human annotations remain unchanged until you explicitly review and save them.
+
+To generate **new boxes** directly from a ready local detector, use **Annotation →
+Generate proposals** instead. Its single-image or batch preview checks class
+coverage and saved inputs before explicit creation. That detector workflow also
+supports custom classes through compatible checkpoints or explicit official
+mappings; it does not require existing boxes. See the
+[annotation editor](annotation-editor.md#generate-and-review-proposals).
 
 ## Prepare a batch
 
@@ -19,6 +26,7 @@ Saved human annotations remain unchanged until you explicitly review and save th
    eligible reviews. Changing the selection, source, model or review settings
    requires a new preview.
 
+This candidate-review workflow uses the original saved person/car taxonomy.
 Every eligible image must have **1–8 person/car candidate boxes**. Zero candidates,
 too many candidates, missing predictions or image files, and an already active
 assistance job make an image ineligible. Imported proposals are not saved labels:
@@ -40,10 +48,15 @@ results or prevent later images from running.
 Open a frame from the batch results to review its proposals in the annotation
 editor. You can accept, correct or reject them, then explicitly validate the frame.
 New proposals do not overwrite unsaved editor changes or create human revisions.
+The review queue's uncertainty filter highlights pending uncertain recommendations
+and low detector scores. Its omission hints only direct attention; this candidate
+review does not search the image for missed objects. Review the whole image and
+add missing labels manually. Scores and model uncertainty are not interchangeable
+or calibrated measures of correctness.
 
 ## Cancel, restart and retry
 
-**Cancel batch** cancels waiting images and requests cancellation of an active
+**Cancel remaining frames** cancels waiting images and requests cancellation of an active
 review. Already saved proposals, raw responses and provenance remain available.
 The local provider may continue computing briefly after the worker is stopped;
 cancellation is not a guarantee of immediate GPU release.
@@ -53,7 +66,7 @@ become **interrupted**; they are not automatically restarted. A batch with mixed
 terminal outcomes is shown as **partial**, with each outcome visible. Progress
 alone does not indicate success: inspect image statuses and proposal counts.
 
-For a stopped batch, prepare a new batch for unfinished images from its details.
+For a stopped batch, use **Check unfinished frames** in its details.
 The preview includes failed, cancelled and interrupted images with no saved
 proposals; successful images and images with proposals remain in the earlier batch.
 Current saved inputs are checked again, and creation requires explicit confirmation.

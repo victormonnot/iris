@@ -26,7 +26,9 @@
     <script src="/static/comparison-replay.js" defer></script>
     <script src="/static/comparison.js" defer></script>
     <script src="/static/annotation-tools.js" defer></script>
+    <script src="/static/preannotation-tools.js" defer></script>
     <script src="/static/annotation.js" defer></script>
+    <script src="/static/preannotations.js" defer></script>
     <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
@@ -608,6 +610,49 @@
             </section>
           </section>
           <section id="annotation-workspace" aria-label="Annotation" hidden>
+            <details id="preannotations" class="panel preannotations">
+              <summary>Generate proposals <span class="muted small">· Local detector, one image or a batch</span></summary>
+              <div class="preannotation-body">
+                <p class="field-hint">Generate new boxes with an available local detector. No model is downloaded here. Proposals never replace saved human labels or validate a frame.</p>
+                <div class="preannotation-setup">
+                  <fieldset class="preannotation-selection">
+                    <legend>Images to process</legend>
+                    <label for="preannotation-scope">Frame selection</label><select id="preannotation-scope"><option value="current">Open frame</option><option value="batch">Choose a batch</option></select>
+                    <p id="preannotation-current" class="field-hint" role="status"></p>
+                    <div id="preannotation-batch" hidden>
+                      <div class="preannotation-actions"><span id="preannotation-selection-count" class="small muted">0 chosen · maximum 25</span><button id="preannotation-select-all" type="button" class="text-button">Select all</button><button id="preannotation-clear" type="button" class="text-button">Clear</button></div>
+                      <p class="field-hint">Uses images selected in Data intake. This checklist does not change dataset selection.</p>
+                      <div id="preannotation-frames" class="assistance-batch-frames"></div>
+                    </div>
+                  </fieldset>
+                  <div class="preannotation-settings">
+                    <div><label for="preannotation-name">Run name</label><input id="preannotation-name" value="Detector proposals" maxlength="160" /></div>
+                    <div><label for="preannotation-model">Local detector</label><select id="preannotation-model"><option value="">Open this panel to check models</option></select><p id="preannotation-model-status" class="field-hint" role="status"></p><button id="preannotation-refresh-models" type="button" class="text-button">Refresh detectors</button></div>
+                    <div class="preannotation-inference-settings">
+                      <div><label for="preannotation-threshold">Proposal score ≥</label><input id="preannotation-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
+                      <div><label for="preannotation-mode">Inference mode</label><select id="preannotation-mode"><option value="full">Full image</option><option value="tiled">Overlapping tiles</option></select></div>
+                      <div><label for="preannotation-device">Device</label><select id="preannotation-device"><option value="cpu">CPU</option><option value="cuda">CUDA GPU</option></select></div>
+                    </div>
+                    <div id="preannotation-tiled" class="preannotation-inference-settings" hidden>
+                      <div><label for="preannotation-tile-size">Tile size · pixels</label><input id="preannotation-tile-size" type="number" min="128" max="2048" step="1" value="640" /></div>
+                      <div><label for="preannotation-overlap">Overlap · fraction</label><input id="preannotation-overlap" type="number" min="0" max="0.5" step="any" value="0.2" /></div>
+                    </div>
+                    <p class="field-hint">Scores depend on the detector and are not calibrated probabilities of correctness. Check the whole image for missed targets even when no box is returned.</p>
+                  </div>
+                </div>
+                <details class="preannotation-capabilities"><summary>Available operations and class support</summary><div id="preannotation-capabilities"></div></details>
+                <p id="preannotation-error" class="inline-error" role="alert" hidden></p>
+                <div class="preannotation-actions"><button id="preannotation-preview" type="button" class="button button-secondary" disabled>Preview proposals run</button><button id="preannotation-start" type="button" class="button" disabled>Create proposals</button></div>
+                <p class="field-hint">Preview checks saved inputs without inference. Creating runs the local detector and saves its raw output and separate proposals. Save or discard unsaved edits first.</p>
+                <div id="preannotation-preview-result" class="preannotation-preview-result" hidden><p id="preannotation-preview-summary" class="small" role="status"></p><p id="preannotation-preview-work" class="field-hint"></p><ul id="preannotation-preview-frames" class="assistance-batch-results"></ul><ul id="preannotation-preview-warnings" class="field-hint"></ul></div>
+                <section class="preannotation-history">
+                  <div class="preannotation-actions"><h3>Saved proposal runs</h3><button id="preannotation-refresh-history" type="button" class="text-button">Refresh history</button></div>
+                  <label class="sr-only" for="preannotation-history">Saved proposal run</label><select id="preannotation-history"><option value="">No proposal runs in this session</option></select>
+                  <p id="preannotation-history-error" class="inline-error" role="alert" hidden></p>
+                  <div id="preannotation-detail" hidden><p id="preannotation-detail-summary" class="small" role="status"></p><progress id="preannotation-progress" max="1" value="0" aria-label="Proposal run progress"></progress><p id="preannotation-detail-config" class="field-hint"></p><div class="preannotation-actions"><button id="preannotation-job" type="button" class="text-button">Job details and cancellation</button><button id="preannotation-raw" type="button" class="text-button">Inspect saved inputs and raw outputs</button></div><ul id="preannotation-detail-frames" class="assistance-batch-results"></ul></div>
+                </section>
+              </div>
+            </details>
             <details id="assistance-batches" class="panel assistance-batches">
               <summary>Local batch review <span class="muted small">· Prepare proposals for several frames</span></summary>
               <div class="assistance-batch-body">
@@ -669,6 +714,8 @@
                   <option value="unannotated">Unannotated</option>
                   <option value="draft">Draft</option>
                   <option value="validated">Validated</option>
+                  <option value="uncertain">Low scores or uncertain recommendations</option>
+                  <option value="possible_omissions">Possible omissions · inspect manually</option>
                 </select></div>
                 <div><label for="review-queue-order">Order</label><select id="review-queue-order">
                   <option value="source">Source order</option>
@@ -679,6 +726,7 @@
                 <div><label for="review-queue-iou">Matching IoU ≥</label><input id="review-queue-iou" type="number" min="0" max="1" step="any" value="0.5" /></div>
               </div>
               <p id="review-queue-method" class="field-hint">The queue includes selected frames. Selection for datasets is unchanged.</p>
+              <p class="field-hint">Low scores, uncertain recommendations and possible omissions are review hints, not proven errors. No saved target detections does not prove that the image is empty.</p>
               <details id="review-queue-method-details" class="review-queue-method-details" hidden>
                 <summary>How to interpret model disagreement</summary>
                 <p id="review-queue-limits" class="field-hint"></p>
@@ -1086,7 +1134,7 @@
                         type="number"
                         min="0"
                         max="1"
-                        step="0.05"
+                        step="any"
                         value="0.5"
                       />
                     </div>
@@ -1102,6 +1150,7 @@
                     Matching trained classes or explicitly mapped official detector classes are imported. Importing
                     does not validate any labels.
                   </p>
+                  <div class="annotation-proposal-filters"><div><label for="annotation-proposal-filter">Show proposals</label><select id="annotation-proposal-filter"><option value="all">All proposals</option><option value="pending">Pending human decisions</option><option value="low_confidence">Detector scores below 0.5</option><option value="uncertain">Uncertain model recommendations</option></select></div><p id="annotation-proposal-count" class="field-hint" role="status"></p></div>
                   <div
                     id="annotation-proposals"
                     class="annotation-proposals"

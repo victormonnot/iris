@@ -68,6 +68,7 @@ project definitions. Standalone model packaging and external deployment formats
 are separate work; no ONNX, TensorRT or embedded-runtime export is provided here.
 
 The existing CPU scopes and step limits apply to custom classes. Multimodal
-candidate review and disagreement ranking retain their original Person / Car
-scope. A short synthetic training run verifies the software path, not detector
+candidate review retains its original Person / Car scope. Direct detector
+preannotation and disagreement review support compatible frozen custom classes.
+A short synthetic training run verifies the software path, not detector
 quality on real images. No model weights or datasets are downloaded automatically.

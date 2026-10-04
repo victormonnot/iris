@@ -4,6 +4,7 @@
   const svgNS = "http://www.w3.org/2000/svg";
   const tools = window.IrisAnnotationTools;
   const taxonomyTools = window.IRISTaxonomyTools;
+  const proposalTools = window.IRISPreannotationTools;
   const editor = {
     sessionId: null,
     frameId: null,
@@ -197,6 +198,7 @@
   }
 
   function updateStatus() {
+    publishContext();
     for (const button of window.document.querySelectorAll("#review-queue-list button"))
       button.disabled = editor.busy || editor.advancing || editor.loading || Boolean(editor.drag);
     const document = editor.document;
@@ -356,7 +358,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(`iris.review-queue.${editor.sessionId}`));
       if (saved) {
-        if (["all", "needs_review", ...Object.keys(reviewLabels)].includes(saved.filter))
+        if (["all", "needs_review", "uncertain", "possible_omissions", ...Object.keys(reviewLabels)].includes(saved.filter))
           queue.filter = saved.filter;
         if (["source", "disagreement"].includes(saved.order)) queue.order = saved.order;
         if (typeof saved.comparisonId === "string") queue.comparisonId = saved.comparisonId;
@@ -390,10 +392,7 @@
   }
 
   function queueFrames() {
-    const frames = (queue.data?.frames || []).filter((frame) =>
-      queue.filter === "all" ||
-      (queue.filter === "needs_review" ? frame.review_status !== "validated" : frame.review_status === queue.filter),
-    );
+    const frames = (queue.data?.frames || []).filter((frame) => proposalTools.reviewMatches(frame, queue.filter));
     if (queue.order !== "disagreement" || !queue.comparisonId) return frames;
     const rank = { disagreement: 0, unavailable: 1, no_detections: 2, agreement: 3 };
     // Test frames keep their source positions: this is review, not training selection.
@@ -442,13 +441,14 @@
     $("#review-queue-warning").hidden = !queue.message;
     const comparison = queue.data?.comparison;
     const modelNames = comparison?.models?.map((model) => model.name).join(" / ") || comparison?.name;
-    $("#review-queue-method-details").hidden = !comparison;
+    $("#review-queue-method-details").hidden = !(queue.data?.warnings || []).length;
     $("#review-queue-limits").textContent = (queue.data?.warnings || []).join(" ");
     $("#review-queue-method").textContent = !comparison
       ? "The queue includes selected frames in source order. Choose a saved, completed two-run comparison to inspect disagreement between models or inference modes. Selection for datasets is unchanged."
       : `${modelNames} · confidence ≥ ${queue.data.config.confidence_threshold} · matching IoU ≥ ${queue.data.config.iou_threshold}. ${queue.order === "disagreement" ? "Highest unmatched fraction first, then unavailable, no detections and agreement; test frames keep their source positions. " : "Source order. "}Disagreement is a review hint, not accuracy. All frames still require human inspection.`;
     const list = $("#review-queue-list");
     const scrollTop = list.scrollTop;
+    const openHints = new Set([...list.querySelectorAll("details[open]")].map((item) => item.dataset.frameId));
     const focusedId = list.contains(window.document.activeElement) ? window.document.activeElement.dataset.frameId : null;
     list.replaceChildren();
     const frames = queueFrames();
@@ -479,9 +479,31 @@
         if (frame.signal?.reason) signal.title = frame.signal.reason;
         detail.append(signal);
       }
+      const hints = frame.hints;
+      if (hints && (hints.low_confidence_count || hints.uncertain_count || hints.possible_omission)) {
+        const labels = [];
+        if (hints.low_confidence_count) labels.push(`${hints.low_confidence_count} scores below 0.5`);
+        if (hints.uncertain_count) labels.push(`${hints.uncertain_count} uncertain recommendations`);
+        if (hints.possible_omission) labels.push("Check for possible omissions");
+        const hint = node("span", "review-queue-signal unavailable", labels.join(" · "));
+        hint.title = (hints.reasons || []).join(" ");
+        detail.append(hint);
+      }
       button.append(image, detail);
       button.addEventListener("click", () => navigate(frame.id));
       item.append(button);
+      if (hints?.reasons?.length) {
+        const explanation = node("details", "review-queue-hint-details");
+        explanation.dataset.frameId = frame.id;
+        explanation.open = openHints.has(frame.id);
+        explanation.append(node("summary", "", "Why this review hint?"));
+        for (const reason of hints.reasons) explanation.append(node("p", "field-hint", reason));
+        if (hints.prediction_id)
+          explanation.append(node("p", "field-hint", `Saved detector output: ${hints.prediction_id}`));
+        if (hints.sources_truncated)
+          explanation.append(node("p", "field-hint", "Only the bounded recent detector history was inspected."));
+        item.append(explanation);
+      }
       list.append(item);
     }
     list.scrollTop = scrollTop;
@@ -570,6 +592,7 @@
     else {
       editor.frameId = null;
       editor.document = null;
+      publishContext();
       editor.request++;
       $("#annotation-editor").hidden = true;
       $("#annotation-empty").hidden = false;
@@ -584,6 +607,7 @@
     editor.loading = true;
     editor.document = null;
     editor.dirty = false;
+    publishContext();
     $("#annotation-editor").hidden = true;
     $("#annotation-empty").hidden = true;
     error(null);
@@ -887,6 +911,9 @@
     const list = $("#annotation-proposals");
     list.replaceChildren();
     const suggestions = editor.document.suggestions || [];
+    const filter = $("#annotation-proposal-filter").value;
+    const shown = suggestions.filter((proposal) => proposalTools.proposalMatches(proposal, filter, decisionFor(proposal)));
+    $("#annotation-proposal-count").textContent = `${shown.length} of ${suggestions.length} proposals shown · ${pending().length} pending across all filters`;
     if (!suggestions.length)
       list.append(
         node(
@@ -895,7 +922,9 @@
           "No proposals for this frame. Import a saved detector output or draw your labels directly.",
         ),
       );
-    for (const proposal of suggestions) {
+    if (suggestions.length && !shown.length)
+      list.append(node("p", "field-hint", "No proposals match this filter. Hidden proposals still need a decision before validation."));
+    for (const proposal of shown) {
       const decision = decisionFor(proposal);
       const item = node("article", `annotation-proposal ${decision}`);
       const heading = node("div", "annotation-proposal-heading");
@@ -1535,23 +1564,28 @@
     );
     assistance.type = "button";
     assistance.addEventListener("click", async () => {
+      const frameId = editor.frameId;
+      const sessionId = editor.sessionId;
       try {
-        showRecord("Model review records", await api(url("assistance")));
+        const records = await api(url("assistance"));
+        if (frameId === editor.frameId && sessionId === editor.sessionId)
+          showRecord("Model review records", records);
       } catch (failure) {
-        reportFailure(failure);
+        if (frameId === editor.frameId && sessionId === editor.sessionId) reportFailure(failure);
       }
     });
     list.append(assistance);
   }
 
   async function inspectRevision(revision) {
+    const frameId = editor.frameId;
+    const sessionId = editor.sessionId;
     try {
-      showRecord(
-        `Saved revision ${revision} · read only`,
-        await api(url(`annotation/revisions/${revision}`)),
-      );
+      const record = await api(url(`annotation/revisions/${revision}`));
+      if (frameId === editor.frameId && sessionId === editor.sessionId)
+        showRecord(`Saved revision ${revision} · read only`, record);
     } catch (failure) {
-      reportFailure(failure);
+      if (frameId === editor.frameId && sessionId === editor.sessionId) reportFailure(failure);
     }
   }
 
@@ -2129,6 +2163,21 @@
         true,
       );
     }
+  });
+  function publishContext() {
+    window.dispatchEvent(new CustomEvent("iris:annotation-context", { detail: {
+      session_id: editor.sessionId, frame_id: editor.document?.frame.id || null,
+      taxonomy: editor.document?.taxonomy || null, revision: editor.document?.revision,
+      dirty: editor.dirty, busy: editor.busy || editor.loading || editor.advancing || Boolean(editor.drag),
+    } }));
+  }
+  window.addEventListener("iris:annotation-context-request", publishContext);
+  window.addEventListener("iris:preannotations-updated", () => {
+    refreshCurrent();
+    scheduleQueue(true);
+  });
+  $("#annotation-proposal-filter").addEventListener("change", () => {
+    if (editor.document) renderProposals();
   });
   window.addEventListener("iris:annotation-open-frame", async (event) => {
     const id = event.detail?.frame_id;

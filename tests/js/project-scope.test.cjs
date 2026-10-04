@@ -51,6 +51,8 @@ test("detail, media, exports and previews are scoped with their existing paramet
     "/api/experiments/report/export?include_images=true&expected_revision=2",
     "/api/assistance-previews/preview/images/image", "/api/jobs/job/log",
     "/api/dataset-imports/import/images/image", "/api/video-reviews/review/images/image",
+    "/api/preannotation-providers", "/api/sessions/session/preannotations/preview",
+    "/api/preannotations/proposal-run",
   ]) {
     const url = new URL(scope.url(path), "http://localhost:8000");
     assert.equal(url.searchParams.get("project_id"), "inventory");

@@ -62,8 +62,10 @@ Custom releases also support Faster R-CNN training, inference, evaluation, error
 analysis and experiment reports. Trained parents must share the exact saved class
 version. Official evaluation baselines require an explicit COCO mapping for every
 target class. Matching trained predictions can become reviewable proposals without
-COCO mappings. See [custom training](custom-training.md). Disagreement ranking and
-multimodal candidate review still use the original Person / Car definitions.
+COCO mappings. Direct [preannotation](preannotation.md) can generate those proposals
+without an earlier comparison. Disagreement review also supports compatible saved
+custom definitions. See [custom training](custom-training.md). Multimodal candidate
+review still uses the original Person / Car definitions.
 Existing releases and results remain usable. No provider or network call is required for the manual
 workflow or dataset export. See [frozen datasets](dataset-export.md).
 

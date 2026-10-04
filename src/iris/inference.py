@@ -347,6 +347,11 @@ def run_comparison(
         comparison["model_ids"],
         comparison["config"],
     )
+    preannotation = "preannotation" in config
+    if preannotation:
+        from iris.preannotation import save_preannotation_prediction, validate_preannotation
+
+        validate_preannotation(store, comparison)
     result = {
         "comparison_id": comparison_id,
         "frames_total": len(frame_ids),
@@ -354,6 +359,13 @@ def run_comparison(
         "predictions_created": 0,
         "cancelled": False,
     }
+    if preannotation:
+        result["preannotation"] = {
+            "frames": [],
+            "frames_ready": 0,
+            "frames_issues": 0,
+            "suggestions_created": 0,
+        }
     lanes = comparison_lanes(comparison)
     inference = config.get("inference", {"mode": "full"})
     if inference["mode"] != "full":
@@ -471,42 +483,88 @@ def run_comparison(
                             )
                         else:
                             prediction = detector.predict(image)
-                            prediction["timing"].update(
-                                forward_passes=1,
-                                tile_count=0,
-                                crop_ms=0.0,
-                                merge_ms=0.0,
-                            )
+                            if not preannotation or (
+                                isinstance(prediction, dict)
+                                and isinstance(prediction.get("timing"), dict)
+                            ):
+                                prediction["timing"].update(
+                                    forward_passes=1,
+                                    tile_count=0,
+                                    crop_ms=0.0,
+                                    merge_ms=0.0,
+                                )
                     elapsed_ms = max(0, time.perf_counter() - started - progress_overhead) * 1000
-                    _validate_prediction(prediction, frame)
-                    if contracts is not None:
-                        validate_output_labels(prediction["detections"], contracts[model_id])
-                    if cancelled():
-                        raise TiledInferenceCancelled()
-                    store.insert(
-                        "predictions",
-                        {
-                            "id": new_id(),
-                            "comparison_id": comparison_id,
-                            "run_id": run["id"],
-                            "frame_id": frame["id"],
-                            "model_id": model_id,
-                            "detections": prediction["detections"],
-                            "input_size": prediction["input_size"],
-                            "metadata": prediction.get("metadata", {}),
-                            "timing": {
-                                **prediction["timing"],
+                    if preannotation:
+                        timing = (
+                            prediction.get("timing", {}) if isinstance(prediction, dict) else {}
+                        )
+                        receipt = save_preannotation_prediction(
+                            store,
+                            comparison,
+                            run,
+                            frame,
+                            prediction,
+                            {
+                                **(timing if isinstance(timing, dict) else {}),
                                 "decode_ms": (decoded - started) * 1000,
                                 "total_ms": elapsed_ms,
                             },
-                            "created_at": now(),
-                        },
-                    )
+                            cancelled,
+                        )
+                        result["preannotation"]["frames"].append(
+                            {
+                                "frame_id": frame["id"],
+                                **receipt,
+                            }
+                        )
+                        result["preannotation"]["frames_ready"] += receipt["state"] in {
+                            "pending_review",
+                            "no_proposals",
+                        }
+                        result["preannotation"]["frames_issues"] += receipt["state"] in {
+                            "conflict",
+                            "invalid_output",
+                        }
+                        result["preannotation"]["suggestions_created"] += receipt["proposal_count"]
+                    else:
+                        _validate_prediction(prediction, frame)
+                        if contracts is not None:
+                            validate_output_labels(prediction["detections"], contracts[model_id])
+                        if cancelled():
+                            raise TiledInferenceCancelled()
+                        store.insert(
+                            "predictions",
+                            {
+                                "id": new_id(),
+                                "comparison_id": comparison_id,
+                                "run_id": run["id"],
+                                "frame_id": frame["id"],
+                                "model_id": model_id,
+                                "detections": prediction["detections"],
+                                "input_size": prediction["input_size"],
+                                "metadata": prediction.get("metadata", {}),
+                                "timing": {
+                                    **prediction["timing"],
+                                    "decode_ms": (decoded - started) * 1000,
+                                    "total_ms": elapsed_ms,
+                                },
+                                "created_at": now(),
+                            },
+                        )
                     result["predictions_created"] += 1
+                    if preannotation:
+                        with store.connect() as conn:
+                            conn.execute(
+                                "UPDATE jobs SET result=? WHERE id=? "
+                                "AND status IN ('queued','running')",
+                                (json.dumps(result, allow_nan=False), comparison["job_id"]),
+                            )
                     progress(
                         result["predictions_created"] / total,
                         f"Saved {result['predictions_created']} / {total} run/frame predictions",
                     )
+                    if preannotation and cancelled():
+                        raise TiledInferenceCancelled()
         except TiledInferenceCancelled:
             result["cancelled"] = True
             break

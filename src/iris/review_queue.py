@@ -4,9 +4,12 @@ from iris.annotations import COCO_MAPPING, TAXONOMY, _coordinates, _finite_numbe
 from iris.datasets import _reservations
 from iris.inference import comparison_lanes
 from iris.models import COCO_CATEGORIES, get_spec
+from iris.prediction_taxonomy import annotation_mapping, validate_output_labels
+from iris.review_hints import review_hints
 from iris.store import Store, _decode
+from iris.taxonomies import _get
 
-PROTOCOL = "iris-review-disagreement-v1"
+PROTOCOL = "iris-review-disagreement-v2"
 MATCHING = (
     "Maximum-cardinality same-class matching at the chosen IoU; deterministic augmenting "
     "paths visit original left indices, then neighbors by descending IoU and right index. "
@@ -18,7 +21,8 @@ WARNINGS = [
     "Confidence scores are not calibrated across models.",
     "Agreement and no detections can both hide missed objects. Review the whole image; "
     "neither result validates an annotation.",
-    "Only saved person/car predictions above the chosen confidence threshold are compared. "
+    "Only saved predictions mapped to this image's class definitions above the chosen "
+    "confidence threshold are compared. Both sources must cover every target class. "
     "Each detector's native filtering and detection limits already apply.",
     "Keep reserved train, validation and test splits. Prioritizing a review never changes "
     "selection, annotations or split assignments.",
@@ -33,15 +37,15 @@ def _thresholds(confidence_threshold, iou_threshold):
         raise ValueError("IoU threshold must be greater than 0 and at most 1")
 
 
-def _filtered(detections, width, height, threshold):
-    if not isinstance(detections, list) or len(detections) > 100:
-        raise ValueError("Saved detections must be a list of at most 100 native outputs")
+def _filtered(detections, width, height, threshold, mapping=None, limit=100):
+    if not isinstance(detections, list) or len(detections) > limit:
+        raise ValueError(f"Saved detections must be a list of at most {limit} native outputs")
     result = []
     for index, detection in enumerate(detections):
         if not isinstance(detection, dict):
             raise ValueError("Each saved detection must be an object")
         category, score = detection.get("label_id"), detection.get("score")
-        if type(category) is not int or category not in _COCO_IDS:
+        if type(category) is not int or (mapping is None and category not in _COCO_IDS):
             raise ValueError("Saved detections must use canonical COCO category IDs")
         if not _finite_number(score) or not 0 <= score <= 1:
             raise ValueError("Saved detection confidence must be between 0 and 1")
@@ -49,8 +53,9 @@ def _filtered(detections, width, height, threshold):
         area = (box[2] - box[0]) * (box[3] - box[1])
         if not _finite_number(area) or area <= 0:
             raise ValueError("Saved detection box area must be finite and positive")
-        if category in COCO_MAPPING and score >= threshold:
-            result.append({"index": index, "category": category, "box": box})
+        resolved = COCO_MAPPING if mapping is None else mapping
+        if category in resolved and score >= threshold:
+            result.append({"index": index, "category": resolved[category], "box": box})
     return result
 
 
@@ -114,6 +119,9 @@ def assess_disagreement(
     height,
     confidence_threshold=0.5,
     iou_threshold=0.5,
+    *,
+    mappings=None,
+    limits=(100, 100),
 ) -> dict:
     """Match canonical person/car outputs without using any reference annotations.
 
@@ -123,8 +131,9 @@ def assess_disagreement(
     _thresholds(confidence_threshold, iou_threshold)
     if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
         raise ValueError("Image dimensions must be positive integers")
-    left = _filtered(left_detections, width, height, confidence_threshold)
-    right = _filtered(right_detections, width, height, confidence_threshold)
+    mappings = mappings or (None, None)
+    left = _filtered(left_detections, width, height, confidence_threshold, mappings[0], limits[0])
+    right = _filtered(right_detections, width, height, confidence_threshold, mappings[1], limits[1])
     matches, matched_left, matched_right = _match(left, right, iou_threshold, same_class=True)
     unmatched_left = [item for item in left if item["index"] not in matched_left]
     unmatched_right = [item for item in right if item["index"] not in matched_right]
@@ -133,7 +142,7 @@ def assess_disagreement(
     unmatched = len(unmatched_left) + len(unmatched_right)
     if not total:
         status = "no_detections"
-        reason = "Neither model has a saved person/car detection above this threshold."
+        reason = "Neither model has a saved target-class detection above this threshold."
     elif unmatched:
         status = "disagreement"
         reason = f"{unmatched} of {total} detections have no same-class match at this IoU."
@@ -192,9 +201,9 @@ def _comparison(conn, session_id, comparison_id):
     if len(lanes) != 2:
         raise ValueError("Choose a comparison of two distinct model/inference runs")
     if not isinstance(comparison["config"], dict) or (
-        comparison["config"].get("taxonomy") != "coco-2017-v1"
+        comparison["config"].get("taxonomy") not in {"coco-2017-v1", "model-specific-v1"}
     ):
-        raise ValueError("The comparison must use the canonical COCO taxonomy")
+        raise ValueError("The comparison must use COCO or frozen model-specific class definitions")
     if not isinstance(comparison["frame_ids"], list) or not all(
         isinstance(frame_id, str) for frame_id in comparison["frame_ids"]
     ):
@@ -240,7 +249,7 @@ def _comparison(conn, session_id, comparison_id):
     return comparison, summary, runs, predictions
 
 
-def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
+def _frame_signal(frame, comparison, runs, predictions, confidence, iou, taxonomy):
     if frame["id"] not in comparison["frame_ids"]:
         return _unavailable("This selected image was not included in the saved comparison.")
     hashes = comparison["config"].get("frame_hashes")
@@ -256,7 +265,7 @@ def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
         for saved_frame_id, run_id in predictions
     ):
         return _unavailable("The saved prediction does not match its model run.")
-    pair = []
+    pair, mappings, limits = [], [], []
     for lane in comparison_lanes(comparison):
         model_id, variant = lane["model_id"], lane["variant"]
         matches = runs.get((model_id, variant), [])
@@ -275,6 +284,46 @@ def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
         inference = metadata.get("inference", {})
         if not isinstance(inference, dict) or inference.get("variant", variant) != variant:
             return _unavailable("The saved run metadata does not match its inference mode.")
+        try:
+            mapping, _ = annotation_mapping(comparison, run, taxonomy)
+            contracts = comparison["config"].get("model_class_contracts")
+            if contracts is not None:
+                validate_output_labels(prediction["detections"], contracts[model_id])
+            else:
+                source_ids = _COCO_IDS
+                if any(
+                    key in metadata
+                    for key in ("training_id", "taxonomy_id", "taxonomy", "output_class_mapping")
+                ):
+                    from iris.model_taxonomy import class_contract
+
+                    legacy = class_contract(metadata)
+                    if legacy["taxonomy_id"] != TAXONOMY["id"]:
+                        raise ValueError("Custom trained outputs require a frozen model contract")
+                    source_ids = set(legacy["output_class_mapping"].values())
+                    mapping = {key: value for key, value in mapping.items() if key in source_ids}
+                if any(
+                    type(item.get("label_id")) is not int or item["label_id"] not in source_ids
+                    for item in prediction["detections"]
+                ):
+                    raise ValueError(
+                        "Saved detection IDs do not match their source class namespace"
+                    )
+            receipt = prediction.get("metadata", {}).get("preannotation")
+            if ("preannotation" in comparison["config"] or receipt is not None) and (
+                not isinstance(receipt, dict)
+                or receipt.get("state") not in {"pending_review", "no_proposals"}
+            ):
+                raise ValueError("Saved preannotation output has no valid publication receipt")
+            if set(mapping.values()) != {item["id"] for item in taxonomy["classes"]}:
+                return _unavailable(
+                    "Both detectors must cover every saved class. Some custom class definitions "
+                    "have no compatible output; inspect the image manually."
+                )
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            return _unavailable(f"Saved class definitions cannot be compared: {exc}")
+        mappings.append(mapping)
+        limits.append(300 if variant == "tiled" else 100)
         pair.append(prediction)
     try:
         signal = assess_disagreement(
@@ -284,6 +333,8 @@ def _frame_signal(frame, comparison, runs, predictions, confidence, iou):
             frame["height"],
             confidence,
             iou,
+            mappings=mappings,
+            limits=limits,
         )
     except ValueError as exc:
         return _unavailable(f"Saved detections cannot be compared: {exc}")
@@ -331,12 +382,13 @@ def review_queue(
             latest = _latest(conn, frame["id"])
             taxonomy_id = latest["taxonomy_id"] if latest else frame["taxonomy_id"]
             decisions = latest["decisions"] if latest else {}
-            suggestions = {
-                row[0]
+            suggestion_records = [
+                _decode(row)
                 for row in conn.execute(
-                    "SELECT id FROM annotation_suggestions WHERE frame_id=?", (frame["id"],)
+                    "SELECT * FROM annotation_suggestions WHERE frame_id=?", (frame["id"],)
                 )
-            }
+            ]
+            suggestions = {item["id"] for item in suggestion_records}
             pending = len(suggestions - decisions.keys())
             annotation_status = latest["status"] if latest else "unannotated"
             status = "pending" if pending else annotation_status
@@ -347,19 +399,20 @@ def review_queue(
             pixel_split = reserved_pixels.get(frame["sha256"])
             if group_split and pixel_split and group_split != pixel_split:
                 raise ValueError("The image and scene group have conflicting reserved splits")
-            if taxonomy_id != TAXONOMY["id"]:
-                signal = _unavailable(
-                    "Detector disagreement supports the original person/car classes only. "
-                    "Review this image manually using its saved custom class definitions."
+            taxonomy = _get(conn, taxonomy_id, session["project_id"])
+            signal = (
+                _frame_signal(
+                    frame,
+                    comparison,
+                    runs,
+                    predictions,
+                    confidence_threshold,
+                    iou_threshold,
+                    taxonomy,
                 )
-            else:
-                signal = (
-                    _frame_signal(
-                        frame, comparison, runs, predictions, confidence_threshold, iou_threshold
-                    )
-                    if saved
-                    else _unavailable("Choose a completed two-run comparison for a review signal.")
-                )
+                if saved
+                else _unavailable("Choose a completed two-run comparison for a review signal.")
+            )
             frames.append(
                 {
                     **{
@@ -386,6 +439,9 @@ def review_queue(
                     "reviewer": latest["reviewer"] if latest else "",
                     "reserved_split": group_split or pixel_split,
                     "signal": signal,
+                    "hints": review_hints(
+                        conn, frame, taxonomy, suggestion_records, decisions, signal
+                    ),
                 }
             )
     return {

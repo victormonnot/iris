@@ -11,7 +11,8 @@ The supported task remains bounding-box detection. Projects start with the
 immutable custom definitions for manual annotation and COCO import; see
 [class versions](classes.md). Custom datasets freeze one class version with images,
 reviewed labels and mappings, and can be trained, evaluated and exported as COCO.
-Multimodal candidate review and disagreement ranking retain the original definitions.
+Direct detector preannotation and disagreement review support compatible custom
+definitions; multimodal candidate review retains the original definitions.
 Moving records between projects is not supported.
 
 ## What belongs to a project

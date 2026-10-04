@@ -78,6 +78,13 @@ from iris.job_activity import job_detail
 from iris.jobs import JobManager
 from iris.media import import_asset, preview_extraction
 from iris.models import catalog
+from iris.preannotation import (
+    create_preannotation,
+    list_preannotations,
+    preannotation_detail,
+    preview_preannotation,
+)
+from iris.preannotation_contracts import provider_capabilities
 from iris.projects import create_project, project_records, record_project
 from iris.review_queue import review_queue
 from iris.selection import SelectionConflict, set_selection
@@ -282,6 +289,22 @@ class SuggestionsInput(BaseModel):
     expected_revision: int = Field(ge=0)
     prediction_id: str
     threshold: float = Field(default=0.5, ge=0, le=1)
+
+
+class PreannotationPreviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    frame_ids: list[str] = Field(min_length=1, max_length=25)
+    model_id: str = Field(min_length=1, max_length=160)
+    threshold: float = Field(default=0.5, ge=0, le=1)
+    inference_mode: Literal["full", "tiled"] = "full"
+    tile_size: int = Field(default=640, ge=1)
+    overlap: float = Field(default=0.2, ge=0, lt=1)
+    device: Literal["cpu", "cuda"] = "cpu"
+
+
+class PreannotationInput(PreannotationPreviewInput):
+    name: str = Field(min_length=1, max_length=160)
+    expected_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class AssistancePreviewInput(BaseModel):
@@ -1234,6 +1257,49 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/annotation-providers")
     def annotation_providers():
         return annotation_catalog()
+
+    @app.get("/api/preannotation-providers")
+    def preannotation_providers():
+        return {
+            "providers": [
+                {
+                    "id": provider,
+                    "label": label,
+                    "local": provider != "alibaba",
+                    "capabilities": provider_capabilities(provider),
+                    "models": models() if provider == "local_detector" else [],
+                }
+                for provider, label in (
+                    ("local_detector", "Local detectors"),
+                    ("ollama", "Local candidate review"),
+                    ("alibaba", "API candidate review"),
+                )
+            ]
+        }
+
+    @app.post("/api/sessions/{session_id}/preannotations/preview")
+    def preannotation_preview(session_id: str, payload: PreannotationPreviewInput):
+        require("sessions", session_id)
+        return batch_action(
+            lambda: preview_preannotation(store, session_id, **payload.model_dump())
+        )
+
+    @app.post("/api/sessions/{session_id}/preannotations", status_code=202)
+    def preannotation_create(session_id: str, payload: PreannotationInput):
+        require("sessions", session_id)
+        return batch_action(
+            lambda: create_preannotation(store, jobs, session_id, **payload.model_dump())
+        )
+
+    @app.get("/api/sessions/{session_id}/preannotations")
+    def preannotation_list(session_id: str):
+        require("sessions", session_id)
+        return batch_action(lambda: list_preannotations(store, session_id))
+
+    @app.get("/api/preannotations/{comparison_id}")
+    def preannotation_get(comparison_id: str):
+        require("comparisons", comparison_id)
+        return batch_action(lambda: preannotation_detail(store, comparison_id))
 
     @app.get("/api/frames/{frame_id}/annotation")
     def annotation(frame_id: str):

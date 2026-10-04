@@ -122,9 +122,19 @@ def _unavailable(reason, *, scanned=0, truncated=False):
 
 
 def _source_signal(raw, frame, taxonomy):
+    prediction_metadata = _json(raw["prediction_metadata"])
+    if not isinstance(prediction_metadata, dict):
+        raise ValueError("Saved prediction metadata must be an object")
+    receipt = prediction_metadata.get("preannotation")
+    comparison_config = _json(raw["comparison_config"])
+    if ("preannotation" in comparison_config or receipt is not None) and (
+        not isinstance(receipt, dict)
+        or receipt.get("state") not in {"pending_review", "no_proposals"}
+    ):
+        raise ValueError("Saved preannotation output has no valid publication receipt")
     comparison = {
         "id": raw["comparison_id"],
-        "config": _json(raw["comparison_config"]),
+        "config": comparison_config,
         "frame_ids": _json(raw["comparison_frames"]),
         "model_ids": _json(raw["comparison_models"]),
     }
@@ -247,6 +257,7 @@ def _prediction_signal(conn, frame, taxonomy, candidate_ids):
     placeholders = ",".join("?" for _ in candidate_ids)
     candidates = conn.execute(
         "SELECT p.id,p.comparison_id,p.run_id,p.model_id,p.detections,p.input_size,p.created_at, "
+        "p.metadata AS prediction_metadata, "
         "c.config AS comparison_config,c.frame_ids AS comparison_frames, "
         "c.model_ids AS comparison_models,r.model_id AS run_model_id, "
         "r.comparison_id AS run_comparison_id,r.metadata AS run_metadata,r.variant "

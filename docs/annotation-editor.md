@@ -1,8 +1,68 @@
 # Annotation editor
 
-Open **Annotation**, choose a selected frame, then draw or review boxes. The
-current taxonomy contains `person` and `car`. Coordinates always refer to pixels
-in the original image, including when the view is zoomed or moved.
+Open **Annotation**, choose a frame selected in **Data intake**, then draw or
+review boxes. The class selector and definitions use the immutable class version
+saved for that image, including custom classes. Coordinates always refer to pixels
+in the original image, including when the view is zoomed or moved. Drawing,
+changing classes, editing coordinates, saving drafts and validating images work
+without any detector, provider, download or network connection.
+
+## Generate and review proposals
+
+Open **Generate proposals** and choose the open image or check a batch of up to
+25 selected images. Choose a ready local detector, proposal score threshold and
+full-image or tiled inference. **Preview proposals run** checks saved revisions,
+image hashes, model identity and supported classes; it performs no inference.
+Inspect excluded images, unsupported classes and the planned detector passes,
+then explicitly choose **Create proposals**. No weights are downloaded here.
+
+A trained checkpoint must match each image's saved class definitions. An official
+detector uses explicit COCO mappings and can cover only part of the image's
+taxonomy; the preview names uncovered class IDs. Inspect those classes manually.
+Changing images or inference settings requires a fresh preview. Unsaved edits on
+an included frame must be saved or discarded first.
+
+The detector's raw output and separate proposals are retained in **Saved proposal
+runs**. Per-image outcomes distinguish proposals ready for review, no proposals,
+changed saved inputs, invalid output and interrupted processing. Partial results
+remain available. **Job details and cancellation** opens the durable job record;
+it does not start another run. If a creation response is lost, IRIS searches saved
+history for the same preview fingerprint and never automatically repeats the POST.
+
+You can also import proposals from an existing compatible **Saved detector output**.
+For each proposal, accept it, reject it, or accept and correct its box/class in the
+editor. Corrections are saved as human decisions. No inference result, score,
+accept action or empty output validates an image automatically. Inspect the whole
+image for missing targets and draw any missing boxes yourself.
+
+**Multimodal review** and **Local batch review** examine existing candidate boxes;
+they do not generate new boxes. Those reviewers currently support the original
+person/car definitions. See [local review batches](annotation-batches.md).
+
+## Review queue and provenance
+
+Filter the queue by saved review status, low scores or uncertain recommendations,
+or possible omissions. These are hints to prioritize inspection, not proof of an
+error or accuracy measurements. A score below 0.5 is specific to its detector;
+scores from different providers are not interchangeable. An empty compatible
+detector output does not establish absence. Missing or partially mapped outputs
+are not evidence that all target classes are absent.
+
+**Previous**, **Next** and the frame selector follow the current queue filter.
+**Validate & next** saves an explicit human validation and advances to the next
+frame needing review in that filter. Changing a filter keeps the open frame and
+unsaved edits visible, even if that image no longer matches. Resolve all pending
+proposals and enter a reviewer name before validation. The proposal list can show
+only pending decisions, low scores or uncertain recommendations; hidden pending
+proposals still prevent validation.
+
+Each proposal has expandable provenance. **Inspect saved inputs and raw outputs**
+in the proposal run shows the original detector output, class mapping and input
+snapshots. The editor's revision history preserves saved boxes, decisions,
+reviewer and definitions; **View model review records** exposes saved candidate
+reviews and their raw responses. Inspecting a record never replaces current edits.
+When the project's classes change, adopting them for an older frame is an explicit
+action that creates a draft; earlier revisions keep their original definitions.
 
 ## Inspect small objects
 

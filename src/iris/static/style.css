@@ -4363,6 +4363,43 @@ select:focus-visible {
 .partition-similar-images a { flex: 0 1 160px; min-width: 0; }
 .partition-similar-images img { display: block; width: 100%; height: 100px; object-fit: contain; background: #142c24; border-radius: 5px; }
 
+/* Generate new detector proposals without changing saved human labels. */
+.preannotations { margin-bottom: 22px; }
+.preannotations > summary { cursor: pointer; padding: 22px 24px; font-weight: 650; }
+.preannotation-body { padding: 0 24px 24px; }
+.preannotation-setup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 22px; margin: 18px 0; }
+.preannotation-selection { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 7px; }
+.preannotation-settings { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.preannotation-setup label, .annotation-proposal-filters label { display: block; margin-bottom: 6px; }
+.preannotation-setup input:not([type="checkbox"]), .preannotation-setup select, #preannotation-history { width: 100%; min-width: 0; }
+.preannotation-inference-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.preannotation-inference-settings > div { min-width: 0; }
+.preannotation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
+.preannotation-actions h3 { margin: 0 auto 0 0; font-size: 16px; }
+.preannotation-capabilities { padding: 14px 0; border-top: 1px solid var(--line); }
+.preannotation-capabilities > summary { cursor: pointer; font-size: 13px; }
+.preannotation-preview-result { margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: 7px; background: #f6f8f1; }
+.preannotation-preview-result p, .preannotation-preview-result li, .preannotation-frame-result { overflow-wrap: anywhere; }
+.preannotation-history { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 8px; }
+#preannotation-detail { margin-top: 18px; }
+#preannotation-detail progress { width: 100%; height: 7px; accent-color: var(--green); }
+#preannotation-detail-config { overflow-wrap: anywhere; }
+.annotation-proposal-filters { display: flex; gap: 18px; align-items: end; flex-wrap: wrap; margin: 16px 0; }
+.annotation-proposal-filters > div { min-width: 0; }
+.annotation-proposal-filters select { max-width: 100%; }
+.review-queue-hint-details { padding: 6px 10px 10px; overflow-wrap: anywhere; }
+.review-queue-hint-details summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+@media (max-width: 800px) { .preannotation-setup { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  .preannotations > summary { padding: 18px 16px; }
+  .preannotations > summary .small { display: block; margin-top: 6px; }
+  .preannotation-body { padding: 0 16px 18px; }
+  .preannotation-selection, .preannotation-preview-result { padding: 12px; }
+  .preannotation-inference-settings { grid-template-columns: minmax(0, 1fr); }
+  .annotation-proposal-filters { align-items: stretch; flex-direction: column; gap: 0; }
+  .annotation-proposal-filters select { width: 100%; }
+}
+
 /* Project task history and explicit recovery. */
 .job-history-controls { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(190px, 1.5fr) auto; gap: 14px; align-items: end; padding: 18px 23px 8px; }
 .job-history-controls > div { min-width: 0; }

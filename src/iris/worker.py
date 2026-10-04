@@ -90,6 +90,21 @@ def run(root: Path, job_id: str, parent_pid: int):
             if current["cancel_requested"]
             else ("interrupted" if stopping else "succeeded")
         )
+        preannotation = result.get("preannotation")
+        preannotation_failed = bool(
+            status == "succeeded"
+            and isinstance(preannotation, dict)
+            and preannotation.get("frames_issues", 0)
+            and not preannotation.get("frames_ready", 0)
+        )
+        if preannotation_failed:
+            status = "failed"
+        preannotation_message = (
+            f"Preannotation complete: {preannotation['frames_ready']} images ready for review, "
+            f"{preannotation['frames_issues']} need attention"
+            if isinstance(preannotation, dict)
+            else None
+        )
         update_running(
             store,
             job_id,
@@ -97,9 +112,13 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "status": status,
                 "result": result,
                 "finished_at": now(),
+                "error": "No image could publish proposals; inspect the saved per-image results"
+                if preannotation_failed
+                else current["error"],
                 "progress": 1 if status == "succeeded" else current["progress"],
                 "message": (
-                    {
+                    preannotation_message
+                    or {
                         "extract": "Extraction complete",
                         "infer": "Comparison complete",
                         "assist": "Annotation proposals ready for human review",
@@ -108,7 +127,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "video_review": "Video passages ready for human selection",
                     }[job["kind"]]
                 )
-                if status == "succeeded"
+                if status == "succeeded" or preannotation_failed
                 else "Job stopped; saved artifacts are preserved",
             },
         )
