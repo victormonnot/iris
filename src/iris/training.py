@@ -91,11 +91,14 @@ def _manifest(store: Store, dataset_id: str) -> dict:
     from iris.datasets import load_manifest
 
     manifest = load_manifest(store, dataset_id, verify_images=False)
-    taxonomy = manifest.get("taxonomy_id", manifest.get("taxonomy"))
-    if isinstance(taxonomy, dict):
-        taxonomy = taxonomy.get("id")
-    if taxonomy != "iris-objects-v1" or manifest.get("class_mapping") != CLASS_MAPPING:
-        raise ValueError("Training requires the iris-objects-v1 person/car dataset mapping")
+    if (
+        manifest["taxonomy"]["id"] != "iris-objects-v1"
+        or manifest.get("class_mapping") != CLASS_MAPPING
+    ):
+        raise ValueError(
+            "Training requires the iris-objects-v1 person/car dataset mapping. "
+            "Custom class training is not available yet; custom releases can be exported as COCO."
+        )
     return manifest
 
 

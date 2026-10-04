@@ -14,12 +14,14 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from iris.annotations import MAX_BOXES, TAXONOMY, _coordinates
-from iris.datasets import CLASS_MAPPING, MAX_FRAMES, SCHEMA_VERSION, _canonical
+from iris.annotations import MAX_BOXES, _coordinates
+from iris.dataset_manifest import manifest_mappings
+from iris.datasets import MAX_FRAMES, _canonical
 from iris.media import _pixel_hash
 from iris.store import DEFAULT_PROJECT_ID, Store
 
 PROTOCOL = "iris-coco-export-v1"
+GENERIC_PROTOCOL = "iris-coco-export-v2"
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_IMAGE_BYTES = 64 * 1024 * 1024
@@ -35,6 +37,41 @@ Each split has <split>/annotations.json and <split>/images/<frame-id>.png.
 Image file_name values are relative to the split directory. Set the consumer's
 image root to train/, val/ or test/ accordingly. An empty test split is retained.
 Categories are COCO person=1 and car=3, not IRIS training-head IDs person=1/car=2.
+Boxes are [x, y, width, height] in original image pixels, with positive area;
+width=x2-x1 and height=y2-y1, without inclusive-pixel adjustments or rounding.
+No crowd, ignore, segmentation or keypoint labels are inferred. Validated empty
+images are explicit negative examples and remain in the corresponding split.
+
+The frozen release's train/val/test and scene-group assignments are unchanged.
+Distinct scene groups do not prove independence. Validation is not a test split.
+iris-manifest.json contains the exact original frozen manifest. Its image_path
+values describe the original workspace; use export.json for archive paths and
+COCO IDs. export.json records SHA-256 and sizes for every other archive member;
+it omits its own hash. Image file hashes and RGB pixel hashes have different roles.
+
+The manifest retains reviewer names, notes, annotation decisions and recorded
+source provenance, including source URLs, license descriptions and attribution
+where present. This metadata is not redacted or a guarantee of redistribution
+rights. Preserve the original terms and attribution when sharing these files.
+No source video, model checkpoint, workspace database or configuration file is
+included. This archive is a dataset export, not a complete workspace backup.
+It is not directly accepted by IRIS's current one-JSON, one-scene-group importer.
+"""
+
+GENERIC_README = """IRIS frozen dataset: COCO bounding boxes
+
+Each split has <split>/annotations.json and <split>/images/<frame-id>.png.
+Image file_name values are relative to the split directory. Set the consumer's
+image root to train/, val/ or test/ accordingly. An empty test split is retained.
+Every split lists every frozen class, even classes absent from that split.
+Category names are stable IRIS class IDs. Numeric category IDs come from the
+frozen coco_mapping recorded in export.json and iris-manifest.json. These export
+IDs are independent of any optional native detector coco_id in a class definition.
+The builtin classes retain COCO person=1/car=3; custom classes use contiguous IDs
+1..N in frozen class order. class_mapping records the separate training-head IDs.
+Full class names, definitions, stable IDs and class-version identity are preserved
+in the frozen taxonomy snapshot in both metadata files.
+
 Boxes are [x, y, width, height] in original image pixels, with positive area;
 width=x2-x1 and height=y2-y1, without inclusive-pixel adjustments or rounding.
 No crowd, ignore, segmentation or keypoint labels are inferred. Validated empty
@@ -94,14 +131,8 @@ def _text(value, description: str, limit: int):
 
 
 def _validate(manifest: dict, row: dict):
-    if (
-        not isinstance(manifest, dict)
-        or type(manifest.get("schema_version")) is not int
-        or manifest["schema_version"] != SCHEMA_VERSION
-        or manifest.get("id") != row["id"]
-        or manifest.get("taxonomy") != TAXONOMY
-        or manifest.get("class_mapping") != CLASS_MAPPING
-    ):
+    taxonomy, class_mapping, _ = manifest_mappings(manifest)
+    if manifest.get("id") != row["id"]:
         raise ValueError("Frozen manifest has an unsupported format or taxonomy")
     if manifest.get("project_id", DEFAULT_PROJECT_ID) != row.get("project_id", DEFAULT_PROJECT_ID):
         raise ValueError("Frozen manifest belongs to a different project")
@@ -147,7 +178,7 @@ def _validate(manifest: dict, row: dict):
         if (
             not isinstance(annotation, dict)
             or annotation.get("status") != "validated"
-            or annotation.get("taxonomy_id") != TAXONOMY["id"]
+            or annotation.get("taxonomy_id") != taxonomy["id"]
             or annotation.get("frame_id") != identifier
             or annotation.get("frame_sha256") != frame["sha256"]
             or annotation.get("id") != frame.get("annotation_revision_id")
@@ -167,7 +198,7 @@ def _validate(manifest: dict, row: dict):
             if not isinstance(box, dict):
                 raise ValueError("Frozen boxes must be objects")
             _text(box.get("id"), "box ID", 128)
-            if box["id"] in box_ids or box.get("label") not in CLASS_MAPPING:
+            if box["id"] in box_ids or box.get("label") not in class_mapping:
                 raise ValueError("Frozen boxes have duplicate IDs or unsupported labels")
             box_ids.add(box["id"])
             for flag in ("iscrowd", "ignore"):
@@ -264,15 +295,19 @@ def build_coco_export(store: Store, dataset_id: str) -> Path:
     Nothing is read from current annotations, original media, credentials or models.
     """
     manifest, raw_manifest, manifest_sha256 = _snapshot(store, dataset_id)
-    categories = [{"id": item["coco_id"], "name": item["id"]} for item in TAXONOMY["classes"]]
+    taxonomy, class_mapping, coco_mapping = manifest_mappings(manifest)
+    protocol = PROTOCOL if manifest["schema_version"] == 1 else GENERIC_PROTOCOL
+    categories = [
+        {"id": coco_mapping[item["id"]], "name": item["id"]} for item in taxonomy["classes"]
+    ]
     category_ids = {item["name"]: item["id"] for item in categories}
     documents = {
         split: {
             "info": {
                 "description": manifest["name"],
-                "version": PROTOCOL,
+                "version": protocol,
                 "iris_dataset_id": dataset_id,
-                "iris_taxonomy_id": TAXONOMY["id"],
+                "iris_taxonomy_id": taxonomy["id"],
                 "split": split,
             },
             "images": [],
@@ -342,11 +377,14 @@ def build_coco_export(store: Store, dataset_id: str) -> Path:
                                 _image_bytes(store, frame),
                             )
                 output.add("iris-manifest.json", raw_manifest)
-                output.add("README.txt", README.encode())
+                output.add(
+                    "README.txt",
+                    (README if manifest["schema_version"] == 1 else GENERIC_README).encode(),
+                )
                 metadata = {
-                    "protocol": PROTOCOL,
+                    "protocol": protocol,
                     "dataset_id": dataset_id,
-                    "taxonomy_id": TAXONOMY["id"],
+                    "taxonomy_id": taxonomy["id"],
                     "categories": categories,
                     "box_format": "xywh_pixels",
                     "manifest": {"path": "iris-manifest.json", "sha256": manifest_sha256},
@@ -361,6 +399,10 @@ def build_coco_export(store: Store, dataset_id: str) -> Path:
                     "images": mappings,
                     "files": dict(output.files),
                 }
+                if manifest["schema_version"] == 2:
+                    metadata.update(
+                        taxonomy=taxonomy, class_mapping=class_mapping, coco_mapping=coco_mapping
+                    )
                 output.add("export.json", _canonical(metadata))
             if temporary.tell() != output.size:
                 raise ValueError("COCO archive size does not match its recorded layout")

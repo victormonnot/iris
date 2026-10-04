@@ -45,8 +45,8 @@ pretrained checkpoints are shared; workspace backup includes every project.
 Use **Manage classes** to publish custom class IDs, names and definitions for
 manual annotation and COCO imports. Each image retains its saved class version;
 adopting newer definitions creates a draft that requires human review. The initial
-`iris-objects-v1` Person / Car definitions remain available. Dataset freezing,
-training, evaluation and multimodal candidate review currently require those
+`iris-objects-v1` Person / Car definitions remain available. Custom datasets can
+be frozen and exported as COCO. Training, evaluation and multimodal candidate review currently require those
 original definitions. See [class versions](docs/classes.md) for the supported workflow.
 IRIS has no dependency on ARGOS, flight telemetry or a drone-specific file format;
 recordings from any supported source can use the same local workflow.
@@ -406,23 +406,30 @@ API keys are read only by the server/worker and are never returned to the UI.
 
 1. Select frames and validate their annotations, including empty negative images.
    Drafts, unselected frames, and images with unresolved proposals are excluded.
-2. Refresh dataset candidates and assign scene groups to **Train**, **Validation**,
+2. Choose a class version, refresh dataset candidates and assign scene groups to **Train**, **Validation**,
    or **Test**. At least two distinct groups are required for train and validation;
    test is optional, and its absence is reported. Related scenes belong in the
    same group. Never distribute neighboring frames randomly across splits.
-3. Name and freeze the version, optionally linking a previous release as its parent.
+   Every included image must use that exact class version. Other versions remain
+   available through the selector; publishing classes never relabels a dataset.
+3. Name and freeze the version, optionally linking a previous release with the same
+   class version as its parent. A different class version starts an independent release.
    IRIS copies normalized PNGs and records image hashes, full annotation revisions,
-   reviewers, source footage, timestamps, taxonomy, and splits in a checksummed
+   reviewers, source footage, timestamps, complete class definitions, numeric mappings,
+   and splits in a checksummed
    manifest. Download the manifest or inspect it in the interface. Later label
-   edits and selection changes leave that version intact.
-4. Choose this dataset and a ready **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
+   edits, class changes and selection changes leave that version intact. If reviews
+   changed since the candidate list was loaded, refresh before freezing again.
+4. For an original **Person / Car** release, choose the dataset and a ready
+   **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
    either the official checkpoint or a previous IRIS checkpoint. Choose a training
    depth and preview the plan before starting a CPU run: 20 optimizer steps by
    default, configurable from 1 to 200, batch size one, with an explicit learning
    rate and seed. The preview shows the train image count, visits and complete
    passes. Editing a setting requires a new preview. Runtime depends on the CPU,
    images and depth; these limits bound steps, not wall-clock time. No weights
-   are downloaded.
+   are downloaded. Custom class releases support inspection and COCO export;
+   custom training and evaluation are not available yet.
 5. Follow progress, individual loss components and logs. A completed run registers
    its checkpoint and SHA-256, parent, dataset version and settings. Use it in
    **Model comparison** alongside its parent on the same held-out frames.
@@ -472,8 +479,11 @@ train/validation/test split, the original manifest and an export inventory with
 checksums. Validated negative images are included. Image integrity is checked
 before the download; later edits in the annotation editor do not alter the release.
 
-COCO category IDs are **1 = person, 3 = car**. They differ from the native training
-mapping, where car is 2. Each split has its own `annotations.json` and `images/`
+New releases record category IDs in their frozen `coco_mapping`; legacy manifests
+use the export's category table. Original Person / Car releases retain
+**1 = person, 3 = car**, while custom releases assign **1…N** in
+saved class order. The optional official-detector COCO ID on a class is separate
+from its export ID. Each split has its own `annotations.json` and `images/`
 directory. Recorded source attribution, reviewer names and notes are retained in
 the manifest. The download stays local and includes no model weights or original
 videos. Archives are limited to 256 MiB; see [the export format and limits](docs/dataset-export.md).

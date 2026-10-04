@@ -39,7 +39,13 @@ from iris.assistance_provider import provider_status
 from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
 from iris.comparison_replay import VIDEO_TYPES, local_media_file
 from iris.dataset_export import ExportLimitError, build_coco_export
-from iris.datasets import create_dataset, dataset_candidates, dataset_detail, load_manifest
+from iris.datasets import (
+    create_dataset,
+    dataset_brief,
+    dataset_candidates,
+    dataset_detail,
+    load_manifest,
+)
 from iris.evaluation import (
     create_evaluation,
     evaluation_detail,
@@ -178,6 +184,8 @@ class DatasetInput(BaseModel):
     frame_ids: list[str] = Field(min_length=2, max_length=1000)
     splits: dict[str, Literal["train", "val", "test"]]
     parent_id: str | None = None
+    taxonomy_id: str | None = Field(default=None, min_length=1, max_length=128)
+    expected_revisions: dict[str, str] | None = Field(default=None, max_length=1000)
 
 
 class DatasetImportInput(BaseModel):
@@ -568,6 +576,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "assisted_annotation": True,
                 "local_batch_assistance": True,
                 "dataset_versions": True,
+                "custom_dataset_versions": True,
                 "dataset_export": True,
                 "evaluation_analysis": True,
                 "experiment_reports": True,
@@ -657,9 +666,11 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         ]
 
     @app.get("/api/dataset-candidates")
-    def candidates():
+    def candidates(taxonomy_id: str | None = Query(default=None, min_length=1, max_length=128)):
         try:
-            return dataset_candidates(store, project_id=active_project.get())
+            return dataset_candidates(
+                store, project_id=active_project.get(), taxonomy_id=taxonomy_id
+            )
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -731,9 +742,13 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/datasets")
     def datasets():
-        return [
-            public(row) for row in project_records(store, "dataset_versions", active_project.get())
-        ]
+        try:
+            return [
+                public(dataset_brief(store, row))
+                for row in project_records(store, "dataset_versions", active_project.get())
+            ]
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/datasets", status_code=201)
     def freeze_dataset(payload: DatasetInput):

@@ -194,7 +194,9 @@ def test_custom_coco_mapping_is_frozen_at_preview_and_never_auto_validated(clien
     assert reviewed.status_code == 200, reviewed.text
     candidates = client.get("/api/dataset-candidates").json()
     assert candidates["groups"] == []
-    assert candidates["excluded"]["unsupported_taxonomy"] == 1
+    assert candidates["excluded"]["different_taxonomy"] == 1
+    earlier = client.get("/api/dataset-candidates", params={"taxonomy_id": first["id"]}).json()
+    assert sum(group["count"] for group in earlier["groups"]) == 1
 
 
 def test_import_negative_image_and_legacy_preview_keep_their_saved_classes(client):

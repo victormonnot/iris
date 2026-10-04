@@ -5,7 +5,7 @@ import math
 import time
 from collections.abc import Callable
 
-from iris.datasets import MAX_FRAMES, load_manifest
+from iris.datasets import CLASS_MAPPING, MAX_FRAMES, load_manifest
 from iris.inference import PROTOCOL as TIMING_PROTOCOL
 from iris.inference import TILED_PROTOCOL, _validate_prediction, _work_plan, comparison_lanes
 from iris.metrics import evaluate_predictions, get_protocol
@@ -90,6 +90,14 @@ def _heldout_frames(store: Store, dataset_id: str, split: str) -> tuple[dict, li
     if dataset is None:
         raise ValueError("Dataset version not found")
     manifest = load_manifest(store, dataset_id)
+    if (
+        manifest["taxonomy"]["id"] != "iris-objects-v1"
+        or manifest["class_mapping"] != CLASS_MAPPING
+    ):
+        raise ValueError(
+            "Evaluation with custom class definitions is not available yet. "
+            "Use an original Person / Car release; custom releases can be exported as COCO."
+        )
     frames = [frame for frame in manifest["frames"] if frame["split"] == split]
     if not 1 <= len(frames) <= MAX_FRAMES:
         raise ValueError(f"Choose a dataset with 1 to {MAX_FRAMES} images in its {split} split")

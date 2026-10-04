@@ -1,12 +1,17 @@
 "use strict";
 
 (() => {
+  const datasetTools = window.IRISDatasetTools;
+  const taxonomyTools = window.IRISTaxonomyTools;
   const workspace = {
     visible: false,
     candidates: null,
+    taxonomyId: null,
+    taxonomies: [],
     choices: new Map(),
     candidateRequest: 0,
     candidateLoading: false,
+    candidateNeedsRefresh: false,
     datasetBusy: false,
     datasets: [],
     datasetId: null,
@@ -87,10 +92,16 @@
     $("#dataset-create").disabled =
       workspace.datasetBusy ||
       workspace.candidateLoading ||
+      workspace.candidateNeedsRefresh ||
       !counts.train ||
       !counts.val;
     $("#dataset-refresh").disabled =
       workspace.datasetBusy || workspace.candidateLoading;
+    $("#dataset-taxonomy").disabled =
+      workspace.datasetBusy || workspace.candidateLoading || !workspace.taxonomies.length;
+    $("#dataset-parent").disabled = workspace.datasetBusy || workspace.candidateLoading;
+    for (const select of $("#dataset-groups").querySelectorAll("select"))
+      select.disabled = workspace.datasetBusy || workspace.candidateLoading;
     $("#dataset-create").textContent = workspace.datasetBusy
       ? "Freezing release…"
       : "Freeze release →";
@@ -107,16 +118,21 @@
     );
     const exclusions = Object.entries(candidates?.excluded || {})
       .filter(([, value]) => value > 0)
+      .filter(([key]) => key !== "different_taxonomy")
       .map(([key, value]) => `${value} ${key.replaceAll("_", " ")}`);
     $("#dataset-candidate-status").textContent =
       `${count} eligible frames in ${groups.length} scene groups.` +
       (exclusions.length ? ` Excluded: ${exclusions.join(" · ")}.` : "");
+    const different = candidates?.excluded?.different_taxonomy || 0;
+    $("#dataset-taxonomy-excluded").textContent = different
+      ? `${different} validated frame${different === 1 ? " uses" : "s use"} another class version and ${different === 1 ? "is" : "are"} excluded. Choose that version to build a separate release, or explicitly update and revalidate the images in Annotation.`
+      : "A release includes one exact class version. Images reviewed with other versions stay separate.";
     if (!groups.length)
       container.append(
         node(
           "p",
           "dataset-empty",
-          "No eligible frames yet. Select frames in Data intake, resolve every proposal and save a human validation in Annotation.",
+          "No eligible frames for this class version. Select frames in Data intake, resolve every proposal and save a human validation in Annotation, or choose another saved class version.",
         ),
       );
     for (const [index, group] of groups.entries()) {
@@ -186,7 +202,7 @@
         choice = "";
       workspace.choices.set(group.scene_group, choice);
       select.value = choice;
-      select.disabled = workspace.datasetBusy;
+      select.disabled = workspace.datasetBusy || workspace.candidateLoading;
       select.addEventListener("change", () => {
         workspace.choices.set(group.scene_group, select.value);
         updateDatasetLaunch();
@@ -201,14 +217,22 @@
 
   async function refreshCandidates() {
     const request = ++workspace.candidateRequest;
+    const requestedTaxonomy = workspace.taxonomyId;
     workspace.candidateLoading = true;
     updateDatasetLaunch();
     showError("#dataset-error", null);
     try {
-      const candidates = await api("/api/dataset-candidates");
+      const candidates = await api(`/api/dataset-candidates${requestedTaxonomy ? `?taxonomy_id=${encodeURIComponent(requestedTaxonomy)}` : ""}`);
       if (request !== workspace.candidateRequest) return;
+      candidates.taxonomy = taxonomyTools.snapshot(candidates.taxonomy);
+      if (workspace.taxonomyId !== candidates.taxonomy.id)
+        workspace.choices.clear();
+      workspace.taxonomyId = candidates.taxonomy.id;
+      workspace.taxonomies = candidates.taxonomies || [candidates.taxonomy];
       workspace.candidates = candidates;
-      renderCandidates();
+      workspace.candidateNeedsRefresh = false;
+      renderCandidateTaxonomy();
+      datasetOptions();
     } catch (error) {
       if (request !== workspace.candidateRequest) return;
       workspace.candidates = null;
@@ -219,9 +243,33 @@
     } finally {
       if (request === workspace.candidateRequest) {
         workspace.candidateLoading = false;
+        if (workspace.candidates) renderCandidates();
         updateDatasetLaunch();
       }
     }
+  }
+
+  function renderDefinitions(selector, taxonomy) {
+    const target = $(selector);
+    target.replaceChildren();
+    for (const category of taxonomy.classes) {
+      const row = node("p");
+      row.append(node("strong", "", `${category.name} (${category.id}). `),
+        document.createTextNode(category.definition));
+      target.append(row);
+    }
+  }
+
+  function renderCandidateTaxonomy() {
+    const select = $("#dataset-taxonomy");
+    select.replaceChildren();
+    for (const taxonomy of workspace.taxonomies)
+      select.append(new Option(`${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.map((item) => item.name).join(", ")}`, taxonomy.id));
+    select.value = workspace.taxonomyId;
+    select.title = select.selectedOptions[0]?.textContent || "Class version";
+    const taxonomy = workspace.candidates.taxonomy;
+    $("#dataset-taxonomy-context").textContent = `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.length} ${taxonomy.classes.length === 1 ? "class" : "classes"}. Names, definitions and export mappings are saved with the release.`;
+    renderDefinitions("#dataset-taxonomy-definitions", taxonomy);
   }
 
   function datasetOptions() {
@@ -229,20 +277,25 @@
     const training = $("#training-dataset");
     const oldParent = parent.value;
     const oldTraining = training.value;
+    const parents = datasetTools.compatibleParents(workspace.datasets, workspace.taxonomyId, state.projectId);
+    const supported = workspace.datasets.filter(datasetTools.mlSupported);
     parent.replaceChildren(new Option("First / independent release", ""));
     training.replaceChildren();
     for (const dataset of workspace.datasets) {
       const label = `${dataset.name} · ${dataset.summary.frame_count} frames`;
-      parent.append(new Option(label, dataset.id));
-      training.append(new Option(label, dataset.id));
+      if (parents.includes(dataset)) parent.append(new Option(label, dataset.id));
+      if (datasetTools.mlSupported(dataset)) training.append(new Option(label, dataset.id));
     }
-    if (!workspace.datasets.length)
-      training.append(new Option("Freeze a dataset first", ""));
-    if (workspace.datasets.some((item) => item.id === oldParent))
+    if (!supported.length)
+      training.append(new Option(workspace.datasets.length ? "No compatible training release" : "Freeze a dataset first", ""));
+    if (parents.some((item) => item.id === oldParent))
       parent.value = oldParent;
-    if (workspace.datasets.some((item) => item.id === oldTraining))
+    if (supported.some((item) => item.id === oldTraining))
       training.value = oldTraining;
-    training.disabled = !workspace.datasets.length || workspace.trainingBusy;
+    training.disabled = !supported.length || workspace.trainingBusy;
+    $("#training-dataset-limitation").textContent = workspace.datasets.length > supported.length
+      ? `${workspace.datasets.length - supported.length} custom-class release${workspace.datasets.length - supported.length === 1 ? " is" : "s are"} available for inspection and COCO export in Dataset releases. Training currently requires the original person / car definitions.`
+      : "Training currently supports releases using the original person / car definitions.";
     if (training.value !== oldTraining) invalidateTrainingPreview();
     else updateTrainingLaunch();
   }
@@ -316,11 +369,25 @@
         );
         counts.append(item);
       }
-      $("#dataset-detail-classes").textContent = Object.entries(
-        detail.summary.class_counts || {},
-      )
-        .map(([label, count]) => `${label}: ${count} boxes`)
-        .join(" · ");
+      const taxonomy = detail.taxonomy || detail.manifest?.taxonomy || taxonomyTools.snapshot();
+      const classes = datasetTools.classRows(detail, taxonomy);
+      $("#dataset-detail-classes").textContent = `${classes.length} saved ${classes.length === 1 ? "class" : "classes"} · classes without boxes are retained in the export.`;
+      $("#dataset-detail-taxonomy").textContent = `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.id}`;
+      const rows = $("#dataset-detail-class-rows");
+      rows.replaceChildren();
+      for (const category of classes) {
+        const row = node("tr");
+        const heading = node("th", "", `${category.name} (${category.id})`);
+        heading.scope = "row";
+        row.append(heading);
+        for (const value of [category.count, category.class_id, category.export_id, category.source_coco_id])
+          row.append(node("td", "", value == null ? "—" : String(value)));
+        rows.append(row);
+      }
+      renderDefinitions("#dataset-detail-definitions", taxonomy);
+      $("#dataset-detail-ml").textContent = datasetTools.mlSupported(detail)
+        ? "Compatible with current training and evaluation."
+        : detail.ml_limitation || "This custom-class release can be inspected and exported. Training and evaluation currently require the original person / car definitions.";
       warnings("#dataset-detail-warnings", detail.summary.warnings);
       $("#dataset-manifest-download").href =
         projectURL(`/api/datasets/${encodeURIComponent(id)}/manifest`);
@@ -457,19 +524,20 @@
   }
 
   function updateTrainingLaunch() {
+    const dataset = workspace.datasets.find((item) => item.id === $("#training-dataset").value);
     const model = workspace.models.find(
       (item) => item.id === $("#training-parent").value,
     );
     const unavailable =
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
-      !$("#training-dataset").value ||
+      !datasetTools.mlSupported(dataset) ||
       model?.status !== "ready" ||
       !model.training;
     for (const field of $("#training-form").querySelectorAll("input, select"))
       field.disabled = workspace.trainingBusy;
     $("#training-dataset").disabled =
-      workspace.trainingBusy || !workspace.datasets.length;
+      workspace.trainingBusy || !workspace.datasets.some(datasetTools.mlSupported);
     $("#training-parent").disabled =
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
@@ -765,6 +833,20 @@
 
   $("#dataset-refresh").addEventListener("click", refreshCandidates);
   $("#dataset-coco-download").addEventListener("click", downloadDatasetCoco);
+  $("#dataset-taxonomy").addEventListener("change", (event) => {
+    if (workspace.datasetBusy || workspace.candidateLoading) return;
+    workspace.taxonomyId = event.target.value;
+    workspace.choices.clear();
+    workspace.candidates = null;
+    $("#dataset-parent").value = "";
+    $("#dataset-groups").replaceChildren();
+    $("#dataset-candidate-status").textContent = "Loading reviewed images for this class version…";
+    $("#dataset-taxonomy-definitions").replaceChildren();
+    $("#dataset-taxonomy-context").textContent = "Loading class definitions…";
+    $("#dataset-taxonomy-excluded").textContent = "";
+    datasetOptions();
+    refreshCandidates();
+  });
   $("#dataset-history").addEventListener("change", (event) => {
     workspace.datasetId = event.target.value;
     loadDataset(workspace.datasetId);
@@ -781,6 +863,9 @@
     event.preventDefault();
     if ($("#dataset-create").disabled) return;
     const groups = chosenGroups();
+    let expectedRevisions;
+    try { expectedRevisions = datasetTools.revisionTokens(groups); }
+    catch (error) { showError("#dataset-error", error); return; }
     const payload = {
       name: $("#dataset-name").value.trim(),
       frame_ids: groups.flatMap((group) =>
@@ -793,6 +878,8 @@
         ]),
       ),
       parent_id: $("#dataset-parent").value || null,
+      taxonomy_id: workspace.taxonomyId,
+      expected_revisions: expectedRevisions,
     };
     if (!payload.name) return $("#dataset-name").focus();
     workspace.datasetBusy = true;
@@ -806,13 +893,17 @@
       workspace.datasetId = dataset.id;
       $("#dataset-name").value = "";
       await Promise.all([refreshDatasets(), refreshCandidates()]);
-      $("#training-dataset").value = dataset.id;
+      if (datasetTools.mlSupported(dataset)) $("#training-dataset").value = dataset.id;
       $("#dataset-parent").value = dataset.id;
       invalidateTrainingPreview();
       notify(
         `Dataset release “${dataset.name}” saved with frozen labels and split assignments.`,
       );
     } catch (error) {
+      if (error.status === 409) {
+        workspace.candidateNeedsRefresh = true;
+        error.message += " Refresh candidates and review the updated selection before freezing again.";
+      }
       showError("#dataset-error", error);
     } finally {
       workspace.datasetBusy = false;
@@ -881,6 +972,13 @@
       resetDatasetExport();
       invalidateTrainingPreview();
     }
+  });
+  window.addEventListener("iris:taxonomy", (event) => {
+    const taxonomy = event.detail.taxonomy;
+    if (!workspace.candidates || workspace.taxonomies.some((item) => item.id === taxonomy.id)) return;
+    workspace.taxonomies.push(taxonomy);
+    renderCandidateTaxonomy();
+    updateDatasetLaunch();
   });
   window.addEventListener("pagehide", () => {
     ++workspace.datasetRequest;

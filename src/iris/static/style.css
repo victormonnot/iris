@@ -38,6 +38,70 @@
   padding: 22px;
 }
 
+.dataset-taxonomy-picker {
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dataset-taxonomy-picker select {
+  width: 100%;
+  max-width: 100%;
+}
+
+.dataset-taxonomy-picker .field-hint {
+  margin-top: 10px;
+}
+
+.dataset-class-definitions {
+  margin: 12px 0 16px;
+  font-size: 12px;
+}
+
+.dataset-class-definitions summary {
+  color: var(--green);
+  cursor: pointer;
+}
+
+.dataset-class-definitions p {
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.dataset-class-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.dataset-class-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.dataset-class-table caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.dataset-class-table th,
+.dataset-class-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dataset-class-table th[scope="row"] {
+  font-weight: 500;
+  min-width: 100px;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
 .training-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

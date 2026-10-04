@@ -1,4 +1,28 @@
-# Frozen dataset export
+# Frozen datasets and COCO export
+
+In **Dataset & training**, select the saved class version for a release. Candidates
+are selected images whose latest annotation is human-validated, with every proposal
+resolved, using that exact class version. Images using other definitions remain
+available by switching versions; they are never merged or silently relabeled.
+
+Assign complete scene groups to train, validation or test. Train and validation
+must each contain an image and use separate groups. Existing group reservations
+apply within the project, while exact image pixels keep their split throughout
+the workspace, including splits declared by COCO imports. These protections do not
+prove independence between related scenes or visually similar images.
+
+Freezing copies each image and records its full reviewed revision, source provenance,
+class definitions and mappings. The browser sends the revision IDs it displayed;
+if a review changed meanwhile, publication returns a conflict and requires refresh.
+An optional parent release must belong to the same project and use the same class
+version. To use different definitions, start an independent release; existing split
+reservations still apply. Empty images require human validation like positive images.
+
+Custom releases can be inspected and exported. Training and quality evaluation in
+IRIS currently require the original Person / Car definitions; neither runs implicitly
+as part of freezing or exporting a custom release.
+
+## Download
 
 Choose a frozen version under **Dataset releases**, then **Download COCO ZIP**.
 No GPU, checkpoint, API account or internet connection is needed. The same
@@ -30,9 +54,24 @@ remain assigned to their original splits and scene groups.
 
 Each COCO `file_name` is `images/<frame_id>.png`, relative to its split directory.
 Set an external loader's image root to the extracted `train`, `val` or `test`
-directory matching its annotation document. Categories are **1 = person** and
-**3 = car**, using the definitions in the frozen `iris-objects-v1` taxonomy.
-The detector's native training mapping, `person=1, car=2`, is a separate mapping.
+directory matching its annotation document. Every split lists every frozen class,
+including classes without boxes. COCO category names are stable class IDs; display
+names and full definitions are retained in the manifest and version-2 export metadata.
+
+New schema-2 manifests record two mappings:
+
+| Mapping | Original Person / Car | Custom classes |
+| --- | --- | --- |
+| `class_mapping` | person=1, car=2 | 1…N in saved class order; 0 is reserved |
+| `coco_mapping` | person=1, car=3 | 1…N in saved class order |
+
+The optional `coco_id` in a class definition describes compatibility with an
+official pretrained detector. It does not determine a custom export's category ID.
+For example, a custom Bottle class may map from official detector category 44 but
+use category 2 in this export. Consumers must use the COCO category table and,
+for schema 2, the saved `coco_mapping` rather than inferring IDs from names or
+detector mappings. Legacy schema-1 manifests have no `coco_mapping`; their
+export category table retains person=1 and car=3.
 
 Boxes use COCO `[x, y, width, height]` in image pixels, converted from the frozen
 `[x1, y1, x2, y2]` coordinates without rounding. `area` is box width × height,
@@ -45,8 +84,11 @@ retain the link to the original frame and reviewed box.
 
 `iris-manifest.json` preserves the original manifest bytes and checksum. Its
 image paths refer to the original workspace layout; `export.json` maps the
-images to archive paths and records file checksums and the export protocol
-`iris-coco-export-v1`. Load images through the COCO paths when using the archive.
+images to archive paths and records file checksums. New schema-2 manifests export
+with `iris-coco-export-v2`, including the frozen class definitions and both mappings.
+Existing schema-1 releases retain their original bytes and `iris-coco-export-v1`
+behavior, including Person / Car IDs. SQLite stays at schema 14; no existing dataset
+manifest is rewritten. Load images through the COCO paths when using the archive.
 
 The manifest retains source identifiers, filenames, scene groups, timestamps,
 annotation revisions, reviewer names and notes. Imported dataset attribution,
@@ -84,8 +126,9 @@ does not guarantee immediate cancellation of server-side preparation.
 
 This package is for external detection tools. The current IRIS importer accepts
 one COCO document and one declared scene group/split per archive, so it cannot
-directly restore this multi-split export. Back up the complete workspace while
-IRIS is stopped to preserve jobs, models and all revision history.
+directly restore this multi-split export. Use **Backup all projects** while the
+workspace is idle to preserve jobs, models and all revision history. Stop IRIS
+before using the CLI backup command; see [workspace backup](workspace-backup.md).
 
 ## Verification scope
 
@@ -94,4 +137,19 @@ They check COCO loading, fractional boxes, negatives, split and attribution
 preservation, repeatability after reopening the workspace, changed-artifact
 rejection, size bounds and temporary-file cleanup. Browser checks exercise the
 download and its error states. These checks establish format and application
-behavior; they do not measure detector quality on real flights.
+behavior; they do not measure detector quality on real data.
+
+## Local API
+
+`GET /api/dataset-candidates?taxonomy_id=<id>` selects a saved project class version;
+without it, the project's current version is selected. The response includes the
+selected `taxonomy`, available `taxonomies`, excluded counts and each candidate's
+`annotation_revision_id`.
+
+`POST /api/datasets` accepts `name`, `frame_ids`, `splits`, optional `parent_id`,
+`taxonomy_id` and `expected_revisions` (frame ID to annotation revision ID). If provided,
+the revision map must cover exactly the selected frames. Older clients may omit the
+last two fields; the server then freezes the latest eligible revisions and requires
+a single shared class version. Lists and detail responses expose `taxonomy_id`,
+`taxonomy`, `class_mapping`, `coco_mapping`, `ml_supported` and `ml_limitation`.
+Existing project-scoping query parameters still apply.

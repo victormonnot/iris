@@ -86,6 +86,15 @@ def release(tmp_path):
         frame_ids=[frame["id"] for frame in reversed(frames)],
         splits={f"scene-{split}": split for split in ("train", "val", "test")},
     )
+
+    # Keep this suite rooted in a historical release even when new releases use
+    # a newer manifest. Generic releases have dedicated export coverage.
+    def legacy(document):
+        document["schema_version"] = 1
+        document.pop("coco_mapping", None)
+
+    dataset["manifest"] = _rewrite_manifest(store, dataset, legacy)
+    dataset["manifest_sha256"] = store.get("dataset_versions", dataset["id"])["manifest_sha256"]
     return store, dataset, frames
 
 

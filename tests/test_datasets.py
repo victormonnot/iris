@@ -96,7 +96,10 @@ def test_snapshot_copies_pixels_labels_negatives_and_complete_provenance(workspa
     result = freeze(store, frames)
     manifest = load_manifest(store, result["id"], verify_images=True)
     assert result["manifest"] == manifest
+    assert manifest["schema_version"] == 2
     assert manifest["class_mapping"] == {"person": 1, "car": 2}
+    assert manifest["coco_mapping"] == {"person": 1, "car": 3}
+    assert result["ml_supported"] is True and result["ml_limitation"] is None
     assert manifest["taxonomy"]["id"] == "iris-objects-v1"
     assert result["summary"]["split_counts"] == {"train": 1, "val": 1, "test": 1}
     assert result["summary"]["class_counts"] == {"person": 1, "car": 1}
@@ -175,7 +178,7 @@ def test_candidates_exclude_unreviewed_drafts_and_new_pending_proposals(workspac
         "unannotated": 1,
         "draft": 1,
         "pending_suggestions": 1,
-        "unsupported_taxonomy": 0,
+        "different_taxonomy": 0,
     }
     with pytest.raises(ValueError, match="pending_suggestions"):
         freeze(store, frames)

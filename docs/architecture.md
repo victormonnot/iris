@@ -135,8 +135,8 @@ taxonomy version.
 Custom classes and definitions are supported in the manual editor and COCO import.
 Publication uses compare-and-swap on the project's current version. Adoption creates
 a new draft revision, retains earlier revisions and requires human validation again.
-Custom detector proposal mappings use explicitly configured COCO IDs; datasets,
-training, evaluation and multimodal candidate review remain limited to the original
+Custom detector proposal mappings use explicitly configured COCO IDs. Frozen datasets
+and COCO exports support custom classes; training, evaluation and multimodal candidate review remain limited to the original
 definition. See [class version behavior](classes.md).
 An unsupported class is not silently mapped to a superficially similar class.
 
@@ -201,6 +201,14 @@ later source edits cannot change their training inputs. Existing manifests reser
 scene groups and exact pixel hashes to one split across versions. A checksummed
 manifest and image hashes are rechecked before consumption. These hashes detect
 artifact changes; they do not replace backups of the complete workspace.
+
+New releases use manifest schema 2 with one complete, immutable class snapshot,
+`class_mapping` and `coco_mapping`. The selected annotation revisions must all
+use that same version. Candidate revision IDs provide a publication conflict check,
+and parents must share the release's selected class version. Schema-1 manifests remain
+readable without rewriting their bytes. These manifest formats are independent
+of SQLite schema 14. Frozen readers resolve classes from the manifest itself,
+without consulting current project definitions or annotations.
 
 COCO export reads a frozen release independently of current annotations. It
 verifies the original manifest and the exact PNG bytes written to a temporary ZIP,

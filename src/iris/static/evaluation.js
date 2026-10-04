@@ -1,6 +1,7 @@
 "use strict";
 
 (() => {
+  const datasetTools = window.IRISDatasetTools;
   const view = {
     visible: false,
     datasets: [],
@@ -189,7 +190,7 @@
       $("#evaluation-iou").value !== "" &&
       Number.isFinite(payload.confidence_threshold) && payload.confidence_threshold >= 0 && payload.confidence_threshold <= 1 &&
       Number.isFinite(payload.iou_threshold) && payload.iou_threshold >= 0.01 && payload.iou_threshold <= 1;
-    const valid = size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    const valid = datasetTools.mlSupported(dataset) && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
     $("#evaluation-tiling-fields").hidden = !tiled;
     $("#evaluation-tile-size").disabled = !tiled;
     $("#evaluation-tile-overlap").disabled = !tiled;
@@ -293,16 +294,20 @@
       if (request !== view.catalogRequest) return;
       const previous = $("#evaluation-dataset").value;
       view.datasets = datasets;
+      const supported = datasets.filter(datasetTools.mlSupported);
       view.models = models;
       const select = $("#evaluation-dataset");
       select.replaceChildren();
-      for (const dataset of datasets)
+      for (const dataset of supported)
         select.append(new Option(dataset.name, dataset.id));
-      if (!datasets.length)
-        select.append(new Option("Freeze a dataset first", ""));
-      if (datasets.some((item) => item.id === previous))
+      if (!supported.length)
+        select.append(new Option(datasets.length ? "No compatible evaluation release" : "Freeze a dataset first", ""));
+      if (supported.some((item) => item.id === previous))
         select.value = previous;
-      select.disabled = !datasets.length;
+      select.disabled = !supported.length;
+      $("#evaluation-dataset-limitation").textContent = datasets.length > supported.length
+        ? `${datasets.length - supported.length} custom-class release${datasets.length - supported.length === 1 ? " is" : "s are"} available for inspection and COCO export in Dataset & training. Evaluation currently requires the original person / car definitions.`
+        : "Evaluation currently supports releases using the original person / car definitions.";
       view.chosen = new Set(
         models
           .filter(
@@ -325,6 +330,7 @@
         new Option("Catalog unavailable", ""),
       );
       $("#evaluation-dataset").disabled = true;
+      $("#evaluation-dataset-limitation").textContent = "Dataset compatibility could not be checked. Refresh to try again.";
       renderModels();
       updateLaunch();
       error("#evaluation-error", failure);

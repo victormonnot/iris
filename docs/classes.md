@@ -52,11 +52,17 @@ the detector, and imported boxes still require human review.
 ## Current scope
 
 Custom classes work for manual annotation, negatives, saved detector proposals
-with explicit mappings, and COCO intake. Dataset freezing, training, evaluation,
-disagreement ranking and multimodal candidate review currently support the original
-Person / Car definitions. Unsupported custom annotations stay saved and are excluded
-from dataset candidates with an explanation. Existing releases and results remain
-usable. No provider or network call is required for the manual workflow.
+with explicit mappings, COCO intake, frozen dataset releases and COCO export.
+The dataset builder selects one saved class version and includes only fully
+validated images using that version. Other versions remain selectable; there is
+no implicit relabeling or merging of different definitions. The release records
+the complete class snapshot and its internal and export numeric mappings.
+
+Training, evaluation, disagreement ranking and multimodal candidate review still
+support the original Person / Car definitions. Custom releases stay available for
+inspection and export, with these limits shown in the interface. Existing releases
+and results remain usable. No provider or network call is required for the manual
+workflow or dataset export. See [frozen datasets](dataset-export.md).
 
 ## Local API
 

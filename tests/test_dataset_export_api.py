@@ -35,6 +35,9 @@ def test_download_is_a_local_zip_and_releases_temporary_space(client):
     assert f"iris-dataset-{dataset['id']}-coco.zip" in response.headers["content-disposition"]
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert json.loads(archive.read("iris-manifest.json")) == dataset["manifest"]
+        metadata = json.loads(archive.read("export.json"))
+        assert metadata["protocol"] == "iris-coco-export-v2"
+        assert metadata["coco_mapping"] == {"person": 1, "car": 3}
         for split in ("train", "val", "test"):
             document = json.loads(archive.read(f"{split}/annotations.json"))
             assert len(document["images"]) == 1

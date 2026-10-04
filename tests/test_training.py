@@ -9,6 +9,7 @@ from iris import models, training
 from iris.jobs import JobManager
 from iris.media import _pixel_hash
 from iris.store import Store, new_id, now
+from iris.taxonomies import TAXONOMY
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def workspace(tmp_path, monkeypatch):
             }
         )
     manifest = {
-        "taxonomy_id": "iris-objects-v1",
+        "taxonomy": TAXONOMY,
         "class_mapping": training.CLASS_MAPPING,
         "frames": frames,
     }

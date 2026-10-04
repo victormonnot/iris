@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/static/comparison-replay.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
+    <script src="/static/dataset-tools.js" defer></script>
     <script src="/static/app.js" defer></script>
     <script src="/static/taxonomies.js" defer></script>
     <script src="/static/video-review.js" defer></script>
@@ -1253,7 +1254,7 @@ ollama pull qwen3-vl:4b-instruct</pre
               across all sessions in this project. Sessions in the same scene group stay
               together in every release.
             </p>
-            <p class="dataset-scope">Custom classes currently support annotation and COCO import. Dataset releases, training and evaluation require the original person / car definitions; existing releases remain usable.</p>
+            <p class="dataset-scope">Freeze and export datasets with your project's classes. Training and evaluation currently require the original person / car definitions; existing releases remain usable.</p>
             <section
               class="panel dataset-panel"
               aria-labelledby="dataset-create-title"
@@ -1271,6 +1272,13 @@ ollama pull qwen3-vl:4b-instruct</pre
                 </button>
               </div>
               <form id="dataset-form" class="dataset-panel-body">
+                <div class="dataset-taxonomy-picker">
+                  <label for="dataset-taxonomy">Class version for this release</label>
+                  <select id="dataset-taxonomy" disabled><option value="">Loading class versions…</option></select>
+                  <p id="dataset-taxonomy-context" class="field-hint"></p>
+                  <details class="dataset-class-definitions"><summary>View class names and annotation rules</summary><div id="dataset-taxonomy-definitions"></div></details>
+                  <p id="dataset-taxonomy-excluded" class="field-hint" role="status"></p>
+                </div>
                 <div class="training-form-grid">
                   <div>
                     <label for="dataset-name">Release name</label>
@@ -1289,6 +1297,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <select id="dataset-parent">
                       <option value="">First / independent release</option>
                     </select>
+                    <p id="dataset-parent-hint" class="field-hint">A previous release must use this exact class version. You can also create an independent release.</p>
                   </div>
                 </div>
                 <p
@@ -1369,6 +1378,15 @@ ollama pull qwen3-vl:4b-instruct</pre
                       class="dataset-counts"
                     ></div>
                     <p id="dataset-detail-classes" class="field-hint"></p>
+                    <p id="dataset-detail-taxonomy" class="field-hint"></p>
+                    <div class="dataset-class-table-wrap"><table class="dataset-class-table">
+                      <caption>Frozen class identifiers and counts</caption>
+                      <thead><tr><th scope="col">Class</th><th scope="col">Boxes</th><th scope="col">IRIS class ID</th><th scope="col">Export category ID</th><th scope="col">Official COCO source ID</th></tr></thead>
+                      <tbody id="dataset-detail-class-rows"></tbody>
+                    </table></div>
+                    <p class="field-hint">Export category IDs belong to this saved COCO-format dataset. They are independent of optional mappings to the official COCO detector categories.</p>
+                    <details class="dataset-class-definitions"><summary>Saved class definitions</summary><div id="dataset-detail-definitions"></div></details>
+                    <p id="dataset-detail-ml" class="field-hint"></p>
                     <div
                       id="dataset-detail-warnings"
                       class="dataset-warnings"
@@ -1437,6 +1455,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <select id="training-dataset" required disabled>
                     <option value="">Freeze a dataset first</option>
                   </select>
+                  <p id="training-dataset-limitation" class="field-hint"></p>
                   <label for="training-parent">Starting checkpoint</label>
                   <select id="training-parent" required disabled>
                     <option value="">Checking local models…</option>
@@ -1702,6 +1721,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   </div>
                 </div>
                 <p id="evaluation-dataset-context" class="field-hint"></p>
+                <p id="evaluation-dataset-limitation" class="field-hint"></p>
                 <fieldset class="evaluation-model-fieldset">
                   <legend>Detectors · choose up to two</legend>
                   <div id="evaluation-models" class="evaluation-models"></div>
@@ -3199,7 +3219,7 @@ ollama pull qwen3-vl:4b-instruct</pre
         <button id="taxonomy-close" type="button" class="icon-button" aria-label="Close class editor">×</button>
       </div>
       <p class="small muted">Define each class once and refine its annotation rules in saved versions. Published class identifiers remain stable. Existing images and annotation revisions keep their original definitions.</p>
-      <p class="field-hint">Custom classes support manual annotation and COCO import. Dataset releases, training, evaluation and model review currently require the original person / car definitions. Existing releases remain usable.</p>
+      <p class="field-hint">Custom classes support manual annotation, COCO import, frozen datasets and COCO export. Training, evaluation and model review currently require the original person / car definitions. Existing releases remain usable.</p>
       <div class="taxonomy-history">
         <div><label for="taxonomy-history">Saved class versions</label><select id="taxonomy-history"></select></div>
         <button id="taxonomy-refresh" type="button" class="text-button">Reload versions</button>

@@ -9,8 +9,9 @@ videos; no ARGOS connection, drone metadata or special source format is required
 The supported task remains bounding-box detection. Projects start with the
 `iris-objects-v1` **person** and **car** definitions. **Manage classes** publishes
 immutable custom definitions for manual annotation and COCO import; see
-[class versions](classes.md). Dataset freezing, training, evaluation and multimodal
-candidate review still require the original definitions. Moving records between
+[class versions](classes.md). Custom datasets freeze one class version with images,
+reviewed labels and mappings, and can be exported as COCO. Training, evaluation and
+multimodal candidate review still require the original definitions. Moving records between
 projects is not supported.
 
 ## What belongs to a project

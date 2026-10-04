@@ -6,11 +6,12 @@ import shutil
 from pathlib import Path
 
 from iris.annotations import TAXONOMY, _coordinates, _latest
+from iris.dataset_manifest import SCHEMA_VERSION, manifest_mappings, taxonomy_mappings
 from iris.inference import _load_verified_frame
 from iris.media import _file_hash
 from iris.store import DEFAULT_PROJECT_ID, Store, _decode, new_id, now
+from iris.taxonomies import get_taxonomy, list_taxonomies
 
-SCHEMA_VERSION = 1
 CLASS_MAPPING = {"person": 1, "car": 2}
 SPLITS = {"train", "val", "test"}
 MAX_FRAMES = 1000
@@ -24,6 +25,14 @@ INDEPENDENCE_WARNING = (
     "Different scene groups are not proof of independent data. Group related sessions and "
     "visually similar scenes together before freezing a dataset."
 )
+ML_LIMITATION = (
+    "Training and evaluation currently support only the original Person / Car definitions. "
+    "This dataset can be inspected and exported with its saved custom classes."
+)
+
+
+class DatasetConflict(RuntimeError):
+    """Reviewed annotations changed after the dataset selection was prepared."""
 
 
 def _canonical(data: dict) -> bytes:
@@ -44,18 +53,37 @@ def _manifest_from_row(store: Store, row: dict, *, verify_images: bool = False) 
         manifest = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError("Dataset manifest is missing or unreadable") from exc
+    taxonomy, class_mapping, _ = manifest_mappings(manifest)
     if (
-        manifest.get("schema_version") != SCHEMA_VERSION
-        or manifest.get("id") != row["id"]
+        manifest.get("id") != row["id"]
         or manifest.get("project_id", DEFAULT_PROJECT_ID)
         != row.get("project_id", DEFAULT_PROJECT_ID)
-        or manifest.get("taxonomy") != TAXONOMY
-        or manifest.get("class_mapping") != CLASS_MAPPING
         or not isinstance(manifest.get("frames"), list)
-        or not manifest["frames"]
+        or not 1 <= len(manifest["frames"]) <= MAX_FRAMES
     ):
         raise ValueError("Dataset manifest has an unsupported format or taxonomy")
     for frame in manifest["frames"]:
+        annotation = frame.get("annotation") if isinstance(frame, dict) else None
+        if (
+            not isinstance(annotation, dict)
+            or annotation.get("taxonomy_id") != taxonomy["id"]
+            or annotation.get("status") != "validated"
+            or annotation.get("id") != frame.get("annotation_revision_id")
+            or annotation.get("frame_id") != frame.get("frame_id")
+            or annotation.get("frame_sha256") != frame.get("sha256")
+            or annotation.get("revision") != frame.get("revision")
+            or not isinstance(frame.get("boxes"), list)
+            or annotation.get("boxes") != frame["boxes"]
+        ):
+            raise ValueError("Frozen annotations do not match the dataset's class version or image")
+        for box in frame["boxes"]:
+            if (
+                not isinstance(box, dict)
+                or not isinstance(box.get("label"), str)
+                or box["label"] not in class_mapping
+            ):
+                raise ValueError("Frozen dataset annotations contain an unsupported class")
+            _coordinates(box.get("box"), frame)
         image_path = store.artifact_path(frame["image_path"])
         if image_path != dataset_dir / "images" / f"{frame['frame_id']}.png":
             raise ValueError("Dataset image is outside its version directory")
@@ -86,7 +114,27 @@ def dataset_detail(store: Store, dataset_id: str) -> dict:
     row = store.get("dataset_versions", dataset_id)
     if row is None:
         raise KeyError(dataset_id)
-    return {**row, "manifest": _manifest_from_row(store, row)}
+    manifest = _manifest_from_row(store, row)
+    return {**_brief(row, manifest), "manifest": manifest}
+
+
+def _brief(row: dict, manifest: dict) -> dict:
+    taxonomy, class_mapping, coco_mapping = manifest_mappings(manifest)
+    ml_supported = taxonomy == TAXONOMY and class_mapping == CLASS_MAPPING
+    return {
+        **row,
+        "taxonomy_id": taxonomy["id"],
+        "taxonomy": taxonomy,
+        "class_mapping": class_mapping,
+        "coco_mapping": coco_mapping,
+        "ml_supported": ml_supported,
+        "ml_limitation": None if ml_supported else ML_LIMITATION,
+    }
+
+
+def dataset_brief(store: Store, row: dict) -> dict:
+    """Expose a release's frozen class version and current runtime support to list views."""
+    return _brief(row, _manifest_from_row(store, row))
 
 
 def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> tuple[dict, dict]:
@@ -127,7 +175,9 @@ def _reservations(store: Store, conn, project_id: str = DEFAULT_PROJECT_ID) -> t
     return groups, pixels
 
 
-def _eligibility(conn, frame: dict) -> tuple[dict | None, str | None]:
+def _eligibility(
+    conn, frame: dict, taxonomy_id: str | None = None
+) -> tuple[dict | None, str | None]:
     if not frame["selected"]:
         return None, "unselected"
     latest = _latest(conn, frame["id"])
@@ -135,8 +185,8 @@ def _eligibility(conn, frame: dict) -> tuple[dict | None, str | None]:
         return None, "unannotated"
     if latest["status"] != "validated":
         return latest, "draft"
-    if latest["taxonomy_id"] != TAXONOMY["id"]:
-        return latest, "unsupported_taxonomy"
+    if taxonomy_id is not None and latest["taxonomy_id"] != taxonomy_id:
+        return latest, "different_taxonomy"
     suggestion_ids = {
         row[0]
         for row in conn.execute(
@@ -148,10 +198,10 @@ def _eligibility(conn, frame: dict) -> tuple[dict | None, str | None]:
     return latest, None
 
 
-def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> dict:
+def dataset_candidates(
+    store: Store, project_id: str = DEFAULT_PROJECT_ID, taxonomy_id: str | None = None
+) -> dict:
     """Return only currently selected, fully reviewed images, grouped for split assignment."""
-    if store.get("projects", project_id) is None:
-        raise ValueError("Project does not exist")
     excluded = {
         reason: 0
         for reason in (
@@ -159,12 +209,17 @@ def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> di
             "unannotated",
             "draft",
             "pending_suggestions",
-            "unsupported_taxonomy",
+            "different_taxonomy",
         )
     }
     groups = {}
     with store.connect() as conn:
         conn.execute("BEGIN")
+        project = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+        if project is None:
+            raise ValueError("Project does not exist")
+        taxonomy_id = project["taxonomy_id"] if taxonomy_id is None else taxonomy_id
+        taxonomy = get_taxonomy(store, taxonomy_id, project_id)
         reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
         sessions = {
             row["id"]: dict(row)
@@ -178,7 +233,7 @@ def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> di
             (project_id,),
         ):
             frame = _decode(row)
-            annotation, reason = _eligibility(conn, frame)
+            annotation, reason = _eligibility(conn, frame, taxonomy_id)
             if reason:
                 excluded[reason] += 1
                 continue
@@ -209,25 +264,20 @@ def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> di
             )
             group["count"] += 1
     return {
+        "taxonomy": taxonomy,
+        "taxonomies": list_taxonomies(store, project_id),
         "groups": sorted(groups.values(), key=lambda group: group["scene_group"]),
         "excluded": excluded,
         "split_policy": SPLIT_POLICY,
-        "warnings": [INDEPENDENCE_WARNING]
-        + (
-            [
-                "Custom class annotations are saved, but freezing datasets, training and "
-                "evaluation currently require the original Person / Car definitions."
-            ]
-            if excluded["unsupported_taxonomy"]
-            else []
-        ),
+        "warnings": [INDEPENDENCE_WARNING],
     }
 
 
-def _summary(frames: list[dict]) -> dict:
+def _summary(frames: list[dict], class_mapping: dict | None = None) -> dict:
+    class_mapping = CLASS_MAPPING if class_mapping is None else class_mapping
     counts = dict.fromkeys(sorted(SPLITS), 0)
-    classes = dict.fromkeys(CLASS_MAPPING, 0)
-    split_classes = {split: dict.fromkeys(CLASS_MAPPING, 0) for split in sorted(SPLITS)}
+    classes = dict.fromkeys(class_mapping, 0)
+    split_classes = {split: dict.fromkeys(class_mapping, 0) for split in sorted(SPLITS)}
     for frame in frames:
         counts[frame["split"]] += 1
         for box in frame["boxes"]:
@@ -273,6 +323,8 @@ def create_dataset(
     splits: dict[str, str],
     parent_id: str | None = None,
     project_id: str = DEFAULT_PROJECT_ID,
+    taxonomy_id: str | None = None,
+    expected_revisions: dict[str, str] | None = None,
 ) -> dict:
     """Copy a reviewed snapshot and publish it atomically; later edits create new releases."""
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 160:
@@ -292,6 +344,14 @@ def create_dataset(
         raise ValueError("Assign scene groups to train, val or test")
     if parent_id is not None and (not isinstance(parent_id, str) or not parent_id):
         raise ValueError("Parent dataset ID must identify an existing release")
+    if taxonomy_id is not None and (not isinstance(taxonomy_id, str) or not taxonomy_id):
+        raise ValueError("Choose a saved class version for this dataset")
+    if expected_revisions is not None and (
+        not isinstance(expected_revisions, dict)
+        or set(expected_revisions) != set(frame_ids)
+        or any(not isinstance(value, str) or not value for value in expected_revisions.values())
+    ):
+        raise ValueError("Expected annotation revision IDs must exactly match the selected frames")
 
     identifier, created_at = new_id(), now()
     relative_dir = Path("datasets") / identifier
@@ -307,6 +367,7 @@ def create_dataset(
             conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone() is None:
                 raise ValueError("Project does not exist")
+            parent_manifest = None
             if parent_id is not None:
                 parent = conn.execute(
                     "SELECT * FROM dataset_versions WHERE id=?", (parent_id,)
@@ -315,9 +376,9 @@ def create_dataset(
                     raise ValueError("Parent dataset version does not exist")
                 if parent["project_id"] != project_id:
                     raise ValueError("Parent dataset version belongs to a different project")
-                _manifest_from_row(store, _decode(parent))
-            reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
-            snapshots, selected_groups, seen_pixels = [], set(), {}
+                parent_manifest = _manifest_from_row(store, _decode(parent))
+            taxonomy = get_taxonomy(store, taxonomy_id, project_id) if taxonomy_id else None
+            reviewed = []
             for frame_id in frame_ids:
                 raw_frame = conn.execute("SELECT * FROM frames WHERE id=?", (frame_id,)).fetchone()
                 if raw_frame is None:
@@ -330,17 +391,44 @@ def create_dataset(
                 )
                 if session["project_id"] != project_id:
                     raise ValueError(f"Frame {frame_id} belongs to a different project")
-                annotation, reason = _eligibility(conn, frame)
+                if expected_revisions is not None:
+                    latest = _latest(conn, frame_id)
+                    if (latest["id"] if latest else None) != expected_revisions[frame_id]:
+                        raise DatasetConflict(
+                            f"Annotations changed for frame {frame_id}; reload dataset candidates "
+                            "before freezing a release"
+                        )
+                annotation, reason = _eligibility(conn, frame, taxonomy_id)
+                if reason == "different_taxonomy":
+                    raise ValueError(
+                        "Every selected annotation must use the same saved class version"
+                    )
                 if reason:
                     raise ValueError(f"Frame {frame_id} is not eligible for freezing: {reason}")
-                if annotation["taxonomy_id"] != TAXONOMY["id"]:
-                    raise ValueError("Every annotation must use iris-objects-v1")
+                if taxonomy is None:
+                    taxonomy_id = annotation["taxonomy_id"]
+                    taxonomy = get_taxonomy(store, taxonomy_id, project_id)
+                class_mapping, coco_mapping = taxonomy_mappings(taxonomy)
                 if not annotation["reviewer"] or annotation["frame_sha256"] != frame["sha256"]:
                     raise ValueError("Validated annotation does not match the reviewed image")
                 for box in annotation["boxes"]:
-                    if box["label"] not in CLASS_MAPPING:
+                    if (
+                        not isinstance(box, dict)
+                        or not isinstance(box.get("label"), str)
+                        or box["label"] not in class_mapping
+                    ):
                         raise ValueError("Dataset annotations contain an unsupported class")
                     _coordinates(box["box"], frame)
+                reviewed.append((frame, session, annotation))
+            if parent_manifest is not None and parent_manifest["taxonomy"]["id"] != taxonomy_id:
+                raise ValueError(
+                    "Parent dataset uses a different class version; create an independent release "
+                    "for these class definitions"
+                )
+            reserved_groups, reserved_pixels = _reservations(store, conn, project_id)
+            snapshots, selected_groups, seen_pixels = [], set(), {}
+            for frame, session, annotation in reviewed:
+                frame_id = frame["id"]
                 asset = _decode(
                     conn.execute("SELECT * FROM assets WHERE id=?", (frame["asset_id"],)).fetchone()
                 )
@@ -394,7 +482,7 @@ def create_dataset(
                 )
             if set(splits) != selected_groups:
                 raise ValueError("Split assignments must exactly match the selected scene groups")
-            summary = _summary(snapshots)
+            summary = _summary(snapshots, class_mapping)
             if not summary["split_counts"]["train"] or not summary["split_counts"]["val"]:
                 raise ValueError(
                     "A dataset requires nonempty train and val splits from different scene groups"
@@ -406,8 +494,9 @@ def create_dataset(
                 "name": name.strip(),
                 "parent_id": parent_id,
                 "created_at": created_at,
-                "taxonomy": TAXONOMY,
-                "class_mapping": CLASS_MAPPING,
+                "taxonomy": taxonomy,
+                "class_mapping": class_mapping,
+                "coco_mapping": coco_mapping,
                 "splits": splits,
                 "split_policy": SPLIT_POLICY,
                 "summary": summary,
