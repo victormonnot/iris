@@ -14,7 +14,7 @@ from test_training_live import wait_for_job
 
 from iris.app import create_app
 from iris.models import get_spec
-from iris.store import Store, new_id, now
+from iris.store import SCHEMA_VERSION, Store, new_id, now
 
 BASE_URL = "http://127.0.0.1"
 
@@ -314,7 +314,7 @@ def test_schema_six_migration_preserves_suggestions_and_revision_links(tmp_path)
     )
     migrated = Store(tmp_path)
     with migrated.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert [
             tuple(row) for row in conn.execute("SELECT * FROM annotation_suggestions ORDER BY id")
         ] == before

@@ -9,7 +9,7 @@ import test_evaluation_analysis as analysis_fixtures
 
 from iris.evaluation import evaluation_detail, reference_history
 from iris.evaluation_analysis import analyze_evaluation
-from iris.store import SCHEMA, Store, _encode, new_id, now
+from iris.store import SCHEMA, SCHEMA_VERSION, Store, _encode, new_id, now
 
 saved = analysis_fixtures.saved
 OLD_MODELS = """CREATE TABLE IF NOT EXISTS evaluation_models (
@@ -109,7 +109,7 @@ def test_migration_keeps_ids_metrics_predictions_reference_and_legacy_analysis(s
     }
     assert reference_history(store)["current"] == before["model_references"][0]
     with store.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE evaluation_predictions SET evaluation_model_id='missing'")

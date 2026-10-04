@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from iris import cli
-from iris.store import Store
+from iris.store import SCHEMA_VERSION, Store
 
 
 def invoke(monkeypatch, capsys, *arguments):
@@ -22,7 +22,7 @@ def test_backup_verify_restore_and_existing_target(monkeypatch, capsys, tmp_path
     restored = tmp_path / "restored"
     backup = invoke(monkeypatch, capsys, "workspace", "backup", archive, "--data-dir", store.root)
     assert archive.is_file()
-    assert backup["summary"]["schema_version"] == 13
+    assert backup["summary"]["schema_version"] == SCHEMA_VERSION
     inspection = invoke(monkeypatch, capsys, "workspace", "inspect", archive)
     assert inspection["archive_sha256"] == backup["archive_sha256"]
     restoration = invoke(monkeypatch, capsys, "workspace", "restore", archive, "--to", restored)

@@ -20,7 +20,7 @@ from iris.assistance_batches import (
 )
 from iris.jobs import JobManager
 from iris.media import import_asset
-from iris.store import Store, new_id, now
+from iris.store import SCHEMA_VERSION, Store, new_id, now
 
 READY = {
     "provider": "ollama",
@@ -752,6 +752,6 @@ def test_schema_seven_migration_preserves_existing_data(workspace):
         conn.execute("PRAGMA user_version=7")
     reopened = Store(store.root)
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     assert reopened.list("assistance_batches") == []
     assert {table: reopened.list(table) for table in before} == before

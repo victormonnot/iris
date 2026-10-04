@@ -11,6 +11,7 @@ from PIL import Image
 
 from iris.media import extract_frames, import_asset
 from iris.store import Store, new_id, now
+from iris.taxonomies import TAXONOMY, publish_taxonomy
 
 
 @pytest.fixture
@@ -79,6 +80,51 @@ def test_identical_asset_import_is_idempotent_without_file_leaks(store, session,
     assert second == first
     assert len(store.list("assets")) == len(store.list("frames")) == 1
     assert set(store.root.glob("assets/*")) | set(store.root.glob("frames/*")) == original_files
+
+
+def test_new_images_pin_current_classes_and_duplicate_imports_keep_their_version(
+    store, session, tmp_path
+):
+    source = make_image(tmp_path / "original.png")
+    original = import_asset(store, session["id"], source, source.name)
+    (old_frame,) = store.list("frames", asset_id=original["id"])
+    custom = publish_taxonomy(
+        store,
+        session["project_id"],
+        expected_taxonomy_id=TAXONOMY["id"],
+        classes=[{"id": "helmet", "name": "Helmet", "definition": "A protective helmet."}],
+    )
+    assert import_asset(store, session["id"], source, source.name) == original
+    assert store.get("frames", old_frame["id"])["taxonomy_id"] == TAXONOMY["id"]
+    new_source = make_image(tmp_path / "new.png", color=(70, 80, 90))
+    imported = import_asset(store, session["id"], new_source, new_source.name)
+    (new_frame,) = store.list("frames", asset_id=imported["id"])
+    assert new_frame["taxonomy_id"] == custom["id"]
+
+
+def test_video_frames_pin_classes_at_extraction_without_changing_existing_frames(
+    store, session, tmp_path
+):
+    source = make_video(tmp_path / "versions.avi")
+    asset = import_asset(store, session["id"], source, source.name)
+    first = publish_taxonomy(
+        store,
+        session["project_id"],
+        expected_taxonomy_id=TAXONOMY["id"],
+        classes=[{"id": "helmet", "name": "Helmet", "definition": "A protective helmet."}],
+    )
+    before = extract(store, asset, interval_seconds=0.25, start_seconds=0, end_seconds=0.25)
+    assert before["created"] == 1
+    second = publish_taxonomy(
+        store,
+        session["project_id"],
+        expected_taxonomy_id=first["id"],
+        classes=[{"id": "helmet", "name": "Helmet", "definition": "A helmet worn on a head."}],
+    )
+    after = extract(store, asset, interval_seconds=0.25, start_seconds=0, end_seconds=0.5)
+    assert after["created"] == after["skipped_existing"] == 1
+    assert store.get("frames", before["frame_ids"][0])["taxonomy_id"] == first["id"]
+    assert store.get("frames", after["frame_ids"][0])["taxonomy_id"] == second["id"]
 
 
 def test_concurrent_identical_imports_share_one_asset(store, session, tmp_path, monkeypatch):

@@ -142,6 +142,10 @@ def _frame_record(
     timestamp_seconds: float | None = None,
     extraction: dict | None = None,
 ) -> dict:
+    from iris.taxonomies import current_taxonomy
+
+    session = store.get("sessions", asset["session_id"])
+    taxonomy_id = current_taxonomy(store, session["project_id"])["id"]
     frame_id = new_id()
     relative_path = Path("frames") / f"{frame_id}.png"
     path = store.root / relative_path
@@ -156,6 +160,7 @@ def _frame_record(
                 "id": frame_id,
                 "session_id": asset["session_id"],
                 "asset_id": asset["id"],
+                "taxonomy_id": taxonomy_id,
                 "frame_index": frame_index,
                 "timestamp_seconds": timestamp_seconds,
                 "width": image.width,

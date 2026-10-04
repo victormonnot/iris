@@ -314,6 +314,9 @@ def review_queue(
         session = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
         if session is None:
             raise KeyError(session_id)
+        project_taxonomy_id = conn.execute(
+            "SELECT taxonomy_id FROM projects WHERE id=?", (session["project_id"],)
+        ).fetchone()["taxonomy_id"]
         saved = _comparison(conn, session_id, comparison_id) if comparison_id is not None else None
         if saved:
             comparison, summary, runs, predictions = saved
@@ -326,6 +329,7 @@ def review_queue(
         ):
             frame = _decode(row)
             latest = _latest(conn, frame["id"])
+            taxonomy_id = latest["taxonomy_id"] if latest else frame["taxonomy_id"]
             decisions = latest["decisions"] if latest else {}
             suggestions = {
                 row[0]
@@ -343,13 +347,19 @@ def review_queue(
             pixel_split = reserved_pixels.get(frame["sha256"])
             if group_split and pixel_split and group_split != pixel_split:
                 raise ValueError("The image and scene group have conflicting reserved splits")
-            signal = (
-                _frame_signal(
-                    frame, comparison, runs, predictions, confidence_threshold, iou_threshold
+            if taxonomy_id != TAXONOMY["id"]:
+                signal = _unavailable(
+                    "Detector disagreement supports the original person/car classes only. "
+                    "Review this image manually using its saved custom class definitions."
                 )
-                if saved
-                else _unavailable("Choose a completed two-run comparison for a review signal.")
-            )
+            else:
+                signal = (
+                    _frame_signal(
+                        frame, comparison, runs, predictions, confidence_threshold, iou_threshold
+                    )
+                    if saved
+                    else _unavailable("Choose a completed two-run comparison for a review signal.")
+                )
             frames.append(
                 {
                     **{
@@ -367,6 +377,8 @@ def review_queue(
                         )
                     },
                     "review_status": status,
+                    "taxonomy_id": taxonomy_id,
+                    "taxonomy_outdated": taxonomy_id != project_taxonomy_id,
                     "annotation_status": annotation_status,
                     "revision": latest["revision"] if latest else 0,
                     "pending_count": pending,
@@ -378,7 +390,7 @@ def review_queue(
             )
     return {
         "session_id": session_id,
-        "taxonomy_id": TAXONOMY["id"],
+        "taxonomy_id": project_taxonomy_id,
         "config": {
             "comparison_id": comparison_id,
             "confidence_threshold": confidence_threshold,

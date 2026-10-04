@@ -1099,6 +1099,7 @@ async function initialize() {
     // Keep browser history and separate tabs pinned to their own project.
     window.history.replaceState(null, "", projectScope.location(state.projectId));
     renderProjects();
+    window.dispatchEvent(new Event("iris:project-ready"));
     const sessions = await api("/api/sessions");
     state.sessions = sessions;
     renderSessions();

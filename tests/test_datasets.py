@@ -175,6 +175,7 @@ def test_candidates_exclude_unreviewed_drafts_and_new_pending_proposals(workspac
         "unannotated": 1,
         "draft": 1,
         "pending_suggestions": 1,
+        "unsupported_taxonomy": 0,
     }
     with pytest.raises(ValueError, match="pending_suggestions"):
         freeze(store, frames)

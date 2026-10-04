@@ -135,6 +135,8 @@ def _eligibility(conn, frame: dict) -> tuple[dict | None, str | None]:
         return None, "unannotated"
     if latest["status"] != "validated":
         return latest, "draft"
+    if latest["taxonomy_id"] != TAXONOMY["id"]:
+        return latest, "unsupported_taxonomy"
     suggestion_ids = {
         row[0]
         for row in conn.execute(
@@ -151,7 +153,14 @@ def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> di
     if store.get("projects", project_id) is None:
         raise ValueError("Project does not exist")
     excluded = {
-        reason: 0 for reason in ("unselected", "unannotated", "draft", "pending_suggestions")
+        reason: 0
+        for reason in (
+            "unselected",
+            "unannotated",
+            "draft",
+            "pending_suggestions",
+            "unsupported_taxonomy",
+        )
     }
     groups = {}
     with store.connect() as conn:
@@ -203,7 +212,15 @@ def dataset_candidates(store: Store, project_id: str = DEFAULT_PROJECT_ID) -> di
         "groups": sorted(groups.values(), key=lambda group: group["scene_group"]),
         "excluded": excluded,
         "split_policy": SPLIT_POLICY,
-        "warnings": [INDEPENDENCE_WARNING],
+        "warnings": [INDEPENDENCE_WARNING]
+        + (
+            [
+                "Custom class annotations are saved, but freezing datasets, training and "
+                "evaluation currently require the original Person / Car definitions."
+            ]
+            if excluded["unsupported_taxonomy"]
+            else []
+        ),
     }
 
 

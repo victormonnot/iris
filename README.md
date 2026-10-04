@@ -42,8 +42,12 @@ sessions, dataset versions, trained models, evaluations, reference selection and
 reports. Existing work appears in **Default project** after upgrading. Official
 pretrained checkpoints are shared; workspace backup includes every project.
 
-The current annotation and training classes remain **person** and **car** with the
-versioned `iris-objects-v1` definitions. Custom classes are not available yet.
+Use **Manage classes** to publish custom class IDs, names and definitions for
+manual annotation and COCO imports. Each image retains its saved class version;
+adopting newer definitions creates a draft that requires human review. The initial
+`iris-objects-v1` Person / Car definitions remain available. Dataset freezing,
+training, evaluation and multimodal candidate review currently require those
+original definitions. See [class versions](docs/classes.md) for the supported workflow.
 IRIS has no dependency on ARGOS, flight telemetry or a drone-specific file format;
 recordings from any supported source can use the same local workflow.
 See [projects and compatibility](docs/projects.md).
@@ -115,7 +119,7 @@ metadata. There is no telemetry alignment or live capture.
 
 Use **Import annotated dataset** in the sidebar to upload a ZIP containing one COCO
 bounding-box JSON and its images. Preview the images and boxes, explicitly map
-each source category to `person`, `car`, or `exclude`, and record the source,
+each source category to one of the preview's saved target classes or `exclude`, and record the source,
 license and attribution. Assign one scene group to the package and preserve its
 original train/validation/test split when known. Related scenes must stay in the
 same group; do not manufacture independent splits from neighboring frames.
@@ -259,8 +263,8 @@ comparator alone do not establish a quality gain.
 
 ## Annotate and review
 
-Open **Annotation** for a selected frame. The initial taxonomy, `iris-objects-v1`,
-contains **person** and **car**; the interface shows their exact definitions.
+Open **Annotation** for a selected frame. The interface shows the image's saved
+class names and exact definitions, including custom classes created in **Manage classes**.
 Draw boxes, move or resize them, or edit their pixel coordinates. Saved detector
 outputs can be imported as proposals without running inference again.
 

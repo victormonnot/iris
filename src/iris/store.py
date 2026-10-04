@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -182,11 +182,27 @@ CREATE TABLE IF NOT EXISTS projects (
 """
 PROJECT_TABLES = ("sessions", "dataset_versions", "dataset_imports")
 PROJECT_COLUMN = "project_id TEXT NOT NULL DEFAULT 'default' REFERENCES projects(id)"
-SCHEMA = PROJECTS_SCHEMA + SCHEMA_V12
+SCHEMA_V13 = PROJECTS_SCHEMA + SCHEMA_V12
 for _table in PROJECT_TABLES:
     _declaration = f"CREATE TABLE IF NOT EXISTS {_table} (\n"
-    SCHEMA = SCHEMA.replace(_declaration, _declaration + f"    {PROJECT_COLUMN},\n")
-    SCHEMA += f"CREATE INDEX IF NOT EXISTS {_table}_project ON {_table}(project_id);\n"
+    SCHEMA_V13 = SCHEMA_V13.replace(_declaration, _declaration + f"    {PROJECT_COLUMN},\n")
+    SCHEMA_V13 += f"CREATE INDEX IF NOT EXISTS {_table}_project ON {_table}(project_id);\n"
+
+FRAME_TAXONOMY_COLUMN = "taxonomy_id TEXT NOT NULL DEFAULT 'iris-objects-v1'"
+SCHEMA = (
+    SCHEMA_V13.replace(
+        "CREATE TABLE IF NOT EXISTS frames (\n",
+        f"CREATE TABLE IF NOT EXISTS frames (\n    {FRAME_TAXONOMY_COLUMN},\n",
+    )
+    + """
+CREATE TABLE IF NOT EXISTS taxonomy_versions (
+    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+    version INTEGER NOT NULL CHECK(version >= 2), parent_id TEXT NOT NULL,
+    snapshot TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id,version)
+);
+CREATE INDEX IF NOT EXISTS taxonomy_versions_project ON taxonomy_versions(project_id);
+"""
+)
 
 IMPORTED_SUGGESTIONS_MIGRATION = """
 CREATE TABLE annotation_suggestions_v7 (
@@ -256,6 +272,7 @@ JSON_FIELDS = {
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = {
     "projects",
+    "taxonomy_versions",
     "sessions",
     "assets",
     "frames",
@@ -321,6 +338,9 @@ class Store:
                 # SQLite cannot add a non-NULL REFERENCES default with FK checks
                 # enabled. Validate all references in the same transaction below.
                 conn.execute("PRAGMA foreign_keys=OFF")
+            frame_columns = {row[1] for row in conn.execute("PRAGMA table_info(frames)")}
+            if frame_columns and "taxonomy_id" not in frame_columns:
+                project_migration += f"ALTER TABLE frames ADD COLUMN {FRAME_TAXONOMY_COLUMN};\n"
             old_suggestions = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='annotation_suggestions'"
             ).fetchone()
@@ -430,6 +450,8 @@ class Store:
 
     def update(self, table: str, record_id: str, data: dict) -> dict:
         self._check(table, data)
+        if table == "taxonomy_versions":
+            raise ValueError("Published taxonomy versions are immutable; publish a new version")
         if not data or "id" in data:
             raise ValueError("An update must contain fields and cannot change the ID")
         encoded = _encode(data)

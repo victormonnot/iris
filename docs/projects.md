@@ -6,11 +6,12 @@ create a project with a name and optional description. Session names and scene
 groups are meaningful within their project. Projects can use ordinary images and
 videos; no ARGOS connection, drone metadata or special source format is required.
 
-The supported task remains bounding-box detection with the `iris-objects-v1`
-**person** and **car** definitions. All projects currently use that same definition.
-Creating arbitrary classes, changing definitions and moving records between projects
-are not supported by this release. These restrictions are explicit rather than
-silently relabelling historical models or annotations.
+The supported task remains bounding-box detection. Projects start with the
+`iris-objects-v1` **person** and **car** definitions. **Manage classes** publishes
+immutable custom definitions for manual annotation and COCO import; see
+[class versions](classes.md). Dataset freezing, training, evaluation and multimodal
+candidate review still require the original definitions. Moving records between
+projects is not supported.
 
 ## What belongs to a project
 
@@ -54,11 +55,14 @@ record IDs, source files, hashes, annotation revisions, dataset manifests, model
 checkpoints and report snapshots. It validates foreign keys before committing and
 is safe to repeat. The historical class definition remains unchanged.
 
-Schema-12 and schema-13 workspace archives can be inspected and restored. Restore
+Schema 14 adds immutable project class versions and pins each existing frame to
+the original definitions. It preserves all previous saved fields and artifacts.
+
+Schema-12, schema-13 and schema-14 workspace archives can be inspected and restored. Restore
 writes an independent workspace and preserves the archived payload. Opening a
-restored schema-12 workspace performs the same migration to **Default project**.
+restored older workspace performs the same migration to the current schema.
 Keep the original archive for use with its original application version; the old
-application does not understand a database already migrated to schema 13.
+application does not understand a database already migrated to schema 14.
 
 New assistance requests use generic image/video wording and updated prompt-version
 identifiers. Existing saved responses and results remain unchanged. A video-review

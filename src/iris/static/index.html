@@ -15,7 +15,9 @@
     <link rel="stylesheet" href="/static/workspace-backup.css" />
     <link rel="stylesheet" href="/static/comparison-replay.css" />
     <script src="/static/project-scope.js" defer></script>
+    <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/app.js" defer></script>
+    <script src="/static/taxonomies.js" defer></script>
     <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison-replay.js" defer></script>
     <script src="/static/comparison.js" defer></script>
@@ -68,7 +70,8 @@
               <button class="button button-secondary full-width" type="submit">Create project</button>
             </form>
           </details>
-          <p class="project-class-note">Projects currently use the <strong>person</strong> and <strong>car</strong> detector classes.</p>
+          <p id="project-class-summary" class="project-class-note">Loading class definitions…</p>
+          <button id="taxonomy-open" class="text-button" type="button">Manage classes</button>
         </section>
         <div class="section-heading">
           <h2>Sessions</h2>
@@ -662,7 +665,7 @@
               <strong>Build your ground truth.</strong>
               <p>
                 Select images or extracted video frames in Data intake, then
-                open a frame in the review queue to annotate people and cars.
+                open a frame in the review queue to annotate the project's classes.
               </p>
             </div>
             <p
@@ -754,10 +757,7 @@
                     </div>
                     <label class="sr-only" for="annotation-class"
                       >Class for new boxes</label
-                    ><select id="annotation-class">
-                      <option value="person">Person</option>
-                      <option value="car">Car</option>
-                    </select>
+                    ><select id="annotation-class"></select>
                   </div>
                   <div class="annotation-view-toolbar">
                     <div class="annotation-view-actions" role="group" aria-label="Image view">
@@ -858,7 +858,7 @@
                     </svg>
                   </div>
                   <p id="annotation-canvas-help" class="annotation-canvas-help field-hint">
-                    Draw a box around each visible person or car. Select a box
+                    Draw a box around each visible target object. Select a box
                     to move it or drag its corners. Focus the canvas to zoom
                     with the wheel; hold Space and drag to pan. Coordinates
                     always refer to the original image.
@@ -888,10 +888,7 @@
                     <div>
                       <label for="annotation-box-class"
                         >Selected box class</label
-                      ><select id="annotation-box-class">
-                        <option value="person">Person</option>
-                        <option value="car">Car</option>
-                      </select>
+                      ><select id="annotation-box-class"></select>
                     </div>
                     <div class="annotation-coordinates">
                       <div>
@@ -1000,12 +997,12 @@
                     <p class="field-hint">
                       Validation confirms every visible in-scope object was
                       reviewed. An empty validated frame explicitly records no
-                      people or cars.
+                      objects from this frame's class definitions.
                     </p>
                   </section>
                   <section class="panel annotation-taxonomy">
                     <details>
-                      <summary>Label definitions · iris-objects-v1</summary>
+                      <summary id="annotation-taxonomy-title">Label definitions</summary>
                       <div id="annotation-taxonomy"></div>
                       <p class="field-hint">
                         Use tight visible bounds. Do not infer boxes for fully
@@ -1013,6 +1010,11 @@
                         human decision.
                       </p>
                     </details>
+                    <div id="annotation-taxonomy-update" class="annotation-taxonomy-update" hidden>
+                      <p id="annotation-taxonomy-version" class="field-hint"></p>
+                      <button id="annotation-adopt-taxonomy" type="button" class="button button-secondary">Use current project classes</button>
+                      <p class="field-hint">Save or discard edits first. Updating creates a draft for a new human review; earlier revisions keep their original definitions.</p>
+                    </div>
                   </section>
                 </aside>
               </div>
@@ -1068,7 +1070,7 @@
                     </button>
                   </div>
                   <p id="annotation-proposal-hint" class="field-hint">
-                    Only people and cars from this frame are imported. Importing
+                    Only explicitly mapped classes from this frame are imported. Importing
                     does not validate any labels.
                   </p>
                   <div
@@ -1111,6 +1113,7 @@
                       remain responsible for missed objects and final
                       validation.
                     </p>
+                    <p id="annotation-assistance-availability" class="field-hint" hidden>Model review currently supports the original person / car definitions. Use manual annotation or explicitly mapped detector proposals for these classes.</p>
                     <details
                       id="annotation-provider-setup"
                       class="setup-help"
@@ -1250,6 +1253,7 @@ ollama pull qwen3-vl:4b-instruct</pre
               across all sessions in this project. Sessions in the same scene group stay
               together in every release.
             </p>
+            <p class="dataset-scope">Custom classes currently support annotation and COCO import. Dataset releases, training and evaluation require the original person / car definitions; existing releases remain usable.</p>
             <section
               class="panel dataset-panel"
               aria-labelledby="dataset-create-title"
@@ -3148,17 +3152,17 @@ ollama pull qwen3-vl:4b-instruct</pre
             </div>
             <p id="dataset-import-image-info" class="field-hint"></p>
             <label class="checkbox-label" for="dataset-import-show-boxes"><input id="dataset-import-show-boxes" type="checkbox" checked /> Show source boxes</label>
-            <p class="field-hint">Green: person · Blue: car · Gray: excluded or unmapped. Source boxes remain unchanged in this preview.</p>
+            <p id="dataset-import-colors" class="field-hint"></p>
           </div>
           <div class="dataset-import-categories">
             <h3>Class mapping</h3>
             <p class="field-hint">Choose a target or explicitly exclude each source category. Original class names remain in provenance.</p>
+            <p id="dataset-import-taxonomy-version" class="field-hint"></p>
             <div id="dataset-import-mapping"></div>
             <p id="dataset-import-mapping-summary" class="field-hint" aria-live="polite"></p>
             <details class="dataset-import-definitions">
-              <summary>IRIS class definitions</summary>
-              <p><strong>Person:</strong> a visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.</p>
-              <p><strong>Car:</strong> a passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.</p>
+              <summary>Class definitions saved with this preview</summary>
+              <div id="dataset-import-definitions"></div>
               <p>Review every image for missing objects, including images with no imported target boxes.</p>
             </details>
           </div>
@@ -3167,8 +3171,8 @@ ollama pull qwen3-vl:4b-instruct</pre
           <fieldset id="dataset-import-settings" class="dataset-import-settings">
             <legend>Source and grouping</legend>
             <div class="form-grid">
-              <div><label for="dataset-import-name">Session name</label><input id="dataset-import-name" required maxlength="160" placeholder="e.g. Aerial pilot · train" /></div>
-              <div><label for="dataset-import-group">Scene group</label><input id="dataset-import-group" required maxlength="160" placeholder="e.g. Aerial pilot · site A" /></div>
+              <div><label for="dataset-import-name">Session name</label><input id="dataset-import-name" required maxlength="160" placeholder="e.g. Field observations · train" /></div>
+              <div><label for="dataset-import-group">Scene group</label><input id="dataset-import-group" required maxlength="160" placeholder="e.g. Field observations · site A" /></div>
               <div class="dataset-import-wide"><label for="dataset-import-source">Source URL</label><input id="dataset-import-source" type="url" required maxlength="2000" placeholder="https://official-dataset-source.example" /></div>
               <div><label for="dataset-import-license">License or usage terms</label><input id="dataset-import-license" required maxlength="500" placeholder="Record the source's actual terms" /></div>
               <div><label for="dataset-import-split">Original dataset split</label><select id="dataset-import-split" aria-describedby="dataset-import-split-hint"><option value="">Not specified · assign when publishing</option><option value="train">Train</option><option value="val">Validation</option><option value="test">Test</option></select><p id="dataset-import-split-hint" class="field-hint" hidden></p></div>
@@ -3188,6 +3192,27 @@ ollama pull qwen3-vl:4b-instruct</pre
         </div>
         <details class="dataset-import-provenance"><summary>Archive provenance</summary><pre id="dataset-import-provenance"></pre></details>
       </div>
+    </dialog>
+    <dialog id="taxonomy-dialog" class="modal taxonomy-modal" aria-labelledby="taxonomy-title">
+      <div class="modal-heading">
+        <div><div class="eyebrow">Project classes</div><h2 id="taxonomy-title">Define what matters.</h2></div>
+        <button id="taxonomy-close" type="button" class="icon-button" aria-label="Close class editor">×</button>
+      </div>
+      <p class="small muted">Define each class once and refine its annotation rules in saved versions. Published class identifiers remain stable. Existing images and annotation revisions keep their original definitions.</p>
+      <p class="field-hint">Custom classes support manual annotation and COCO import. Dataset releases, training, evaluation and model review currently require the original person / car definitions. Existing releases remain usable.</p>
+      <div class="taxonomy-history">
+        <div><label for="taxonomy-history">Saved class versions</label><select id="taxonomy-history"></select></div>
+        <button id="taxonomy-refresh" type="button" class="text-button">Reload versions</button>
+      </div>
+      <p id="taxonomy-status" class="field-hint" role="status" aria-live="polite"></p>
+      <code id="taxonomy-version-id" class="taxonomy-version-id"></code>
+      <form id="taxonomy-form">
+        <div id="taxonomy-rows" class="taxonomy-rows"></div>
+        <button id="taxonomy-add" type="button" class="button button-secondary">+ Add class</button>
+        <p class="field-hint taxonomy-coco-hint">A COCO mapping imports proposals for that official detector category only; it does not teach a detector a new class. Leave it blank unless the meanings match. Each COCO category can map to only one project class.</p>
+        <p id="taxonomy-error" class="inline-error" role="alert" hidden></p>
+        <div class="modal-actions"><button id="taxonomy-save" class="button button-primary" type="submit">Save new class version</button></div>
+      </form>
     </dialog>
   </body>
 </html>

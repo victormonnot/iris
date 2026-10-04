@@ -19,12 +19,17 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from iris import __version__
-from iris.store import JSON_FIELDS, SCHEMA, SCHEMA_V12, SCHEMA_VERSION, TABLES, now
+from iris.store import JSON_FIELDS, SCHEMA, SCHEMA_V12, SCHEMA_V13, SCHEMA_VERSION, TABLES, now
+from iris.taxonomies import validate_taxonomy_records
 
 PROTOCOL = "iris-workspace-archive-v1"
 FORMAT_VERSION = 1
-SCHEMAS = {12: SCHEMA_V12, SCHEMA_VERSION: SCHEMA}
-SCHEMA_TABLES = {12: TABLES - {"projects"}, SCHEMA_VERSION: TABLES}
+SCHEMAS = {12: SCHEMA_V12, 13: SCHEMA_V13, SCHEMA_VERSION: SCHEMA}
+SCHEMA_TABLES = {
+    12: TABLES - {"projects", "taxonomy_versions"},
+    13: TABLES - {"taxonomy_versions"},
+    SCHEMA_VERSION: TABLES,
+}
 CHUNK_BYTES = 1024 * 1024
 MAX_ARCHIVE_BYTES = 64 * 1024**3
 MAX_TOTAL_BYTES = 64 * 1024**3
@@ -487,6 +492,13 @@ def validate_database(
                                         "Workspace JSON metadata exceeds its size limit"
                                     )
                                 _parse_json(raw)
+            if version >= 14:
+                try:
+                    validate_taxonomy_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError(
+                        "Workspace taxonomy definitions or ownership are invalid"
+                    ) from exc
             active = connection.execute(
                 "SELECT count(*) FROM jobs WHERE status IN ('queued','running')"
             ).fetchone()[0]

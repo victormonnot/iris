@@ -7,36 +7,8 @@ import sqlite3
 
 from iris.inference import _load_verified_frame
 from iris.store import Store, _decode, new_id, now
+from iris.taxonomies import TAXONOMY, get_taxonomy
 
-TAXONOMY = {
-    "id": "iris-objects-v1",
-    "box_format": "xyxy_pixels",
-    "classes": [
-        {
-            "id": "person",
-            "name": "Person",
-            "definition": (
-                "A visible human, including a rider. Enclose the visible extent of each person; "
-                "do not infer a box for a fully occluded person."
-            ),
-            "coco_id": 1,
-        },
-        {
-            "id": "car",
-            "name": "Car",
-            "definition": (
-                "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, "
-                "motorcycles and bicycles. Enclose the visible extent of each car."
-            ),
-            "coco_id": 3,
-        },
-    ],
-    "review_guidance": (
-        "Review the whole image for missing objects and imprecise boxes. Only validate when "
-        "all visible target objects are annotated. A validated empty image is an explicit "
-        "negative example. Automatic proposals are never reference annotations by themselves."
-    ),
-}
 CLASS_IDS = {item["id"] for item in TAXONOMY["classes"]}
 COCO_MAPPING = {item["coco_id"]: item["id"] for item in TAXONOMY["classes"]}
 MAX_BOXES = 500
@@ -74,6 +46,25 @@ def _check_revision(latest: dict | None, expected_revision: int):
         )
 
 
+def _taxonomy_id(frame: dict, latest: dict | None) -> str:
+    return latest["taxonomy_id"] if latest else frame["taxonomy_id"]
+
+
+def _check_taxonomy(actual: str, expected: str | None):
+    if expected is not None and expected != actual:
+        raise AnnotationConflict(
+            "The annotation class version changed. Reload the image before saving."
+        )
+
+
+def _coco_mapping(taxonomy: dict) -> dict[int, str]:
+    return {
+        item["coco_id"]: item["id"]
+        for item in taxonomy["classes"]
+        if type(item.get("coco_id")) is int
+    }
+
+
 def require_revision(store: Store, frame_id: str, expected_revision: int) -> dict:
     """Check an editor snapshot; mutating callers must also check within their transaction."""
     annotation = get_annotation(store, frame_id)
@@ -89,6 +80,9 @@ def get_annotation(store: Store, frame_id: str) -> dict:
     # background assistance job is publishing new suggestions.
     with store.connect() as conn:
         conn.execute("BEGIN")
+        project = conn.execute(
+            "SELECT * FROM projects WHERE id=?", (session["project_id"],)
+        ).fetchone()
         revisions = [
             _decode(row)
             for row in conn.execute(
@@ -104,6 +98,9 @@ def get_annotation(store: Store, frame_id: str) -> dict:
             )
         ]
     latest = revisions[0] if revisions else None
+    taxonomy = get_taxonomy(store, _taxonomy_id(frame, latest), session["project_id"])
+    current_taxonomy = get_taxonomy(store, project["taxonomy_id"], session["project_id"])
+    coco_mapping = _coco_mapping(taxonomy)
     decisions = latest["decisions"] if latest else {}
     prediction_sources = []
     for prediction in store.list("predictions", frame_id=frame_id):
@@ -120,7 +117,7 @@ def get_annotation(store: Store, frame_id: str) -> dict:
                 "comparison_id": prediction["comparison_id"],
                 "comparison_name": comparison["name"],
                 "detection_count": sum(
-                    type(detection.get("label_id")) is int and detection["label_id"] in COCO_MAPPING
+                    type(detection.get("label_id")) is int and detection["label_id"] in coco_mapping
                     for detection in prediction["detections"]
                 ),
                 "created_at": prediction["created_at"],
@@ -133,7 +130,10 @@ def get_annotation(store: Store, frame_id: str) -> dict:
             "session_name": session["name"],
             "scene_group": session["scene_group"],
         },
-        "taxonomy": TAXONOMY,
+        "taxonomy": taxonomy,
+        "taxonomy_id": taxonomy["id"],
+        "current_taxonomy": current_taxonomy,
+        "taxonomy_outdated": taxonomy["id"] != current_taxonomy["id"],
         "revision": latest["revision"] if latest else 0,
         "status": latest["status"] if latest else "unannotated",
         "boxes": latest["boxes"] if latest else [],
@@ -146,6 +146,8 @@ def get_annotation(store: Store, frame_id: str) -> dict:
                 "id": revision["id"],
                 "revision": revision["revision"],
                 "status": revision["status"],
+                "taxonomy_id": revision["taxonomy_id"],
+                "taxonomy": get_taxonomy(store, revision["taxonomy_id"], session["project_id"]),
                 "box_count": len(revision["boxes"]),
                 "reviewer": revision["reviewer"],
                 "notes": revision["notes"],
@@ -154,7 +156,12 @@ def get_annotation(store: Store, frame_id: str) -> dict:
             for revision in revisions
         ],
         "suggestions": [
-            {**suggestion, "state": decisions.get(suggestion["id"], "pending")}
+            {
+                **suggestion,
+                "state": decisions.get(suggestion["id"], "pending"),
+                "taxonomy_outdated": suggestion["metadata"].get("target_taxonomy", TAXONOMY["id"])
+                != taxonomy["id"],
+            }
             for suggestion in suggestions
         ],
         "prediction_sources": prediction_sources,
@@ -183,7 +190,11 @@ def _coordinates(box, frame: dict) -> list[float]:
     return [float(value) for value in box]
 
 
-def _validate_boxes(boxes: list[dict], frame: dict, suggestions: dict) -> list[dict]:
+def _validate_boxes(
+    boxes: list[dict], frame: dict, suggestions: dict, taxonomy: dict | None = None
+) -> list[dict]:
+    taxonomy = TAXONOMY if taxonomy is None else taxonomy
+    class_ids = {item["id"] for item in taxonomy["classes"]}
     if not isinstance(boxes, list) or len(boxes) > MAX_BOXES:
         raise ValueError(f"Annotations support at most {MAX_BOXES} boxes per image")
     result, identifiers, referenced = [], set(), set()
@@ -199,8 +210,8 @@ def _validate_boxes(boxes: list[dict], frame: dict, suggestions: dict) -> list[d
         ):
             raise ValueError("Each annotation box requires a distinct nonempty ID (128 max)")
         identifiers.add(identifier)
-        if not isinstance(label, str) or label not in CLASS_IDS:
-            raise ValueError("Annotation label must belong to iris-objects-v1 (person or car)")
+        if not isinstance(label, str) or label not in class_ids:
+            raise ValueError("Annotation label must belong to this image's class version")
         coordinates = _coordinates(box.get("box"), frame)
         suggestion_id = box.get("suggestion_id")
         if suggestion_id is not None and (
@@ -316,6 +327,7 @@ def save_annotation(
     status: str = "draft",
     reviewer: str = "",
     notes: str = "",
+    taxonomy_id: str | None = None,
 ) -> dict:
     frame = _frame(store, frame_id)
     if not isinstance(status, str) or status not in {"draft", "validated"}:
@@ -331,6 +343,12 @@ def save_annotation(
         conn.execute("BEGIN IMMEDIATE")
         latest = _latest(conn, frame_id)
         _check_revision(latest, expected_revision)
+        resolved_id = _taxonomy_id(frame, latest)
+        _check_taxonomy(resolved_id, taxonomy_id)
+        session = conn.execute(
+            "SELECT project_id FROM sessions WHERE id=?", (frame["session_id"],)
+        ).fetchone()
+        taxonomy = get_taxonomy(store, resolved_id, session["project_id"])
         expected_hash = latest["frame_sha256"] if latest else frame["sha256"]
         with _load_verified_frame(store, frame, expected_hash):
             pass
@@ -340,7 +358,7 @@ def save_annotation(
                 "SELECT * FROM annotation_suggestions WHERE frame_id=?", (frame_id,)
             )
         }
-        normalized = _validate_boxes(boxes, frame, suggestions)
+        normalized = _validate_boxes(boxes, frame, suggestions, taxonomy)
         _validate_decisions(conn, decisions, normalized, suggestions, latest)
         if status == "validated" and suggestions.keys() - decisions.keys():
             raise ValueError("Resolve every pending suggestion before validating this image")
@@ -353,12 +371,75 @@ def save_annotation(
                 frame_id,
                 expected_revision + 1,
                 status,
-                TAXONOMY["id"],
+                resolved_id,
                 expected_hash,
                 json.dumps(normalized, allow_nan=False),
                 json.dumps(decisions, allow_nan=False),
                 reviewer,
                 notes,
+                now(),
+            ),
+        )
+    return get_annotation(store, frame_id)
+
+
+def adopt_taxonomy(
+    store: Store,
+    frame_id: str,
+    *,
+    expected_revision: int,
+    expected_taxonomy_id: str,
+    target_taxonomy_id: str,
+) -> dict:
+    """Explicitly move this image to the project's current classes as a new draft."""
+    frame = _frame(store, frame_id)
+    with store.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        latest = _latest(conn, frame_id)
+        _check_revision(latest, expected_revision)
+        resolved_id = _taxonomy_id(frame, latest)
+        if not isinstance(expected_taxonomy_id, str) or not expected_taxonomy_id:
+            raise ValueError("Provide the image's current class version")
+        _check_taxonomy(resolved_id, expected_taxonomy_id)
+        project = conn.execute(
+            "SELECT p.* FROM projects p JOIN sessions s ON s.project_id=p.id WHERE s.id=?",
+            (frame["session_id"],),
+        ).fetchone()
+        if target_taxonomy_id != project["taxonomy_id"]:
+            raise AnnotationConflict(
+                "The project's current class version changed. Reload before adopting it."
+            )
+        if target_taxonomy_id == resolved_id:
+            raise ValueError("This image already uses the project's current class version")
+        taxonomy = get_taxonomy(store, target_taxonomy_id, project["id"])
+        class_ids = {item["id"] for item in taxonomy["classes"]}
+        boxes = latest["boxes"] if latest else []
+        if any(box["label"] not in class_ids for box in boxes):
+            raise ValueError(
+                "Some saved boxes use classes absent from the current project version. "
+                "Keep the image's existing version or explicitly remove those boxes and save "
+                "before adopting the new classes."
+            )
+        expected_hash = latest["frame_sha256"] if latest else frame["sha256"]
+        with _load_verified_frame(store, frame, expected_hash):
+            pass
+        for box in boxes:
+            _coordinates(box["box"], frame)
+        conn.execute(
+            "INSERT INTO annotation_revisions "
+            "(id,frame_id,revision,status,taxonomy_id,frame_sha256,boxes,decisions,reviewer,notes,"
+            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                new_id(),
+                frame_id,
+                expected_revision + 1,
+                "draft",
+                target_taxonomy_id,
+                expected_hash,
+                json.dumps(boxes, allow_nan=False),
+                json.dumps(latest["decisions"] if latest else {}, allow_nan=False),
+                "",
+                latest["notes"] if latest else "",
                 now(),
             ),
         )
@@ -393,10 +474,13 @@ def add_detector_suggestions(
         raise ValueError(
             "The prediction's taxonomy, image dimensions or provenance is incompatible"
         )
+    annotation = require_revision(store, frame_id, expected_revision)
+    taxonomy = annotation["taxonomy"]
+    coco_mapping = _coco_mapping(taxonomy)
     proposals = []
     for index, detection in enumerate(prediction["detections"]):
         label_id, score = detection.get("label_id"), detection.get("score")
-        if type(label_id) is not int or label_id not in COCO_MAPPING:
+        if type(label_id) is not int or label_id not in coco_mapping:
             continue
         if not _finite_number(score) or not 0 <= score <= 1:
             raise ValueError("The saved prediction contains an invalid confidence")
@@ -405,10 +489,13 @@ def add_detector_suggestions(
         coordinates = _coordinates(detection.get("box"), frame)
         if len(proposals) == MAX_DETECTOR_SUGGESTIONS:
             raise ValueError("More than 100 detector proposals; raise the confidence threshold")
+        identity = f"detector:{prediction_id}:{index}"
+        if taxonomy["id"] != TAXONOMY["id"]:
+            identity += f":{taxonomy['id']}"
         proposals.append(
             {
-                "id": hashlib.sha256(f"detector:{prediction_id}:{index}".encode()).hexdigest(),
-                "label": COCO_MAPPING[label_id],
+                "id": hashlib.sha256(identity.encode()).hexdigest(),
+                "label": coco_mapping[label_id],
                 "box": coordinates,
                 "metadata": {
                     "prediction_id": prediction_id,
@@ -422,7 +509,7 @@ def add_detector_suggestions(
                     "original_label_id": label_id,
                     "original_label": detection.get("label"),
                     "source_taxonomy": "coco-2017-v1",
-                    "target_taxonomy": TAXONOMY["id"],
+                    "target_taxonomy": taxonomy["id"],
                     "frame_sha256": config["frame_hashes"][frame_id],
                 },
             }
@@ -431,6 +518,7 @@ def add_detector_suggestions(
         conn.execute("BEGIN IMMEDIATE")
         latest = _latest(conn, frame_id)
         _check_revision(latest, expected_revision)
+        _check_taxonomy(_taxonomy_id(frame, latest), taxonomy["id"])
         with _load_verified_frame(store, frame, config["frame_hashes"][frame_id]):
             pass
         if latest and latest["frame_sha256"] != frame["sha256"]:

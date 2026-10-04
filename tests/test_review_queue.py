@@ -5,11 +5,12 @@ import json
 import pytest
 from PIL import Image
 
-from iris.annotations import save_annotation
+from iris.annotations import adopt_taxonomy, save_annotation
 from iris.datasets import create_dataset
 from iris.media import import_asset
 from iris.review_queue import PROTOCOL, assess_disagreement, review_queue
 from iris.store import Store, new_id, now
+from iris.taxonomies import TAXONOMY, publish_taxonomy
 
 
 def detection(box=None, *, category=1, score=0.9, **extra):
@@ -586,6 +587,36 @@ def test_frozen_splits_remain_reserved_after_new_draft(workspace):
     assert result["frames"][0]["review_status"] == "draft"
     assert {frame["reserved_split"] for frame in result["frames"]} == {"train"}
     assert review_queue(store, validation["id"])["frames"][0]["reserved_split"] == "val"
+
+
+def test_mixed_class_versions_keep_manual_review_and_disable_custom_disagreement(workspace):
+    store, session, frames = workspace
+    comparison = saved_comparison(store, session, frames)
+    custom = publish_taxonomy(
+        store,
+        session["project_id"],
+        expected_taxonomy_id=TAXONOMY["id"],
+        classes=[{"id": "helmet", "name": "Helmet", "definition": "A protective helmet."}],
+    )
+    adopt_taxonomy(
+        store,
+        frames[0]["id"],
+        expected_revision=0,
+        expected_taxonomy_id=TAXONOMY["id"],
+        target_taxonomy_id=custom["id"],
+    )
+    save(store, frames[0], expected_revision=1, status="validated", reviewer="Fixture reviewer")
+    queue = review_queue(store, session["id"], comparison_id=comparison["id"])
+    assert queue["counts"]["total"] == 4 and queue["counts"]["validated"] == 1
+    assert queue["taxonomy_id"] == custom["id"]
+    assert queue["frames"][0]["taxonomy_id"] == custom["id"]
+    assert queue["frames"][0]["taxonomy_outdated"] is False
+    assert queue["frames"][0]["signal"]["status"] == "unavailable"
+    assert "custom class definitions" in queue["frames"][0]["signal"]["reason"]
+    assert queue["frames"][0]["signal"]["disagreement"] is None
+    assert queue["frames"][1]["taxonomy_id"] == TAXONOMY["id"]
+    assert queue["frames"][1]["taxonomy_outdated"] is True
+    assert queue["frames"][1]["signal"]["status"] == "agreement"
 
 
 def test_conflicting_imported_splits_are_reported(workspace):

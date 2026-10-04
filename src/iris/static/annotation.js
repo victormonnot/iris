@@ -3,6 +3,7 @@
 (() => {
   const svgNS = "http://www.w3.org/2000/svg";
   const tools = window.IrisAnnotationTools;
+  const taxonomyTools = window.IRISTaxonomyTools;
   const editor = {
     sessionId: null,
     frameId: null,
@@ -62,6 +63,8 @@
     `/api/frames/${encodeURIComponent(editor.frameId)}/${suffix}`;
   const selectedBox = () =>
     editor.boxes.find((box) => box.id === editor.selected);
+  const className = (id) => taxonomyTools.className(editor.document?.taxonomy, id);
+  const knownClass = (id) => taxonomyTools.hasClass(editor.document?.taxonomy, id);
   const pending = () =>
     (editor.document?.suggestions || []).filter(
       (proposal) =>
@@ -212,7 +215,7 @@
     for (const button of window.document.querySelectorAll("#annotation-boxes button"))
       button.disabled = blocked;
     for (const button of window.document.querySelectorAll("#annotation-proposals button"))
-      button.disabled = blocked || Boolean(
+      button.disabled = blocked || Boolean(button.dataset.requiresClass && !knownClass(button.dataset.requiresClass)) || Boolean(
         button.dataset.requiresBox &&
         !editor.boxes.some((box) => box.id === button.dataset.requiresBox),
       );
@@ -231,10 +234,12 @@
           : editor.dirty
             ? "Changes are local until you save. Saving edits creates a new revision."
             : "Saved revisions remain available below.";
+    const mappedClasses = document.taxonomy.classes.filter((item) => item.coco_id != null);
     $("#annotation-import").disabled =
-      blocked || editor.dirty || !$("#annotation-prediction").value;
+      blocked || editor.dirty || !$("#annotation-prediction").value || !mappedClasses.length;
     $("#annotation-assist").disabled =
       blocked ||
+      document.taxonomy.id !== taxonomyTools.builtinId ||
       editor.dirty ||
       assistActive() ||
       editor.catalogLoading ||
@@ -243,7 +248,11 @@
         !$("#annotation-prediction").value);
     $("#annotation-proposal-hint").textContent = editor.dirty
       ? "Save your draft before importing proposals or requesting model review."
-      : "Only people and cars from this frame are imported. Importing does not validate any labels.";
+      : !mappedClasses.length
+        ? "These class definitions have no COCO mapping. Draw labels manually or import an annotated dataset with explicit class choices."
+        : `Detector proposals use explicit COCO mappings for: ${mappedClasses.map((item) => item.name).join(", ")}. Importing does not validate any labels.`;
+    $("#annotation-assistance-availability").hidden = document.taxonomy.id === taxonomyTools.builtinId;
+    $("#annotation-adopt-taxonomy").disabled = blocked || editor.dirty || assistActive();
     const position = editor.frames.findIndex(
       (frame) => frame.id === editor.frameId,
     );
@@ -405,7 +414,7 @@
     if (!signal || signal.status === "unavailable")
       return "Comparison unavailable for this frame";
     if (signal.status === "no_detections")
-      return "Neither model detected people or cars at this threshold · inspect manually";
+      return "Neither model detected mapped target classes at this threshold · inspect manually";
     const count = signal.counts ? ` · ${signal.counts[0]} / ${signal.counts[1]} detections` : "";
     if (signal.status === "agreement") return `Matched model detections${count} · review still required`;
     const ratio = signal.disagreement == null ? "Unmatched detections" : `${Math.round(signal.disagreement * 100)}% unmatched detections`;
@@ -620,6 +629,7 @@
       reviewer: document.reviewer,
       notes: document.notes,
       suggestions: document.suggestions,
+      taxonomy_id: document.taxonomy?.id,
     });
   }
 
@@ -631,6 +641,7 @@
       // An unchanged GET must not erase redo after undoing back to the baseline.
       editor.document = document;
       editor.remoteUpdate = false;
+      renderTaxonomy();
       renderSources();
       renderHistory();
       updateStatus();
@@ -680,8 +691,29 @@
     );
     image.setAttribute("width", frame.width);
     image.setAttribute("height", frame.height);
+    renderTaxonomy();
+    renderSources();
+    renderBoxes();
+    renderProposals();
+    renderHistory();
+    updateStatus();
+    renderQueue();
+  }
+
+  function renderTaxonomy() {
+    const document = editor.document;
+    if (!document) return;
+    const taxonomy = document.taxonomy;
+    for (const id of ["#annotation-class", "#annotation-box-class"]) {
+      const select = $(id);
+      const previous = select.value;
+      select.replaceChildren();
+      for (const category of taxonomy.classes) select.append(new Option(category.name, category.id));
+      if (knownClass(previous)) select.value = previous;
+    }
+    $("#annotation-taxonomy-title").textContent = `Label definitions · ${taxonomyTools.versionLabel(taxonomy)}`;
     $("#annotation-taxonomy").replaceChildren();
-    for (const category of document.taxonomy.classes) {
+    for (const category of taxonomy.classes) {
       const entry = node("p");
       entry.append(
         node("strong", "", `${category.name}. `),
@@ -689,12 +721,9 @@
       );
       $("#annotation-taxonomy").append(entry);
     }
-    renderSources();
-    renderBoxes();
-    renderProposals();
-    renderHistory();
-    updateStatus();
-    renderQueue();
+    const current = document.current_taxonomy || taxonomy;
+    $("#annotation-taxonomy-update").hidden = current.id === taxonomy.id;
+    $("#annotation-taxonomy-version").textContent = `This frame uses ${taxonomyTools.versionLabel(taxonomy)}. The project now uses ${taxonomyTools.versionLabel(current)}.`;
   }
 
   function documentText(text) {
@@ -761,7 +790,7 @@
       const group = boxShape(
         box,
         `annotation-box ${selected ? "selected" : ""}`,
-        `${index + 1} · ${box.label}`,
+        `${index + 1} · ${className(box.label)}`,
         true,
       );
       if (selected && editor.tool === "select" && !editor.spacePan) {
@@ -793,7 +822,7 @@
     if ($("#annotation-show-proposals").checked) {
       for (const proposal of pending())
         proposals.append(
-          boxShape(proposal, "annotation-proposal-box", `? ${proposal.label}`),
+          boxShape(proposal, "annotation-proposal-box", `? ${className(proposal.label)}`),
         );
     }
     updateViewControls();
@@ -827,7 +856,7 @@
         ? `${proposalOrigin(proposal)} · human ${decisionFor(proposal)}`
         : "Manual label";
       button.append(
-        node("strong", "", `${index + 1} · ${box.label}`),
+        node("strong", "", `${index + 1} · ${className(box.label)}`),
         node("span", "small muted", origin),
       );
       button.addEventListener("click", () => {
@@ -874,7 +903,7 @@
       const item = node("article", `annotation-proposal ${decision}`);
       const heading = node("div", "annotation-proposal-heading");
       heading.append(
-        node("strong", "", proposal.label),
+        node("strong", "", className(proposal.label)),
         node(
           "span",
           "annotation-proposal-origin",
@@ -893,6 +922,10 @@
         ),
       );
       item.append(heading);
+      if (proposal.taxonomy_outdated)
+        item.append(node("p", "field-hint", `Proposed with earlier class definitions (${proposal.metadata?.target_taxonomy || taxonomyTools.builtinId}). Recheck this proposal against this frame's definitions before accepting.`));
+      if (!knownClass(proposal.label))
+        item.append(node("p", "field-hint", "This proposal's class is absent from the frame's current definitions. Reject it or draw a new label with a current class."));
       const recommendation = proposal.metadata?.recommendation;
       if (recommendation)
         item.append(
@@ -943,9 +976,11 @@
             : "Accept proposal",
         );
         accept.type = "button";
+        accept.dataset.requiresClass = proposal.label;
         accept.dataset.requiresBox = proposal.metadata?.target_box_id || "";
         accept.disabled =
           actionBlocked() ||
+          !knownClass(proposal.label) ||
           Boolean(
             proposal.metadata?.target_box_id &&
               !editor.boxes.some(
@@ -1016,7 +1051,7 @@
   }
 
   function acceptProposal(proposal) {
-    if (actionBlocked()) return;
+    if (actionBlocked() || !knownClass(proposal.label)) return;
     const existing = editor.boxes.find(
       (box) => box.id === proposal.metadata?.target_box_id,
     );
@@ -1069,6 +1104,7 @@
         method: "PUT",
         body: JSON.stringify({
           expected_revision: editor.document.revision,
+          taxonomy_id: editor.document.taxonomy.id,
           boxes: editor.boxes.map(({ id, label, box, suggestion_id }) => ({
             id,
             label,
@@ -1385,7 +1421,7 @@
   }
 
   async function requestAssistance() {
-    if (editor.dirty || actionBlocked() || !providerReady()) return;
+    if (editor.dirty || actionBlocked() || !providerReady() || editor.document?.taxonomy.id !== taxonomyTools.builtinId) return;
     invalidatePreview();
     const generation = editor.previewGeneration;
     const frameId = editor.frameId;
@@ -1474,7 +1510,7 @@
       const button = node(
         "button",
         "annotation-history-row",
-        `Revision ${revision.revision} · ${revision.status} · ${revision.reviewer || "No reviewer"} · ${new Date(revision.created_at).toLocaleString()}`,
+        `Revision ${revision.revision} · ${revision.status} · ${revision.reviewer || "No reviewer"} · ${new Date(revision.created_at).toLocaleString()}${revision.taxonomy ? ` · ${taxonomyTools.versionLabel(revision.taxonomy)}` : ""}`,
       );
       button.type = "button";
       button.addEventListener("click", () =>
@@ -1691,7 +1727,7 @@
         Math.max(drag.start[0], point[0]), Math.max(drag.start[1], point[1]),
       ];
       $("#annotation-drawing-layer").replaceChildren(
-        boxShape({ box }, "annotation-box selected", $("#annotation-class").value),
+        boxShape({ box }, "annotation-box selected", className($("#annotation-class").value)),
       );
       return;
     }
@@ -1923,6 +1959,28 @@
   $("#annotation-refresh").addEventListener("click", () => {
     if (discardAllowed()) loadFrame(editor.frameId);
   });
+  $("#annotation-adopt-taxonomy").addEventListener("click", async () => {
+    const document = editor.document;
+    if (!document || actionBlocked() || editor.dirty || assistActive() || !document.current_taxonomy) return;
+    if (!window.confirm("Use the current project classes for this image? Its saved boxes will be retained, and the image will become a draft requiring a new human review. Earlier revisions remain unchanged.")) return;
+    editor.busy = true;
+    editor.request++;
+    invalidatePreview();
+    updateStatus();
+    error(null);
+    try {
+      const result = await api(url("annotation/taxonomy"), {
+        method: "POST",
+        body: JSON.stringify({ expected_revision: document.revision,
+          expected_taxonomy_id: document.taxonomy.id,
+          target_taxonomy_id: document.current_taxonomy.id }),
+      });
+      applyDocument(result);
+      scheduleQueue();
+      notify("Class definitions updated for this frame. Review the entire image and validate the new draft.");
+    } catch (failure) { reportFailure(failure); }
+    finally { finishRequest(); }
+  });
   $("#annotation-remove-box").addEventListener("click", removeSelected);
   $("#annotation-apply-coordinates").addEventListener(
     "click",
@@ -2092,6 +2150,14 @@
     editor.request++;
     resetQueue();
     scheduleQueue();
+  });
+  window.addEventListener("iris:taxonomy", (event) => {
+    if (!editor.document) return;
+    editor.document.current_taxonomy = event.detail.taxonomy;
+    editor.document.taxonomy_outdated = editor.document.taxonomy.id !== event.detail.taxonomy.id;
+    renderTaxonomy();
+    renderProperties();
+    updateStatus();
   });
   window.addEventListener("iris:frames", () => {
     if (editor.sessionId !== state.sessionId) return;

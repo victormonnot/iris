@@ -21,7 +21,7 @@ from iris.store import (
     now,
 )
 
-LEGACY_TABLES = TABLES - {"projects"}
+LEGACY_TABLES = TABLES - {"projects", "taxonomy_versions"}
 
 
 def _rows(root, tables=LEGACY_TABLES):
@@ -93,6 +93,8 @@ def legacy_workspace(tmp_path):
         for table, rows in _rows(source.root).items():
             for row in rows:
                 row.pop("project_id", None)
+                if table == "frames":
+                    row.pop("taxonomy_id")
                 connection.execute(
                     f"INSERT INTO {table} ({','.join(row)}) VALUES ({','.join('?' for _ in row)})",
                     list(row.values()),
@@ -104,6 +106,9 @@ def legacy_workspace(tmp_path):
 def _assert_legacy_rows(root, expected):
     current = _rows(root)
     for table, rows in current.items():
+        if table == "frames":
+            for row in rows:
+                assert row.pop("taxonomy_id") == "iris-objects-v1"
         if table in PROJECT_TABLES:
             for row in rows:
                 assert row.pop("project_id") == DEFAULT_PROJECT_ID

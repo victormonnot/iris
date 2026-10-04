@@ -11,7 +11,7 @@ from test_media import make_video
 from iris.assistance_provider import ProviderResponseError
 from iris.jobs import JobManager
 from iris.media import import_asset
-from iris.store import Store, new_id, now
+from iris.store import SCHEMA_VERSION, Store, new_id, now
 from iris.video_review_provider import PROMPT_VERSION
 from iris.video_reviews import (
     get_review,
@@ -604,7 +604,7 @@ def test_schema_10_upgrade_preserves_every_existing_row(workspace):
         table: reopened.list(table) for table in reopened.columns if table != "video_reviews"
     } == snapshot
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     assert reopened.list("video_reviews") == []
 

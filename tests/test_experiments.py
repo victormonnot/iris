@@ -21,7 +21,7 @@ from iris.experiments import (
     read_experiment_image,
     update_experiment,
 )
-from iris.store import Store, new_id, now
+from iris.store import SCHEMA_VERSION, Store, new_id, now
 
 saved = evaluation_fixture
 
@@ -443,7 +443,7 @@ def test_schema_11_upgrade_preserves_all_existing_rows(saved):
         table: reopened.list(table) for table in reopened.columns if table != "experiment_reports"
     } == before
     with reopened.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     assert not list_experiments(reopened)
 

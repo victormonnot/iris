@@ -18,7 +18,7 @@ from iris.inference import (
 )
 from iris.jobs import JobManager
 from iris.media import import_asset
-from iris.store import SCHEMA, Store, _encode, new_id, now
+from iris.store import SCHEMA, SCHEMA_VERSION, Store, _encode, new_id, now
 
 MODEL = "ssdlite320_mobilenet_v3_large"
 OTHER = "fasterrcnn_mobilenet_v3_large_320_fpn"
@@ -342,7 +342,7 @@ def test_schema8_migration_keeps_saved_rows_and_foreign_keys_and_allows_second_v
     assert detail["lanes"][0]["run_id"] == before["runs"][0]["id"]
     with store.connect() as conn:
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE predictions SET run_id='missing'")
     run = before["runs"][0]

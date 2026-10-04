@@ -11,7 +11,7 @@ from PIL import Image
 from iris.app import create_app
 from iris.jobs import JobManager
 from iris.media import import_asset
-from iris.store import Store, new_id, now
+from iris.store import SCHEMA_VERSION, Store, new_id, now
 
 BASE_URL = "http://127.0.0.1"
 MODEL_IDS = ["ssdlite320_mobilenet_v3_large", "fasterrcnn_mobilenet_v3_large_320_fpn"]
@@ -197,22 +197,25 @@ def test_v1_migration_preserves_sources_selection_and_job_outcomes(tmp_path):
             table: connection.execute(f"SELECT * FROM {table}").fetchall()
             for table in ("sessions", "assets", "frames", "jobs")
         }
+        original_columns = {
+            table: [row[1] for row in connection.execute(f"PRAGMA table_info({table})")]
+            for table in before
+        }
     migrated = Store(root)
     with migrated.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         after = {
             table: [
                 tuple(row)
                 for row in connection.execute(
-                    "SELECT id,name,scene_group,created_at FROM sessions"
-                    if table == "sessions"
-                    else f"SELECT * FROM {table}"
+                    f"SELECT {','.join(original_columns[table])} FROM {table}"
                 )
             ]
             for table in before
         }
     assert after == before
     assert migrated.get("frames", "frame")["selected"] is True
+    assert migrated.get("frames", "frame")["taxonomy_id"] == "iris-objects-v1"
     assert migrated.get("jobs", "job")["result"] == {"created": 1}
     for table in ("comparisons", "runs", "predictions"):
         assert migrated.list(table) == []

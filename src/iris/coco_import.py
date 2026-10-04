@@ -22,6 +22,7 @@ from PIL import Image, UnidentifiedImageError
 
 from iris.media import _file_hash, _perceptual_hash, _pixel_hash
 from iris.store import DEFAULT_PROJECT_ID, Store, _decode, _encode, new_id, now
+from iris.taxonomies import TAXONOMY, current_taxonomy, get_taxonomy
 
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EXPANDED_BYTES = 256 * 1024 * 1024
@@ -32,7 +33,6 @@ MAX_TOTAL_PIXELS = 100_000_000
 MAX_ANNOTATIONS_PER_IMAGE = 500
 MAX_ARCHIVE_ENTRIES = 512
 SPLITS = {"train", "val", "test"}
-MAPPING_TARGETS = {"person", "car", "exclude"}
 IMAGE_FORMATS = ("PNG", "JPEG", "WEBP", "BMP", "TIFF")
 
 
@@ -318,6 +318,7 @@ def preview_import(
     """Validate and retain a local archive without creating reviewable frames yet."""
     if store.get("projects", project_id) is None:
         raise ValueError("Project does not exist")
+    taxonomy = current_taxonomy(store, project_id)
     source = Path(source)
     if not source.is_file() or not 0 < source.stat().st_size <= MAX_ARCHIVE_BYTES:
         raise ValueError("Provide a nonempty ZIP archive of at most 64 MiB.")
@@ -381,6 +382,7 @@ def preview_import(
                     "include duplicate pixels; deselect duplicates before publication."
                 )
             summary = {
+                "taxonomy": taxonomy,
                 "filename": filename,
                 "json_filename": json_filename,
                 "image_count": len(images),
@@ -456,6 +458,7 @@ def import_detail(store: Store, import_id: str) -> dict:
     return {
         "id": row["id"],
         "project_id": row["project_id"],
+        "taxonomy": _import_taxonomy(store, row),
         "sha256": row["sha256"],
         "created_at": row["created_at"],
         "status": "imported" if row["result"] is not None else "preview",
@@ -491,6 +494,15 @@ def preview_image_path(store: Store, import_id: str, image_id: str) -> Path:
     return path
 
 
+def _import_taxonomy(store: Store, row: dict) -> dict:
+    """A preview pins its class definitions, including explicit negative images."""
+    snapshot = row["summary"].get("taxonomy", TAXONOMY)
+    taxonomy = get_taxonomy(store, snapshot["id"], row["project_id"])
+    if snapshot != taxonomy:
+        raise ValueError("The import's saved class definitions have changed.")
+    return taxonomy
+
+
 def _config(
     summary: dict,
     *,
@@ -501,6 +513,7 @@ def _config(
     attribution,
     source_split,
     category_mapping,
+    taxonomy=TAXONOMY,
 ) -> dict:
     config = {
         "name": _text(name, "Import name", 160),
@@ -527,15 +540,16 @@ def _config(
     if summary["source_split"] is not None and source_split != summary["source_split"]:
         raise ValueError("Explicitly preserve the split recorded in the COCO document.")
     expected = {str(category["id"]) for category in summary["categories"]}
+    targets = {item["id"] for item in taxonomy["classes"]} | {"exclude"}
     if (
         not isinstance(category_mapping, dict)
         or set(category_mapping) != expected
         or any(
-            not isinstance(value, str) or value not in MAPPING_TARGETS
+            not isinstance(value, str) or value not in targets
             for value in category_mapping.values()
         )
     ):
-        raise ValueError("Map every source category explicitly to person, car, or exclude.")
+        raise ValueError("Map every source category explicitly to a saved target class or exclude.")
     return {**config, "source_split": source_split, "category_mapping": category_mapping.copy()}
 
 
@@ -591,6 +605,7 @@ def commit_import(
         if row is None:
             raise KeyError(import_id)
         summary = row["summary"]
+        taxonomy = _import_taxonomy(store, row)
         config = _config(
             summary,
             name=name,
@@ -600,6 +615,7 @@ def commit_import(
             attribution=attribution,
             source_split=source_split,
             category_mapping=category_mapping,
+            taxonomy=taxonomy,
         )
         if row["result"] is not None:
             if row["metadata"].get("config") != config:
@@ -634,6 +650,7 @@ def commit_import(
             asset_id, frame_id = new_id(), new_id()
             provenance = {
                 "id": import_id,
+                "taxonomy": taxonomy,
                 "archive_sha256": row["sha256"],
                 "archive_filename": summary["filename"],
                 "json_filename": summary["json_filename"],
@@ -676,6 +693,7 @@ def commit_import(
                 "frames",
                 {
                     "id": frame_id,
+                    "taxonomy_id": taxonomy["id"],
                     "session_id": session_id,
                     "asset_id": asset_id,
                     "frame_index": None,
@@ -718,6 +736,7 @@ def commit_import(
                             "source_annotation": annotation,
                             "source_image_id": image["coco_image_id"],
                             "mapping_target": label,
+                            "target_taxonomy": taxonomy["id"],
                         },
                         "created_at": created_at,
                     },

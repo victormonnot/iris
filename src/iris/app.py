@@ -21,6 +21,7 @@ from iris import __version__
 from iris.annotations import (
     AnnotationConflict,
     add_detector_suggestions,
+    adopt_taxonomy,
     get_annotation,
     save_annotation,
 )
@@ -71,6 +72,7 @@ from iris.models import catalog
 from iris.projects import create_project, project_records, record_project
 from iris.review_queue import review_queue
 from iris.store import DEFAULT_PROJECT_ID, Store, new_id, now
+from iris.taxonomies import TaxonomyConflict, get_taxonomy, list_taxonomies, publish_taxonomy
 from iris.training import create_training, preview_training, training_detail
 from iris.video_reviews import (
     get_review,
@@ -114,6 +116,19 @@ class SessionInput(BaseModel):
         return value
 
 
+class TaxonomyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_taxonomy_id: str = Field(min_length=1, max_length=128)
+    classes: list[dict] = Field(min_length=1, max_length=100)
+
+
+class AnnotationTaxonomyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_revision: int = Field(ge=0)
+    expected_taxonomy_id: str = Field(min_length=1, max_length=128)
+    target_taxonomy_id: str = Field(min_length=1, max_length=128)
+
+
 class SelectionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     selected: bool
@@ -149,6 +164,7 @@ class ComparisonInput(BaseModel):
 class AnnotationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     expected_revision: int = Field(ge=0)
+    taxonomy_id: str | None = Field(default=None, min_length=1, max_length=128)
     boxes: list[dict] = Field(max_length=500)
     decisions: dict[str, Literal["accepted", "corrected", "rejected"]]
     status: Literal["draft", "validated"] = "draft"
@@ -172,7 +188,7 @@ class DatasetImportInput(BaseModel):
     license_name: str = Field(min_length=1, max_length=500)
     attribution: str = Field(min_length=1, max_length=2000)
     source_split: Literal["train", "val", "test"] | None = None
-    category_mapping: dict[str, Literal["person", "car", "exclude"]]
+    category_mapping: dict[str, str]
 
 
 class TrainingInput(BaseModel):
@@ -515,6 +531,24 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             raise HTTPException(404, "Project not found")
         return record
 
+    @app.get("/api/projects/{project_id}/taxonomies")
+    def project_taxonomies(project_id: str):
+        record = project(project_id)
+        return {
+            "current_taxonomy_id": record["taxonomy_id"],
+            "versions": list_taxonomies(store, project_id),
+        }
+
+    @app.post("/api/projects/{project_id}/taxonomies", status_code=201)
+    def add_taxonomy(project_id: str, payload: TaxonomyInput):
+        project(project_id)
+        try:
+            return publish_taxonomy(store, project_id, **payload.model_dump())
+        except TaxonomyConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
     @app.get("/api/system")
     def system():
         return {
@@ -522,6 +556,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             "data_dir": str(store.root),
             "capabilities": {
                 "projects": True,
+                "custom_classes": True,
                 "media_import": True,
                 "frame_extraction": True,
                 "video_sampling_preview": True,
@@ -1104,7 +1139,10 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         revisions = store.list("annotation_revisions", frame_id=frame_id, revision=revision)
         if not revisions:
             raise HTTPException(404, "Annotation revision not found")
-        return revisions[0]
+        return {
+            **revisions[0],
+            "taxonomy": get_taxonomy(store, revisions[0]["taxonomy_id"], active_project.get()),
+        }
 
     def annotation_action(function, frame_id, payload):
         require("frames", frame_id)
@@ -1123,6 +1161,12 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def write_annotation(frame_id: str, payload: AnnotationInput):
         return annotation_action(
             lambda **fields: save_annotation(store, frame_id, **fields), frame_id, payload
+        )
+
+    @app.post("/api/frames/{frame_id}/annotation/taxonomy")
+    def update_annotation_taxonomy(frame_id: str, payload: AnnotationTaxonomyInput):
+        return annotation_action(
+            lambda **fields: adopt_taxonomy(store, frame_id, **fields), frame_id, payload
         )
 
     @app.post("/api/frames/{frame_id}/suggestions")

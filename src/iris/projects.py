@@ -28,7 +28,7 @@ PARENTS = {
     "video_reviews": ("assets", "asset_id"),
     "experiment_reports": ("evaluations", "evaluation_id"),
 }
-DIRECT = {"sessions", "dataset_versions", "dataset_imports"}
+DIRECT = {"sessions", "dataset_versions", "dataset_imports", "taxonomy_versions"}
 JOB_PARENTS = {
     "extract": ("assets", "asset_id"),
     "infer": ("comparisons", "comparison_id"),

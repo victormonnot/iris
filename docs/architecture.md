@@ -42,8 +42,10 @@ versions and COCO imports. Other ownership follows the existing session, dataset
 and evaluation relationships; immutable saved payloads are not rewritten. Opening
 an older workspace atomically attaches existing records to `default`. IDs, hashes,
 annotation revisions, checkpoints and experiment snapshots retain their meaning.
-Each project currently references the same `iris-objects-v1` class definition;
-custom taxonomies are a later capability.
+Schema 14 adds immutable `taxonomy_versions` and a `frames.taxonomy_id` intake
+version. Each project points to its current version; a frame's latest annotation
+revision can explicitly adopt a newer version. The legacy definition remains
+unchanged, including its serialized payload in old manifests.
 
 The HTTP layer resolves a request-local project from `project_id` (defaulting to
 `default` for existing clients). Lists are scoped before rendering, record reads
@@ -59,9 +61,9 @@ This avoids retaining another project's selection, modal or pending preview.
 Scene-group reservations are project-local, while exact-pixel split reservations
 span the workspace. Creating a project cannot turn an existing training image into
 an independent test image. Related scenes still need human grouping and review.
-Archive validation recognizes the exact structures of schemas 12 and 13. Restore
-preserves archive payload bytes; opening a restored schema-12 workspace performs
-the normal schema-13 migration. See [project behavior](projects.md).
+Archive validation recognizes the exact structures of schemas 12, 13 and 14. Restore
+preserves archive payload bytes; opening an older restored workspace performs
+the normal schema-14 migration. See [project behavior](projects.md).
 
 ## Model and annotation choices
 
@@ -130,6 +132,12 @@ class definitions and an explicit COCO mapping (IDs 1 and 3). People include
 riders; cars include passenger SUVs/minivans but exclude buses, trucks and
 motorcycles. Boxes cover visible extents. Definition changes require a new
 taxonomy version.
+Custom classes and definitions are supported in the manual editor and COCO import.
+Publication uses compare-and-swap on the project's current version. Adoption creates
+a new draft revision, retains earlier revisions and requires human validation again.
+Custom detector proposal mappings use explicitly configured COCO IDs; datasets,
+training, evaluation and multimodal candidate review remain limited to the original
+definition. See [class version behavior](classes.md).
 An unsupported class is not silently mapped to a superficially similar class.
 
 Assisted annotation uses a configurable local Ollama endpoint, initially

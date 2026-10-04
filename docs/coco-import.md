@@ -37,7 +37,12 @@ per image. These bounds keep the preview practical on a local workstation.
 The UI stays available while the server prepares the bounded preview.
 
 Preview shows every image and its source boxes. Each source category requires
-an explicit `person`, `car` or `exclude` mapping, including unused categories.
+an explicit mapping to a target class or `exclude`, including unused categories.
+The preview saves the project's class version and definitions. Publishing newer
+classes later does not change that preview, its mapping choices or committed images;
+upload a new preview to use the new version. Historical previews retain the original
+Person / Car definitions. Imported positive and negative images both retain their
+target version and require human review.
 Check IRIS's class definitions before mapping; similar names do not establish
 equivalent taxonomies. Exclusion removes proposals for that category, not its
 source record. It is not an ignore region: a later prediction in that area can

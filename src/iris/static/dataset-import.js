@@ -1,6 +1,7 @@
 "use strict";
 
 (() => {
+  const taxonomyTools = window.IRISTaxonomyTools;
   const dialog = $("#dataset-import-dialog");
   const importer = {
     records: [],
@@ -54,8 +55,8 @@
   }
 
   function mappingComplete() {
-    return !!importer.detail && importer.detail.categories.every((category) =>
-      ["person", "car", "exclude"].includes(importer.mapping[String(category.id)]),
+    return !!importer.detail && taxonomyTools.mappingComplete(
+      importer.detail.categories, importer.mapping, importer.detail.taxonomy,
     );
   }
 
@@ -66,7 +67,7 @@
     for (const category of importer.detail?.categories || []) {
       const value = importer.mapping[String(category.id)];
       if (value === "exclude") excluded += category.count;
-      else if (value === "person" || value === "car") proposals += category.count;
+      else if (taxonomyTools.hasClass(importer.detail.taxonomy, value)) proposals += category.count;
       else unassigned += 1;
     }
     $("#dataset-import-mapping-summary").textContent =
@@ -107,8 +108,7 @@
       select.dataset.categoryId = String(category.id);
       for (const [value, title] of [
         ["", "Choose a mapping…"],
-        ["person", "Person"],
-        ["car", "Car"],
+        ...importer.detail.taxonomy.classes.map((item) => [item.id, `${item.name} (${item.id})`]),
         ["exclude", "Exclude this category"],
       ]) {
         const option = node("option", "", title);
@@ -149,17 +149,18 @@
     const fontSize = Math.max(image.width / 60, 10);
     for (const box of image.boxes) {
       const target = importer.mapping[String(box.category_id)];
-      const color = target === "person" ? "#8ef1ac" : target === "car" ? "#83caff" : "#e0e3e5";
+      const color = taxonomyTools.classColor(importer.detail.taxonomy, target);
+      const label = taxonomyTools.className(importer.detail.taxonomy, target);
       const [x1, y1, x2, y2] = box.box;
       const group = svg("g", { class: "dataset-import-box" });
       group.append(svg("rect", {
         x: x1, y: y1, width: x2 - x1, height: y2 - y1,
         fill: "none", stroke: color, "stroke-width": 2,
         "vector-effect": "non-scaling-stroke",
-        "stroke-dasharray": target === "person" || target === "car" ? "none" : "4 3",
+        "stroke-dasharray": taxonomyTools.hasClass(importer.detail.taxonomy, target) ? "none" : "4 3",
       }));
       const title = svg("title", {});
-      title.textContent = `${box.category_name} → ${target || "unmapped"}`;
+      title.textContent = `${box.category_name} → ${label || "unmapped"}`;
       group.append(title);
       const text = svg("text", {
         x: Math.max(0, Math.min(x1, image.width - fontSize * 8)),
@@ -168,7 +169,7 @@
         stroke: "#17231e", "stroke-width": Math.max(2, fontSize / 5),
         "stroke-linejoin": "round",
       });
-      text.textContent = `${box.category_name} → ${target || "?"}`.slice(0, 45);
+      text.textContent = `${box.category_name} → ${label || "?"}`.slice(0, 45);
       group.append(text);
       layer.append(group);
     }
@@ -197,15 +198,28 @@
   }
 
   function showDetail(detail) {
+    detail.taxonomy = taxonomyTools.snapshot(detail.taxonomy);
     importer.detail = detail;
     importer.imageIndex = 0;
     importer.mapping = {};
     const config = detail.config || {};
     for (const category of detail.categories) {
-      const suggested = ["person", "car"].includes(category.name.toLowerCase().trim())
-        ? category.name.toLowerCase().trim() : "";
-      importer.mapping[String(category.id)] = config.category_mapping?.[String(category.id)] || suggested;
+      importer.mapping[String(category.id)] = config.category_mapping?.[String(category.id)] || "";
     }
+    $("#dataset-import-taxonomy-version").textContent = `${taxonomyTools.versionLabel(detail.taxonomy)} · ${detail.taxonomy.id}. These definitions are frozen with this preview, even if the project changes later.`;
+    const definitions = $("#dataset-import-definitions");
+    const colors = $("#dataset-import-colors");
+    definitions.replaceChildren();
+    colors.replaceChildren();
+    for (const category of detail.taxonomy.classes) {
+      const entry = node("p");
+      entry.append(node("strong", "", `${category.name} (${category.id}): `), document.createTextNode(category.definition));
+      definitions.append(entry);
+      const color = node("span", "dataset-import-color", category.name);
+      color.style.setProperty("--class-color", taxonomyTools.classColor(detail.taxonomy, category.id));
+      colors.append(color);
+    }
+    colors.append(document.createTextNode("Gray: excluded or unmapped. Source boxes remain unchanged in this preview."));
     $("#dataset-import-detail").hidden = false;
     $("#dataset-import-filename").textContent = detail.filename;
     $("#dataset-import-counts").textContent =

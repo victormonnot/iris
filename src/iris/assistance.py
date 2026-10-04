@@ -6,7 +6,7 @@ import os
 from collections.abc import Callable
 
 from iris import remote_provider
-from iris.annotations import TAXONOMY, AnnotationConflict, _coordinates, require_revision
+from iris.annotations import TAXONOMY, AnnotationConflict, _coordinates, _latest, require_revision
 from iris.assistance_previews import confirmed_preview, read_images
 from iris.assistance_provider import OllamaReviewer, ProviderConfig, provider_status
 from iris.inference import _load_verified_frame
@@ -18,6 +18,13 @@ MAX_CANDIDATES = 8
 def _candidates(
     store: Store, frame: dict, annotation: dict, prediction_id, threshold
 ) -> list[dict]:
+    taxonomy_id = annotation.get("taxonomy_id") or annotation.get("taxonomy", {}).get("id")
+    taxonomy_id = taxonomy_id or frame.get("taxonomy_id", TAXONOMY["id"])
+    if taxonomy_id != TAXONOMY["id"]:
+        raise ValueError(
+            "Multimodal candidate review currently requires the original Person / Car "
+            "definitions. Review custom classes manually."
+        )
     if prediction_id is None:
         return [
             {
@@ -268,6 +275,13 @@ def run_assistance(
     frame = store.get("frames", record["frame_id"])
     config = record["config"]
     try:
+        if config.get("taxonomy_id") != TAXONOMY["id"]:
+            raise ValueError("This assistance provider does not support custom class definitions")
+        with store.connect() as conn:
+            latest = _latest(conn, frame["id"])
+        frame_taxonomy_id = latest["taxonomy_id"] if latest else frame["taxonomy_id"]
+        if frame_taxonomy_id != config["taxonomy_id"]:
+            raise ValueError("The image's class definitions changed after assistance was queued")
         external = config["provider"].get("provider", "ollama") == "alibaba"
         if external:
             consent = config.get("consent", {})
@@ -367,6 +381,7 @@ def run_assistance(
                 )
                 metadata = {
                     "assistance_id": record_id,
+                    "target_taxonomy": config["taxonomy_id"],
                     "provider": reviewed["metadata"],
                     "candidate_id": candidate["id"],
                     "source": candidate["source"],
