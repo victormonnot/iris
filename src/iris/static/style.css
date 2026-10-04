@@ -4362,3 +4362,38 @@ select:focus-visible {
 .partition-similar-images { display: flex; gap: 12px; margin: 10px 0; }
 .partition-similar-images a { flex: 0 1 160px; min-width: 0; }
 .partition-similar-images img { display: block; width: 100%; height: 100px; object-fit: contain; background: #142c24; border-radius: 5px; }
+
+/* Project task history and explicit recovery. */
+.job-history-controls { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(190px, 1.5fr) auto; gap: 14px; align-items: end; padding: 18px 23px 8px; }
+.job-history-controls > div { min-width: 0; }
+.job-history-controls label { display: block; margin-bottom: 6px; }
+.job-history-controls input, .job-history-controls select { width: 100%; min-width: 0; }
+.job-history-status, .job-history-empty { padding: 0 23px 12px; }
+.job-history-footer { padding: 0 23px 18px; }
+.job-timestamp { font-size: 11px; color: var(--muted); margin: 6px 0; }
+.job-outcome-unknown { font-size: 12px; color: #966316; font-weight: 650; }
+.job-detail-modal { width: min(780px, calc(100vw - 40px)); }
+.job-detail-heading, .job-detail-actions, .job-lineage { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.job-detail-heading { justify-content: space-between; }
+#job-detail-context, #job-detail-message, #job-detail-failure, .job-lineage, .job-dispatch { overflow-wrap: anywhere; }
+.job-results, .job-recovery, .job-dispatch { border-top: 1px solid var(--line); padding: 18px 0; margin-top: 16px; }
+.job-results h3, .job-recovery h3, .job-dispatch h3 { font-size: 16px; margin: 0 0 8px; }
+.job-results ul { padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.job-dispatch.unknown { background: #faf3e3; border-left: 3px solid #b58638; padding: 16px; border-top: 0; border-radius: 4px; }
+.job-recovery-preview { margin-top: 16px; padding: 15px; border: 1px solid var(--line); border-radius: 6px; background: #f5f8f0; }
+.job-evidence { border-top: 1px solid var(--line); padding: 14px 0; }
+.job-evidence summary { cursor: pointer; font-size: 13px; }
+.job-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 300px; overflow-y: auto; padding: 12px; background: #f5f7f2; }
+.batch-retry { margin: 16px 0; }
+.batch-retry input { width: 100%; max-width: 420px; }
+.batch-retry label { display: block; margin: 12px 0 6px; }
+#assistance-batch-retry-result { margin-top: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 1000px) { .job-history-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .job-history-controls { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .job-history-status, .job-history-empty { padding-left: 16px; padding-right: 16px; }
+  .job-detail-modal { width: calc(100vw - 20px); padding: 20px 16px; }
+  .job-detail-actions { align-items: stretch; flex-direction: column; }
+  .job-detail-actions .button { width: 100%; }
+  #assistance-batch-retry-result { padding: 12px; }
+}

@@ -217,18 +217,22 @@ def _redact(value, secret):
     return value
 
 
-def _request(config, payload, key):
+def _request(config, payload, key, *, before_dispatch=None):
     """One direct HTTPS request. No proxy, redirect, implicit retry or fallback."""
     parsed = urlsplit(_config(config)["endpoint"])
     connection = http.client.HTTPSConnection(parsed.hostname, 443, timeout=REVIEW_TIMEOUT)
     deadline = time.monotonic() + REVIEW_TIMEOUT
     chunks = bytearray()
     status = None
+    response_complete = False
     try:
+        body = json.dumps(payload, allow_nan=False).encode()
+        if before_dispatch is not None:
+            before_dispatch()
         connection.request(
             "POST",
             parsed.path + "/chat/completions",
-            body=json.dumps(payload, allow_nan=False).encode(),
+            body=body,
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
         )
         remaining = deadline - time.monotonic()
@@ -249,21 +253,34 @@ def _request(config, payload, key):
             chunks.extend(chunk)
             if len(chunks) > MAX_RESPONSE_BYTES:
                 raise ValueError("Hosted review response exceeds the 1 MiB limit.")
+        if getattr(response, "length", None) not in {None, 0}:
+            raise http.client.IncompleteRead(bytes(chunks), response.length)
+        response_complete = True
         raw = _redact(_json(bytes(chunks).decode("utf-8")), key)
+        error_raw = (
+            raw
+            if isinstance(raw, dict)
+            else {
+                "http_status": status,
+                "body": _redact(bytes(chunks).decode("utf-8"), key),
+                "truncated": False,
+            }
+        )
         if status != 200:
             raise ProviderResponseError(
                 f"Alibaba Cloud returned HTTP {status}; no retry or redirect was attempted.",
-                raw_response=raw,
+                raw_response=error_raw,
             )
         if not isinstance(raw, dict) or raw.get("error"):
             raise ProviderResponseError(
-                "Alibaba Cloud returned an invalid response.", raw_response=raw
+                "Alibaba Cloud returned an invalid response.", raw_response=error_raw
             )
         return raw
-    except ProviderResponseError:
+    except ProviderResponseError as exc:
+        exc.response_received = response_complete
         raise
     except (OSError, ValueError, RecursionError, http.client.HTTPException) as exc:
-        raise ProviderResponseError(
+        error = ProviderResponseError(
             _redact(str(exc), key),
             raw_response={
                 "http_status": status,
@@ -272,7 +289,9 @@ def _request(config, payload, key):
                 ),
                 "truncated": len(chunks) > MAX_RESPONSE_BYTES,
             },
-        ) from None
+        )
+        error.response_received = response_complete
+        raise error from None
     finally:
         connection.close()
 
@@ -309,6 +328,8 @@ def _usage_metadata(raw, estimate):
 
 
 class AlibabaReviewer:
+    supports_dispatch_callbacks = True
+
     def __init__(self, config=None, expected_images=None):
         self.config = _config(config)
         self.expected_images = None if expected_images is None else tuple(expected_images)
@@ -379,6 +400,11 @@ class AlibabaReviewer:
                     ],
                 },
                 key,
+                **(
+                    {"before_dispatch": self.before_dispatch}
+                    if getattr(self, "before_dispatch", None) is not None
+                    else {}
+                ),
             )
             self.metadata.update(
                 connection_verified=True,
@@ -411,16 +437,20 @@ class AlibabaReviewer:
                 "metadata": deepcopy(self.metadata),
             }
         except ProviderResponseError as exc:
-            raise ProviderResponseError(
+            error = ProviderResponseError(
                 _redact(str(exc), key),
                 raw_response=_redact(raw if raw is not None else exc.raw_response, key),
                 metadata=_redact(self.metadata, key),
                 prompt=_redact(prompt, key),
-            ) from None
+            )
+            error.response_received = raw is not None or getattr(exc, "response_received", False)
+            raise error from None
         except (ValueError, TypeError) as exc:
-            raise ProviderResponseError(
+            error = ProviderResponseError(
                 _redact(str(exc), key),
                 raw_response=_redact(raw, key),
                 metadata=_redact(self.metadata, key),
                 prompt=_redact(prompt, key),
-            ) from None
+            )
+            error.response_received = raw is not None
+            raise error from None

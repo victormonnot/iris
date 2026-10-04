@@ -10,6 +10,14 @@ from iris.annotations import TAXONOMY, AnnotationConflict, _coordinates, _latest
 from iris.assistance_previews import confirmed_preview, read_images
 from iris.assistance_provider import OllamaReviewer, ProviderConfig, provider_status
 from iris.inference import _load_verified_frame
+from iris.job_dispatch import (
+    DispatchConflict,
+    claim_dispatch,
+    initial_dispatch,
+    mark_dispatched,
+    record_dispatch_outcome,
+    update_dispatch_record,
+)
 from iris.store import Store, new_id, now
 
 MAX_CANDIDATES = 8
@@ -236,9 +244,17 @@ def request_assistance(
             ),
         )
         conn.execute(
-            "INSERT INTO assistance_records (id,frame_id,job_id,config,candidates,created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (record_id, frame_id, job_id, json.dumps(config), json.dumps(candidates), created_at),
+            "INSERT INTO assistance_records "
+            "(id,frame_id,job_id,config,candidates,metadata,created_at) VALUES (?,?,?,?,?,?,?)",
+            (
+                record_id,
+                frame_id,
+                job_id,
+                json.dumps(config),
+                json.dumps(candidates),
+                json.dumps({"dispatch": initial_dispatch(config["provider"])}),
+                created_at,
+            ),
         )
         if preview:
             used = conn.execute(
@@ -272,8 +288,18 @@ def run_assistance(
         return result
     if record["raw_response"] is not None:
         raise ValueError("An assistance request is immutable; create a new request to retry")
+    saved_dispatch = record["metadata"].get("dispatch", {})
+    if saved_dispatch.get("attempt_id") or saved_dispatch.get("state") in {
+        "dispatching",
+        "response_received",
+        "outcome_unknown",
+    }:
+        raise DispatchConflict(
+            "This assistance request was already attempted; it cannot be sent again"
+        )
     frame = store.get("frames", record["frame_id"])
     config = record["config"]
+    attempt = None
     try:
         if config.get("taxonomy_id") != TAXONOMY["id"]:
             raise ValueError("This assistance provider does not support custom class definitions")
@@ -314,7 +340,9 @@ def run_assistance(
             and reviewer.metadata.get("model_digest") != config["model_digest"]
         ):
             raise ValueError("The local multimodal model changed after this job was queued")
-        store.update("assistance_records", record_id, {"metadata": reviewer.metadata})
+        update_dispatch_record(
+            store, "assistance_records", record_id, {"metadata": reviewer.metadata}
+        )
         with _load_verified_frame(store, frame, config["frame_sha256"]) as image:
             if cancelled():
                 result["cancelled"] = True
@@ -324,6 +352,15 @@ def run_assistance(
                 f"Reviewing {len(record['candidates'])} candidates with "
                 f"{config['provider'].get('provider', 'ollama')}",
             )
+            attempt = claim_dispatch(store, "assistance_records", record_id)
+
+            def dispatch():
+                mark_dispatched(store, "assistance_records", record_id, attempt)
+
+            if getattr(reviewer, "supports_dispatch_callbacks", False):
+                reviewer.before_dispatch = dispatch
+            else:
+                dispatch()
             reviewed = reviewer.review(
                 image,
                 [
@@ -332,14 +369,17 @@ def run_assistance(
                 ],
                 instructions=config["instructions"],
             )
-        store.update(
+        record_dispatch_outcome(
+            store,
             "assistance_records",
             record_id,
+            attempt,
             {
                 "prompt": reviewed["prompt"],
                 "metadata": reviewed["metadata"],
                 "raw_response": reviewed["raw_response"],
             },
+            response_received=True,
         )
         if cancelled():
             result["cancelled"] = True
@@ -411,11 +451,23 @@ def run_assistance(
         result["suggestions_created"] = len(reviews)
         progress(1, "Multimodal proposals saved; human review is required")
         return result
+    except DispatchConflict:
+        raise
     except Exception as exc:
         update = {"error": str(exc)}
         for field in ("raw_response", "metadata", "prompt"):
             value = getattr(exc, field, None)
             if value is not None:
                 update[field] = value
-        store.update("assistance_records", record_id, update)
+        if attempt is None:
+            update_dispatch_record(store, "assistance_records", record_id, update)
+        else:
+            record_dispatch_outcome(
+                store,
+                "assistance_records",
+                record_id,
+                attempt,
+                update,
+                response_received=getattr(exc, "response_received", False) is True,
+            )
         raise

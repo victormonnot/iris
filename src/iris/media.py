@@ -141,11 +141,16 @@ def _frame_record(
     frame_index: int | None = None,
     timestamp_seconds: float | None = None,
     extraction: dict | None = None,
+    taxonomy_id: str | None = None,
 ) -> dict:
-    from iris.taxonomies import current_taxonomy
+    from iris.taxonomies import current_taxonomy, get_taxonomy
 
     session = store.get("sessions", asset["session_id"])
-    taxonomy_id = current_taxonomy(store, session["project_id"])["id"]
+    taxonomy_id = (
+        current_taxonomy(store, session["project_id"])["id"]
+        if taxonomy_id is None
+        else get_taxonomy(store, taxonomy_id, session["project_id"])["id"]
+    )
     frame_id = new_id()
     relative_path = Path("frames") / f"{frame_id}.png"
     path = store.root / relative_path

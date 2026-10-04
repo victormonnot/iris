@@ -36,6 +36,7 @@ from iris.assistance_batches import (
 from iris.assistance_catalog import catalog as annotation_catalog
 from iris.assistance_previews import preview_assistance, read_images
 from iris.assistance_provider import provider_status
+from iris.batch_recovery import preview_retry_batch, retry_batch
 from iris.coco_import import commit_import, import_detail, preview_image_path, preview_import
 from iris.comparison_replay import VIDEO_TYPES, local_media_file
 from iris.dataset_export import ExportLimitError, build_coco_export
@@ -73,6 +74,7 @@ from iris.inference import (
     create_comparison,
     preview_comparison,
 )
+from iris.job_activity import job_detail
 from iris.jobs import JobManager
 from iris.media import import_asset, preview_extraction
 from iris.models import catalog
@@ -353,6 +355,25 @@ class AssistanceBatchInput(AssistanceBatchPreviewInput):
         return value
 
 
+class BatchRetryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=160)
+    expected_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("Batch name cannot be blank")
+        return value
+
+
+class RecoveryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 def public(record: dict) -> dict:
     return {key: value for key, value in record.items() if key != "path"}
 
@@ -593,6 +614,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "frame_selection": True,
                 "selection_insights": True,
                 "dataset_split_planning": True,
+                "durable_job_recovery": True,
                 "inference": True,
                 "comparison_replay": True,
                 "annotation": True,
@@ -1330,6 +1352,16 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         require("assistance_batches", batch_id)
         return batch_action(lambda: cancel_batch(store, jobs, batch_id))
 
+    @app.post("/api/assistance-batches/{batch_id}/retry-preview")
+    def batch_retry_preview(batch_id: str):
+        require("assistance_batches", batch_id)
+        return batch_action(lambda: preview_retry_batch(store, batch_id))
+
+    @app.post("/api/assistance-batches/{batch_id}/retry", status_code=202)
+    def batch_retry(batch_id: str, payload: BatchRetryInput):
+        require("assistance_batches", batch_id)
+        return batch_action(lambda: retry_batch(store, jobs, batch_id, **payload.model_dump()))
+
     @app.get("/api/assets/{asset_id}/media")
     def asset_media(asset_id: str):
         record = require("assets", asset_id)
@@ -1484,6 +1516,43 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     @app.get("/api/jobs")
     def list_jobs():
         return project_records(store, "jobs", active_project.get())
+
+    @app.get("/api/jobs/{job_id}")
+    def job_get(job_id: str):
+        require("jobs", job_id)
+        return job_detail(store, job_id, project_id=active_project.get())
+
+    def recovery_action(function):
+        try:
+            return function()
+        except KeyError as exc:
+            raise HTTPException(404, "Job or source not found") from exc
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/jobs/{job_id}/recovery")
+    def job_recovery_preview(job_id: str):
+        from iris.job_recovery import preview_job_recovery
+
+        require("jobs", job_id)
+        return recovery_action(
+            lambda: preview_job_recovery(store, job_id, project_id=active_project.get())
+        )
+
+    @app.post("/api/jobs/{job_id}/recover", status_code=202)
+    def job_recover(job_id: str, payload: RecoveryInput):
+        from iris.job_recovery import recover_job
+
+        require("jobs", job_id)
+        return recovery_action(
+            lambda: recover_job(
+                store,
+                jobs,
+                job_id,
+                fingerprint=payload.fingerprint,
+                project_id=active_project.get(),
+            )
+        )
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel(job_id: str):

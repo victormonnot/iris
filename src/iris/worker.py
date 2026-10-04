@@ -10,6 +10,7 @@ from pathlib import Path
 from iris.assistance import run_assistance
 from iris.evaluation import run_evaluation
 from iris.inference import run_comparison
+from iris.jobs import update_running
 from iris.media import extract_frames
 from iris.store import Store, now
 from iris.training import run_training
@@ -43,8 +44,8 @@ def run(root: Path, job_id: str, parent_pid: int):
         current = store.get("jobs", job_id)
         if current["status"] != "running":
             return
-        store.update(
-            "jobs",
+        update_running(
+            store,
             job_id,
             {
                 "progress": max(0, min(1, value)),
@@ -56,14 +57,19 @@ def run(root: Path, job_id: str, parent_pid: int):
 
     try:
         if job["kind"] == "extract":
-            result = extract_frames(
-                store,
-                job["params"]["asset_id"],
-                {**job["params"]["config"], "job_id": job_id},
-                progress,
-                cancelled,
-                plan=job["params"]["config"].get("passages_plan"),
-            )
+            if "extraction_contract" in job["params"]:
+                from iris.job_recovery import run_durable_extraction
+
+                result = run_durable_extraction(store, job_id, progress, cancelled)
+            else:
+                result = extract_frames(
+                    store,
+                    job["params"]["asset_id"],
+                    {**job["params"]["config"], "job_id": job_id},
+                    progress,
+                    cancelled,
+                    plan=job["params"]["config"].get("passages_plan"),
+                )
         elif job["kind"] == "infer":
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
         elif job["kind"] == "assist":
@@ -84,8 +90,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             if current["cancel_requested"]
             else ("interrupted" if stopping else "succeeded")
         )
-        store.update(
-            "jobs",
+        update_running(
+            store,
             job_id,
             {
                 "status": status,
@@ -116,8 +122,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             if current["cancel_requested"]
             else ("interrupted" if stopping else "failed")
         )
-        store.update(
-            "jobs",
+        update_running(
+            store,
             job_id,
             {
                 "status": status,

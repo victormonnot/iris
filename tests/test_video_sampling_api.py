@@ -145,16 +145,17 @@ def test_interval_preview_exposes_prefix_truncation_and_preserves_default_queue_
     assert [position["frame_index"] for position in plan["positions"]] == [0, 3, 6]
     queued = client.post(endpoint, json=params)
     assert queued.status_code == 202, queued.text
-    assert queued.json()["params"] == {
-        "asset_id": asset["id"],
-        "config": {
-            "interval_seconds": 0.5,
-            "start_seconds": 0,
-            "end_seconds": None,
-            "max_frames": 3,
-            "dedup_hamming": None,
-        },
+    saved = queued.json()["params"]
+    assert saved["asset_id"] == asset["id"]
+    assert saved["config"] == {
+        "interval_seconds": 0.5,
+        "start_seconds": 0,
+        "end_seconds": None,
+        "max_frames": 3,
+        "dedup_hamming": None,
     }
+    assert saved["extraction_contract"]["plan"] == plan
+    assert saved["extraction_contract"]["source_sha256"] == asset["sha256"]
 
 
 @pytest.mark.parametrize("suffix", ["", "/preview", "/preview-images"])

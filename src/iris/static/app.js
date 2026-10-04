@@ -922,67 +922,62 @@ function seekOriginal() {
   video.currentTime = frame.timestamp_seconds;
 }
 
+const jobTools = window.IRISJobTools;
+const jobView = {
+  limit: 8, detailId: null, detail: null, request: 0, loading: false,
+  recoveryRequest: 0, recovery: null, busy: false, cache: new Map(),
+};
+
 function renderJobs() {
   const list = $("#job-list");
-  const expanded = new Set(
-    [...list.querySelectorAll("details[open]")].map(
-      (details) => details.dataset.jobId,
-    ),
-  );
+  const expanded = new Set([...list.querySelectorAll("details[open]")].map((details) => details.dataset.jobId));
+  const focused = document.activeElement;
+  const focusedJob = focused?.closest("[data-job-id]")?.dataset.jobId;
+  const focusedAction = focused?.dataset.jobAction;
   list.replaceChildren();
   const active = state.jobs.filter(isActive);
-  $("#jobs-section").hidden = !state.jobs.length;
-  $("#jobs-active-count").textContent = active.length
-    ? `${active.length} active`
-    : "Recent jobs";
-  const jobs = [...state.jobs].sort(
-    (a, b) =>
-      Number(isActive(b)) - Number(isActive(a)) ||
-      String(b.created_at).localeCompare(String(a.created_at)),
-  );
-  const displayed = [
-    ...jobs.filter(isActive),
-    ...jobs.filter((job) => !isActive(job)).slice(0, 8),
-  ];
-  for (const job of displayed) {
+  $("#jobs-section").hidden = false;
+  $("#jobs-active-count").textContent = `${active.length} active · ${state.jobs.length} saved`;
+  const history = jobTools.history(state.jobs, { status: $("#jobs-status").value, kind: $("#jobs-kind").value, query: $("#jobs-search").value, limit: jobView.limit });
+  $("#jobs-history-status").textContent = `${history.rows.length} of ${history.total} matching tasks · current project`;
+  $("#jobs-more").hidden = !history.more;
+  if (!history.rows.length) list.append(node("p", "job-history-empty", state.jobs.length ? "No saved jobs match these filters." : "No jobs saved in this project yet."));
+  for (const job of history.rows) {
+    const detail = jobView.cache.get(job.id);
     const asset = state.assets.find((item) => item.id === job.params?.asset_id);
     const row = node("article", "job-row");
+    row.dataset.jobId = job.id;
     const header = node("div", "job-header");
-    header.append(
-      node(
-        "h3",
-        "job-name",
-        asset?.filename ||
-          `${job.kind === "infer" ? "Model comparison" : job.kind === "assist" ? "Annotation assistance" : job.kind === "train" ? "Detector training" : job.kind === "evaluate" ? "Quality evaluation" : job.kind === "video_review" ? "Video passage review" : "Frame extraction"} · ${String(job.id).slice(0, 8)}`,
-      ),
-      node("span", `job-status ${job.status}`, job.status),
-    );
-    row.append(header);
+    header.append(node("h3", "job-name", detail?.context?.name || asset?.filename || `${jobTools.kindNames[job.kind] || job.kind} · ${String(job.id).slice(0, 8)}`), node("span", `job-status ${job.status}`, jobTools.statusName(job.status)));
+    row.append(header, node("p", "job-timestamp", `${new Date(job.created_at).toLocaleString()}${detail?.context?.session_name ? ` · ${detail.context.session_name}` : ""}`));
     if (job.message) row.append(node("p", "job-message", job.message));
+    if (detail?.dispatch?.state === "outcome_unknown") row.append(node("p", "job-outcome-unknown", "Delivery outcome unknown · no automatic resend"));
     if (job.kind === "extract" && job.result) {
       const result = job.result;
-      const planned = result.plan?.planned_count ?? result.planned_count;
       const parts = [];
+      const continued = Boolean(job.params?.recovery_of || result.inherited_completed_count > 0);
+      const planned = result.plan?.planned_count ?? result.planned_count;
       if (planned != null) parts.push(`${planned} planned`);
-      if (result.sampled != null) parts.push(`${result.sampled} sampled`);
-      if (result.created != null) parts.push(`${result.created} added for review`);
-      for (const [key, label] of [["skipped_existing", "already extracted"], ["skipped_exact", "exact duplicates"], ["skipped_similar", "visually similar"]]) {
-        if (result[key] != null) parts.push(`${result[key]} ${label}`);
-      }
+      if (result.sampled != null) parts.push(`${result.sampled} ${continued ? "total positions processed" : "sampled"}`);
+      if (result.created != null) parts.push(`${result.created} ${continued ? "total images saved across linked attempts, including retained results" : "added for review"}`);
+      for (const [key, label] of [["skipped_existing", "already extracted"], ["skipped_exact", "exact duplicates"], ["skipped_similar", "visually similar"]]) if (result[key] != null) parts.push(`${result[key]} ${label}`);
       if (parts.length) row.append(node("p", "job-message", parts.join(" · ")));
     }
     if (isActive(job)) {
       const progress = node("progress", "job-progress");
       progress.max = 1;
-      progress.value = Math.max(0, Math.min(1, job.progress || 0));
-      progress.setAttribute(
-        "aria-label",
-        `Processing progress for ${asset?.filename || job.id}`,
-      );
+      if (typeof job.progress === "number" && Number.isFinite(job.progress)) progress.value = Math.max(0, Math.min(1, job.progress));
+      progress.setAttribute("aria-label", `Processing progress for ${asset?.filename || job.id}`);
       row.append(progress);
     }
     if (job.error) row.append(node("p", "job-error", job.error));
     const bottom = node("div", "job-bottom");
+    const details = node("button", "button button-secondary", "Details and next action");
+    details.type = "button";
+    details.dataset.jobAction = "details";
+    details.setAttribute("aria-label", `Details and next action for job ${job.id}`);
+    details.addEventListener("click", () => openJobDetails(job.id));
+    bottom.append(details);
     if (job.logs?.length || job.started_at) {
       const logs = node("details", "job-logs");
       logs.dataset.jobId = String(job.id);
@@ -990,41 +985,284 @@ function renderJobs() {
       const download = node("a", "text-button", "Download full worker log ↗");
       download.href = projectURL(`/api/jobs/${encodeURIComponent(job.id)}/log`);
       download.download = `${job.id}.log`;
-      logs.append(
-        node("summary", "", "View processing log"),
-        node(
-          "pre",
-          "",
-          job.logs?.length
-            ? job.logs.join("\n")
-            : "No progress messages recorded.",
-        ),
-        download,
-      );
+      logs.append(node("summary", "", "View processing log"), node("pre", "", job.logs?.length ? job.logs.join("\n") : "No progress messages recorded."), download);
       bottom.append(logs);
     }
     if (isActive(job)) {
-      const cancel = node("button", "text-button", "Cancel job");
+      const cancel = node("button", "text-button", job.cancel_requested ? "Cancellation requested" : "Cancel job");
       cancel.type = "button";
-      cancel.addEventListener("click", async () => {
-        cancel.disabled = true;
-        try {
-          await api(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {
-            method: "POST",
-          });
-          await refreshJobs();
-          await refreshSession();
-        } catch (error) {
-          notify(error.message, true);
-          cancel.disabled = false;
-        }
-      });
+      cancel.disabled = Boolean(job.cancel_requested);
+      cancel.dataset.jobAction = "cancel";
+      cancel.addEventListener("click", () => cancelSavedJob(job.id, cancel));
       bottom.append(cancel);
     }
     row.append(bottom);
     list.append(row);
   }
+  if (focusedJob && focusedAction) {
+    const row = [...list.children].find((item) => item.dataset.jobId === focusedJob);
+    row?.querySelector(`[data-job-action="${focusedAction}"]`)?.focus({ preventScroll: true });
+  }
 }
+
+function jobError(selector, error) {
+  $(selector).textContent = error?.message || error || "";
+  $(selector).hidden = !error;
+}
+
+function jobMetadata(selector, pairs) {
+  const list = $(selector);
+  list.replaceChildren();
+  for (const [name, value] of pairs) {
+    if (value == null || value === "") continue;
+    const entry = node("div");
+    entry.append(node("dt", "", name), node("dd", "", String(value)));
+    list.append(entry);
+  }
+}
+
+function updateJobActions() {
+  const detail = jobView.detail;
+  const blocked = jobView.loading || jobView.busy;
+  $("#job-detail-dialog [data-close]").disabled = jobView.busy;
+  for (const id of ["job-detail-refresh", "job-open-results", "job-check-continuation", "job-new-run", "job-open-batch"])
+    $(`#${id}`).disabled = blocked || !detail;
+  $("#job-confirm-continuation").disabled = blocked || !jobTools.canContinue(detail, jobView.recovery);
+  $("#job-detail-cancel").disabled = blocked || Boolean(detail?.job.cancel_requested);
+}
+
+function renderJobDetail(detail) {
+  const { job, context, dispatch, artifacts, lineage, recovery, next_action: action } = detail;
+  $("#job-detail-content").hidden = false;
+  $("#job-detail-title").textContent = context?.name || jobTools.kindNames[job.kind] || "Job details";
+  $("#job-detail-status").textContent = jobTools.statusName(job.status);
+  $("#job-detail-status").className = `job-status ${job.status}`;
+  $("#job-detail-context").textContent = `${jobTools.kindNames[job.kind] || job.kind} · ${context?.session_name || "Project task"} · ${job.id}`;
+  $("#job-detail-message").textContent = job.message || "";
+  jobError("#job-detail-failure", job.error);
+  const time = (value) => value ? new Date(value).toLocaleString() : null;
+  jobMetadata("#job-detail-times", [["Created", time(job.created_at)], ["Started", time(job.started_at)], ["Finished", time(job.finished_at)], ["Cancellation", job.cancel_requested ? "Requested; saved results are preserved" : null]]);
+  const presentation = jobTools.dispatchPresentation(dispatch);
+  $("#job-detail-dispatch").hidden = !presentation;
+  if (presentation) {
+    $("#job-detail-dispatch").classList.toggle("unknown", presentation.unknown);
+    $("#job-dispatch-title").textContent = presentation.label;
+    $("#job-dispatch-message").textContent = dispatch.message || "";
+    $("#job-dispatch-explanation").textContent = presentation.explanation;
+    jobMetadata("#job-dispatch-metadata", [["Execution", dispatch.external ? "External provider" : "Local provider"], ["Provider", dispatch.provider], ["Model", dispatch.model], ["Dispatch attempted", time(dispatch.attempted_at)], ["Response received", time(dispatch.response_received_at)], ["Provider request ID", dispatch.request_id]]);
+  }
+  $("#job-detail-artifacts").replaceChildren(...(artifacts || []).map((item) => node("li", "", `${item.count ?? ""} ${item.label}`.trim())));
+  if (!artifacts?.length) $("#job-detail-artifacts").append(node("li", "field-hint", "No saved result artifacts were reported."));
+  $("#job-open-results").hidden = !action?.workspace;
+  const links = $("#job-detail-lineage");
+  links.replaceChildren();
+  for (const [label, ids] of [["Original task", lineage?.parent_job_id ? [lineage.parent_job_id] : []], ["Continuation", lineage?.child_job_ids || []]]) {
+    for (const id of ids) {
+      const button = node("button", "text-button", `${label} · ${id.slice(0, 8)}`);
+      button.type = "button";
+      button.addEventListener("click", () => openJobDetails(id));
+      links.append(button);
+    }
+  }
+  $("#job-check-continuation").hidden = !recovery?.can_check;
+  $("#job-new-run").hidden = isActive(job) || !action?.workspace || Boolean(context?.batch_id);
+  $("#job-open-batch").hidden = !context?.batch_id;
+  $("#job-detail-cancel").hidden = !isActive(job);
+  $("#job-detail-cancel").textContent = job.cancel_requested ? "Cancellation requested" : "Cancel job";
+  const notes = [recovery?.reason, action?.reason];
+  if (job.kind === "train") notes.push("Preparing a new run does not resume optimizer state.");
+  if (dispatch?.external) notes.push("A new external review requires a new image and cost preview with explicit approval.");
+  notes.push("Opening a workspace does not launch a task.");
+  $("#job-recovery-reason").textContent = [...new Set(notes.filter(Boolean))].join(" ");
+  $("#job-detail-record").textContent = JSON.stringify({ params: job.params, result: job.result }, null, 2);
+  $("#job-detail-log").textContent = job.logs?.join("\n") || "No progress messages recorded.";
+  $("#job-detail-log-download").href = projectURL(`/api/jobs/${encodeURIComponent(job.id)}/log`);
+  $("#job-detail-log-download").download = `${job.id}.log`;
+  updateJobActions();
+}
+
+async function loadJobDetails(id) {
+  const request = ++jobView.request;
+  jobView.loading = true;
+  $("#job-detail-loading").textContent = "Loading saved task evidence…";
+  updateJobActions();
+  try {
+    const detail = await api(`/api/jobs/${encodeURIComponent(id)}`);
+    if (request !== jobView.request || id !== jobView.detailId || !$("#job-detail-dialog").open) return;
+    jobView.detail = detail;
+    jobView.cache.set(id, detail);
+    jobError("#job-detail-error", null);
+    renderJobDetail(detail);
+    renderJobs();
+  } catch (error) {
+    if (request === jobView.request && id === jobView.detailId) jobError("#job-detail-error", error);
+  } finally {
+    if (request === jobView.request) {
+      jobView.loading = false;
+      $("#job-detail-loading").textContent = "";
+      updateJobActions();
+    }
+  }
+}
+
+function openJobDetails(id) {
+  if (jobView.busy) return;
+  jobView.detailId = id;
+  jobView.detail = null;
+  jobView.recovery = null;
+  jobView.recoveryRequest++;
+  $("#job-detail-content").hidden = true;
+  $("#job-recovery-preview").hidden = true;
+  jobError("#job-recovery-error", null);
+  jobError("#job-detail-error", null);
+  if (!$("#job-detail-dialog").open) $("#job-detail-dialog").showModal();
+  loadJobDetails(id);
+}
+
+async function cancelSavedJob(id, button) {
+  if (button) button.disabled = true;
+  try {
+    await api(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+    await refreshJobs();
+    if (jobView.detailId === id && $("#job-detail-dialog").open) await loadJobDetails(id);
+  } catch (error) {
+    notify(error.message, true);
+    if (button) button.disabled = false;
+  }
+}
+
+async function checkJobContinuation() {
+  const detail = jobView.detail;
+  if (!detail?.recovery?.can_check || jobView.busy) return;
+  const id = detail.job.id;
+  const request = ++jobView.recoveryRequest;
+  jobView.busy = true;
+  jobView.recovery = null;
+  jobError("#job-recovery-error", null);
+  updateJobActions();
+  try {
+    const preview = await api(`/api/jobs/${encodeURIComponent(id)}/recovery`);
+    if (request !== jobView.recoveryRequest || id !== jobView.detailId) return;
+    jobView.recovery = preview;
+    $("#job-recovery-preview").hidden = false;
+    $("#job-recovery-summary").textContent = `${preview.reason || ""} ${preview.completed_count ?? "Unknown"} sampled positions already processed · ${preview.remaining_count ?? "unknown"} remaining of ${preview.total_count ?? "unknown"}. Processed positions can include skipped duplicates.`;
+    $("#job-recovery-notice").hidden = !preview.available;
+    if (preview.successor_job_id) $("#job-recovery-summary").append(document.createTextNode(` Existing continuation: ${preview.successor_job_id}. Open it from the task links.`));
+    await loadJobDetails(id);
+  } catch (error) {
+    if (request === jobView.recoveryRequest) jobError("#job-recovery-error", error);
+  } finally {
+    if (request === jobView.recoveryRequest) { jobView.busy = false; updateJobActions(); }
+  }
+}
+
+async function continueJob() {
+  const detail = jobView.detail;
+  const preview = jobView.recovery;
+  if (jobView.busy || !jobTools.canContinue(detail, preview)) return;
+  const id = detail.job.id;
+  jobView.busy = true;
+  jobError("#job-recovery-error", null);
+  updateJobActions();
+  let created;
+  try {
+    created = await api(`/api/jobs/${encodeURIComponent(id)}/recover`, { method: "POST", body: JSON.stringify({ fingerprint: preview.fingerprint }) });
+    jobView.recovery = null;
+    await refreshJobs();
+    notify("A linked continuation was queued for the remaining extraction positions. The original job is preserved.");
+  } catch (error) {
+    jobView.recovery = null;
+    $("#job-recovery-preview").hidden = true;
+    jobError("#job-recovery-error", `${error.message} Refresh this task and check its continuation links before trying again. No request was repeated automatically.`);
+    await loadJobDetails(id);
+  } finally {
+    jobView.busy = false;
+    updateJobActions();
+  }
+  if (created?.id) openJobDetails(created.id);
+}
+
+async function selectJobHistory(selector, id) {
+  const sessionId = state.sessionId;
+  const select = $(selector);
+  if (!select || !id) return;
+  const ready = () => [...select.options].some((option) => option.value === id);
+  if (!ready()) await new Promise((resolve) => {
+    const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(); } });
+    const timer = setTimeout(() => { observer.disconnect(); resolve(); }, 5000);
+    observer.observe(select, { childList: true, subtree: true });
+  });
+  if (ready() && sessionId === state.sessionId) { select.value = id; select.dispatchEvent(new Event("change", { bubbles: true })); }
+}
+
+async function openJobWorkspace({ results = false, batch = false } = {}) {
+  const detail = jobView.detail;
+  if (!detail || jobView.busy || !detail.next_action?.workspace) return;
+  const context = detail.context || {};
+  if (context.session_id && context.session_id !== state.sessionId) {
+    await selectSession(context.session_id);
+    if (state.sessionId !== context.session_id) return;
+  }
+  $("#job-detail-dialog").close();
+  $(`#workspace-${detail.next_action.workspace}`)?.click();
+  $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
+  if (batch && context.batch_id) {
+    window.dispatchEvent(new CustomEvent("iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));
+    return;
+  }
+  let resultNotice = "Opened the saved results workspace. No task was launched.";
+  if (results) {
+    const selector = { comparisons: "#comparison-history", training_runs: "#training-history", evaluations: "#evaluation-history" }[context.target_type];
+    if (selector) await selectJobHistory(selector, context.target_id);
+    else if (context.target_type === "assistance_records" && detail.job.params?.frame_id) {
+      const frameId = detail.job.params.frame_id;
+      if (state.frames.some((frame) => frame.id === frameId && frame.selected)) window.dispatchEvent(new CustomEvent("iris:annotation-open-frame", { detail: { frame_id: frameId } }));
+      else resultNotice = "This saved frame is not selected. Select it in Data intake to open its annotation; no frame selection was changed.";
+    }
+  }
+  if (detail.next_action.workspace === "intake") {
+    let assetId = detail.job.params?.asset_id;
+    if (!assetId && context.target_type === "assets") assetId = context.target_id;
+    if (!assetId && context.target_type === "video_reviews" && context.target_id) {
+      const record = await api(`/api/video-reviews/${encodeURIComponent(context.target_id)}`);
+      if (context.session_id && state.sessionId !== context.session_id) return;
+      assetId = record.asset_id;
+    }
+    const asset = state.assets.find((item) => item.id === assetId);
+    if (asset && detail.job.kind === "video_review") {
+      window.dispatchEvent(new CustomEvent("iris:video-review", { detail: { asset } }));
+      if (results) await selectJobHistory("#video-review-history", context.target_id);
+    } else if (asset && !results) openExtraction(asset);
+  }
+  notify(results ? resultNotice : "Review the settings in this workspace to prepare a new run. Nothing was launched; saved work remains unchanged.");
+}
+
+for (const id of ["jobs-status", "jobs-kind", "jobs-search"]) $(`#${id}`).addEventListener(id === "jobs-search" ? "input" : "change", () => { jobView.limit = 8; renderJobs(); });
+$("#jobs-more").addEventListener("click", () => { jobView.limit += 12; renderJobs(); });
+$("#jobs-refresh").addEventListener("click", async () => {
+  $("#jobs-refresh").disabled = true;
+  try { await refreshJobs(); } catch (error) { notify(error.message, true); }
+  finally { $("#jobs-refresh").disabled = false; }
+});
+$("#job-detail-refresh").addEventListener("click", () => {
+  jobView.recovery = null;
+  $("#job-recovery-preview").hidden = true;
+  loadJobDetails(jobView.detailId);
+});
+$("#job-check-continuation").addEventListener("click", checkJobContinuation);
+$("#job-confirm-continuation").addEventListener("click", continueJob);
+$("#job-open-results").addEventListener("click", () => openJobWorkspace({ results: true }).catch((error) => notify(error.message, true)));
+$("#job-new-run").addEventListener("click", () => openJobWorkspace().catch((error) => notify(error.message, true)));
+$("#job-open-batch").addEventListener("click", () => openJobWorkspace({ batch: true }).catch((error) => notify(error.message, true)));
+$("#job-detail-cancel").addEventListener("click", () => cancelSavedJob(jobView.detailId, $("#job-detail-cancel")));
+$("#job-detail-dialog").addEventListener("cancel", (event) => { if (jobView.busy) event.preventDefault(); });
+$("#job-detail-dialog").addEventListener("close", () => {
+  jobView.request++;
+  jobView.recoveryRequest++;
+  jobView.loading = false;
+  jobView.recovery = null;
+});
+window.addEventListener("iris:job-open", (event) => { if (event.detail?.job_id) openJobDetails(event.detail.job_id); });
 
 async function refreshJobs() {
   if (state.polling) clearTimeout(state.polling);
@@ -1035,6 +1273,9 @@ async function refreshJobs() {
   );
   state.jobs = await api("/api/jobs");
   renderJobs();
+  const shownJob = state.jobs.find((job) => job.id === jobView.detailId);
+  if ($("#job-detail-dialog").open && !jobView.loading && !jobView.busy && shownJob &&
+      (shownJob.status !== jobView.detail?.job.status || shownJob.progress !== jobView.detail?.job.progress)) loadJobDetails(shownJob.id);
   window.dispatchEvent(new Event("iris:jobs"));
   const changed = state.jobs.some(
     (job) => previousStatuses.get(job.id) !== job.status,

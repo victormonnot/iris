@@ -71,7 +71,13 @@ See [projects and compatibility](docs/projects.md).
    or human-validated.
 5. Inspect job progress, errors, and logs. Cancel extraction if needed; frames
    already produced remain available. After a server interruption, unfinished
-   jobs are marked interrupted. Re-run extraction explicitly to recover.
+   jobs are marked interrupted. New extractions can preview and continue their
+   remaining frozen sampling positions. Older jobs require a new extraction.
+
+The project job history provides filters, saved partial results and recovery
+details. Continuation creates a linked extraction attempt; other model work needs
+an explicit new run. Uncertain external requests are never resent automatically.
+See [jobs and recovery](docs/job-recovery.md), including unfinished local review batches.
 
 The import queue accepts multiple images and videos, reports each result and can
 retry failed files. Gallery filters help inspect human-reviewed positives and

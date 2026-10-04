@@ -19,6 +19,7 @@
     <script src="/static/dataset-tools.js" defer></script>
     <script src="/static/intake-tools.js" defer></script>
     <script src="/static/partition-tools.js" defer></script>
+    <script src="/static/job-tools.js" defer></script>
     <script src="/static/app.js" defer></script>
     <script src="/static/taxonomies.js" defer></script>
     <script src="/static/video-review.js" defer></script>
@@ -644,7 +645,9 @@
                   <div class="assistance-batch-history-heading"><h3>Batch history</h3><button id="assistance-batch-refresh-history" type="button" class="text-button">Refresh history</button></div>
                   <label class="sr-only" for="assistance-batch-history">Saved local review batch</label><select id="assistance-batch-history"><option value="">No batches in this session</option></select>
                   <p id="assistance-batch-history-error" class="inline-error" role="alert" hidden></p>
-                  <div id="assistance-batch-detail" hidden><p id="assistance-batch-detail-summary" class="small" role="status"></p><progress id="assistance-batch-progress" max="1" value="0" aria-label="Batch progress"></progress><p id="assistance-batch-detail-config" class="field-hint"></p><button id="assistance-batch-cancel" type="button" class="button button-secondary" hidden>Cancel remaining frames</button><p id="assistance-batch-cancel-hint" class="field-hint" hidden></p><ul id="assistance-batch-detail-frames" class="assistance-batch-results"></ul><details id="assistance-batch-excluded" class="assistance-batch-excluded" hidden><summary id="assistance-batch-excluded-summary"></summary><ul id="assistance-batch-excluded-frames" class="assistance-batch-results"></ul></details></div>
+                  <div id="assistance-batch-detail" hidden><p id="assistance-batch-detail-summary" class="small" role="status"></p><progress id="assistance-batch-progress" max="1" value="0" aria-label="Batch progress"></progress><p id="assistance-batch-detail-config" class="field-hint"></p><button id="assistance-batch-cancel" type="button" class="button button-secondary" hidden>Cancel remaining frames</button><p id="assistance-batch-cancel-hint" class="field-hint" hidden></p><p id="assistance-batch-state-counts" class="field-hint"></p><p id="assistance-batch-lineage" class="field-hint"></p>
+                    <section class="batch-retry"><button id="assistance-batch-retry-preview" type="button" class="button button-secondary" hidden>Check unfinished frames</button><p id="assistance-batch-retry-error" class="inline-error" role="alert" hidden></p><div id="assistance-batch-retry-result" hidden><p id="assistance-batch-retry-summary" class="field-hint" role="status"></p><ul id="assistance-batch-retry-frames" class="assistance-batch-results"></ul><label for="assistance-batch-retry-name">New batch name</label><input id="assistance-batch-retry-name" maxlength="160" /><p class="field-hint">Creates a new linked batch after checking current saved labels. Successful frames and existing proposals are kept; they are never replayed.</p><button id="assistance-batch-retry-confirm" type="button" class="button button-primary" disabled>Start checked frames in a new batch</button></div></section>
+                    <ul id="assistance-batch-detail-frames" class="assistance-batch-results"></ul><details id="assistance-batch-excluded" class="assistance-batch-excluded" hidden><summary id="assistance-batch-excluded-summary"></summary><ul id="assistance-batch-excluded-frames" class="assistance-batch-results"></ul></details></div>
                 </div>
               </div>
             </details>
@@ -2391,14 +2394,22 @@ ollama pull qwen3-vl:4b-instruct</pre
         >
           <div class="panel-heading">
             <div>
-              <h2 id="jobs-title">Processing jobs</h2>
+              <h2 id="jobs-title">Project jobs</h2>
               <p id="jobs-description">
-                Processing runs locally. You can keep working while jobs run.
+                Saved work across this project. You can keep working while jobs run; external requests are identified in their details.
               </p>
             </div>
             <span id="jobs-active-count" class="count"></span>
           </div>
+          <div class="job-history-controls">
+            <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="assist">Annotation assistance</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
+            <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
+          </div>
+          <p id="jobs-history-status" class="field-hint job-history-status" role="status"></p>
           <div id="job-list"></div>
+          <div class="job-history-footer"><button id="jobs-more" type="button" class="button button-secondary" hidden>Load more saved jobs</button></div>
         </section>
         <footer class="page-footer">
           <span>IRIS / Local detector improvement</span
@@ -2408,6 +2419,27 @@ ollama pull qwen3-vl:4b-instruct</pre
         </footer>
       </main>
     </div>
+    <dialog id="job-detail-dialog" class="modal job-detail-modal" aria-labelledby="job-detail-title">
+      <div class="modal-heading"><div><div class="eyebrow">Saved task</div><h2 id="job-detail-title">Job details</h2></div><button class="icon-button" type="button" data-close="job-detail-dialog" aria-label="Close job details">×</button></div>
+      <p id="job-detail-loading" class="field-hint" role="status"></p>
+      <p id="job-detail-error" class="inline-error" role="alert" hidden></p>
+      <div id="job-detail-content" hidden>
+        <div class="job-detail-heading"><span id="job-detail-status" class="job-status"></span><button id="job-detail-refresh" class="text-button" type="button">Refresh details</button></div>
+        <p id="job-detail-context" class="field-hint"></p><p id="job-detail-message"></p>
+        <p id="job-detail-failure" class="inline-error" hidden></p>
+        <dl id="job-detail-times" class="metadata-list"></dl>
+        <section id="job-detail-dispatch" class="job-dispatch" hidden aria-labelledby="job-dispatch-title"><h3 id="job-dispatch-title"></h3><p id="job-dispatch-message"></p><p id="job-dispatch-explanation" class="field-hint"></p><dl id="job-dispatch-metadata" class="metadata-list"></dl></section>
+        <section class="job-results"><h3>Saved results</h3><p class="field-hint">Partial results remain available when a job stops. Counts describe saved work; proposals still require human review.</p><ul id="job-detail-artifacts"></ul><button id="job-open-results" class="button button-secondary" type="button">Open results workspace</button></section>
+        <div id="job-detail-lineage" class="job-lineage"></div>
+        <section class="job-recovery"><h3>Next action</h3><p id="job-recovery-reason" class="field-hint"></p>
+          <div class="job-detail-actions"><button id="job-check-continuation" class="button button-secondary" type="button" hidden>Check continuation</button><button id="job-new-run" class="button button-secondary" type="button" hidden>Prepare a new run</button><button id="job-open-batch" class="button button-secondary" type="button" hidden>Open local review batch</button><button id="job-detail-cancel" class="text-button" type="button" hidden>Cancel job</button></div>
+          <div id="job-recovery-preview" class="job-recovery-preview" hidden><p id="job-recovery-summary" role="status"></p><p id="job-recovery-notice" class="field-hint">Continuing creates a new linked job for remaining positions. Saved frames and the original task are preserved.</p><button id="job-confirm-continuation" class="button button-primary" type="button" disabled>Continue remaining extraction</button></div>
+          <p id="job-recovery-error" class="inline-error" role="alert" hidden></p>
+        </section>
+        <details class="job-evidence"><summary>Saved parameters and result record</summary><pre id="job-detail-record"></pre></details>
+        <details class="job-evidence"><summary>Processing log</summary><pre id="job-detail-log"></pre><a id="job-detail-log-download" class="text-button" download>Download full worker log</a></details>
+      </div>
+    </dialog>
     <dialog
       id="workspace-backup-dialog"
       class="modal workspace-backup-modal"

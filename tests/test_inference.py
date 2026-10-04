@@ -535,10 +535,14 @@ def test_api_comparison_keeps_provenance_and_hides_local_artifact_paths(workspac
         assert reopened.get(f"/api/comparisons/{comparison['id']}").json() == detail
 
 
-def test_queued_comparison_does_not_break_extraction_submission(workspace, ready_catalog):
+def test_queued_comparison_does_not_break_extraction_submission(workspace, ready_catalog, tmp_path):
+    from test_media import make_video
+
     store, flight, frames = workspace
     comparison = queue_comparison(store, flight, frames[:1])
-    job = JobManager(store).submit(frames[0]["asset_id"], {"max_frames": 1})
+    source = make_video(tmp_path / "queued.avi")
+    video = import_asset(store, flight["id"], source, source.name)
+    job = JobManager(store).submit(video["id"], {"max_frames": 1})
     assert job["kind"] == "extract"
     assert job["status"] == "queued"
     assert job["id"] != comparison["job_id"]

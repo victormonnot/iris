@@ -233,7 +233,12 @@ def test_real_subprocess_extracts_frames_and_persists_job_provenance(tmp_path, v
         assert queued.status_code == 202
         completed = wait_for_job(client, queued.json()["id"])
         assert completed["status"] == "succeeded", completed
-        assert completed["params"] == {"asset_id": asset["id"], "config": params}
+        assert completed["params"]["asset_id"] == asset["id"]
+        assert completed["params"]["config"] == params
+        contract = completed["params"]["extraction_contract"]
+        assert contract["source_sha256"] == asset["sha256"]
+        assert contract["operation_id"] == completed["id"]
+        assert contract["taxonomy_id"] == "iris-objects-v1"
         assert completed["result"]["created"] == completed["result"]["sampled"] == 2
         assert completed["progress"] == 1
         assert completed["started_at"] and completed["finished_at"]
@@ -241,7 +246,11 @@ def test_real_subprocess_extracts_frames_and_persists_job_provenance(tmp_path, v
         assert sorted(frame["timestamp_seconds"] for frame in frames) == [0.5, 1.0]
         assert {frame["id"] for frame in frames} == set(completed["result"]["frame_ids"])
         assert all(frame["asset_id"] == asset["id"] for frame in frames)
-        assert all(frame["extraction"] == {**params, "job_id": completed["id"]} for frame in frames)
+        for frame in frames:
+            assert {key: frame["extraction"][key] for key in params} == params
+            assert frame["extraction"]["job_id"] == completed["id"]
+            assert frame["extraction"]["operation_id"] == contract["operation_id"]
+            assert frame["extraction"]["plan_fingerprint"] == contract["plan_fingerprint"]
         log = client.get(f"/api/jobs/{completed['id']}/log")
         assert log.status_code == 200 and log.text.strip()
 

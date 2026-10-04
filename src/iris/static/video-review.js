@@ -403,7 +403,25 @@
     const endpoint = detailURL("/run");
     const payload = { allow_external: external(), max_cost_usd: external() ? cost() : null };
     await operation("run", async (context) => {
-      await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
+      try {
+        await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
+      } catch (failure) {
+        if (!payload.allow_external) throw failure;
+        let saved = null;
+        try { saved = await api(`/api/video-reviews/${encodeURIComponent(id)}`); }
+        catch { /* An unreadable record is not evidence that no request was sent. */ }
+        if (!current(context)) return;
+        field("consent").checked = false;
+        if (saved?.job?.id || saved?.job_id) {
+          showRecord(saved, true);
+          await refreshJobs().catch(() => {});
+          notify("This approved video review is already recorded. No second request was sent; inspect its saved task for delivery and results.");
+          window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: saved.job?.id || saved.job_id } }));
+          return;
+        }
+        invalidateSettings();
+        throw new Error(`${failure.message} IRIS could not confirm whether the approval was queued. Check Project jobs and review history before preparing another request; another request may incur another charge. No request was repeated automatically.`);
+      }
       await refreshJobs();
       if (!current(context)) return;
       field("consent").checked = false;

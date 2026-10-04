@@ -1,6 +1,6 @@
 # Local annotation batches
 
-A batch prepares model review proposals for several selected frames in one flight
+A batch prepares model review proposals for several selected frames in one
 session. Each image has its own durable assistance record and processing job.
 Saved human annotations remain unchanged until you explicitly review and save them.
 
@@ -53,9 +53,13 @@ become **interrupted**; they are not automatically restarted. A batch with mixed
 terminal outcomes is shown as **partial**, with each outcome visible. Progress
 alone does not indicate success: inspect image statuses and proposal counts.
 
-To retry, select the desired images and create a fresh preview and batch. There
-is no automatic retry or silent reuse of an earlier request. An image's existing
-proposals remain available for review.
+For a stopped batch, prepare a new batch for unfinished images from its details.
+The preview includes failed, cancelled and interrupted images with no saved
+proposals; successful images and images with proposals remain in the earlier batch.
+Current saved inputs are checked again, and creation requires explicit confirmation.
+The new batch links to its parent. Repeating a confirmation returns that same batch.
+You can also select images manually to prepare a separate batch. There is no
+automatic retry or silent reuse of an earlier request. See [jobs and recovery](job-recovery.md).
 
 ## Provenance and local execution
 

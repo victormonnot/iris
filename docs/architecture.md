@@ -31,6 +31,20 @@ failed, cancelled, or interrupted. Jobs retain configuration, logs, errors, and
 useful partial artifacts; interrupted work is identified on restart, never
 reported as success.
 
+New extraction jobs carry a frozen sampling contract in `jobs.params` and durable
+position checkpoints in `jobs.result`. Recovery verifies the source, retained
+images, pinned taxonomy and deduplication inventory, then creates a linked attempt
+with a compare-and-swap fingerprint. The old terminal job is preserved. This is
+separate from restarting model training, which does not restore optimizer state.
+
+Provider records retain a dispatch receipt in their metadata. Atomic claims prevent
+two workers from executing one saved request. Dispatch is recorded before network
+write, and confirmed receipt is distinguished from an uncertain transport outcome.
+Startup reconciles unfinished receipts without submitting requests. Local batch
+recovery creates a new, explicitly previewed batch for unfinished images without
+saved proposals, excluding successes. These additions use schema 14; no old frozen
+manifest or model contract is rewritten. See [jobs and recovery](job-recovery.md).
+
 The server binds to loopback by default. A remote workstation can be reached
 through an SSH tunnel; computation and storage remain on that workstation.
 This is a single-user application, not an authenticated public service.

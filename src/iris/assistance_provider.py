@@ -150,7 +150,7 @@ def _json(text):
         raise ValueError("JSON response nesting is too deep.") from exc
 
 
-def _request(config, method, path, payload=None, timeout=STATUS_TIMEOUT):
+def _request(config, method, path, payload=None, timeout=STATUS_TIMEOUT, *, before_dispatch=None):
     """Direct loopback HTTP, with a response-size limit and a wall-clock deadline."""
     address, port = _address(config.endpoint)
     connection = http.client.HTTPConnection(address, port, timeout=timeout)
@@ -158,7 +158,10 @@ def _request(config, method, path, payload=None, timeout=STATUS_TIMEOUT):
     body = None if payload is None else json.dumps(payload, allow_nan=False).encode()
     chunks = bytearray()
     status = None
+    response_complete = False
     try:
+        if before_dispatch is not None:
+            before_dispatch()
         connection.request(method, path, body=body, headers={"Content-Type": "application/json"})
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -179,6 +182,9 @@ def _request(config, method, path, payload=None, timeout=STATUS_TIMEOUT):
             chunks.extend(chunk)
             if len(chunks) > MAX_RESPONSE_BYTES:
                 raise ValueError("Ollama response exceeds the 1 MiB limit.")
+        if getattr(response, "length", None) not in {None, 0}:
+            raise http.client.IncompleteRead(bytes(chunks), response.length)
+        response_complete = True
         raw = bytes(chunks).decode("utf-8")
         if status != 200:
             raise ValueError(f"Ollama returned HTTP {status}; redirects are not followed.")
@@ -188,17 +194,20 @@ def _request(config, method, path, payload=None, timeout=STATUS_TIMEOUT):
         if result.get("error"):
             raise ProviderResponseError("Ollama reported an error.", raw_response=result)
         return result
-    except ProviderResponseError:
+    except ProviderResponseError as exc:
+        exc.response_received = response_complete
         raise
     except (OSError, ValueError, http.client.HTTPException) as exc:
-        raise ProviderResponseError(
+        error = ProviderResponseError(
             str(exc),
             raw_response={
                 "http_status": status,
                 "body": bytes(chunks[:MAX_RESPONSE_BYTES]).decode("utf-8", errors="replace"),
                 "truncated": len(chunks) > MAX_RESPONSE_BYTES,
             },
-        ) from exc
+        )
+        error.response_received = response_complete
+        raise error from exc
     finally:
         connection.close()
 
@@ -371,6 +380,8 @@ def _validate_review(raw, ids):
 
 
 class OllamaReviewer:
+    supports_dispatch_callbacks = True
+
     def __init__(self, config=None):
         self.config = _config(config)
         status = provider_status(self.config)
@@ -419,6 +430,7 @@ class OllamaReviewer:
         # Store the exact textual messages and their roles, without duplicating image bytes.
         prompt = json.dumps(messages, ensure_ascii=False)
         raw = None
+        generation_started = False
         try:
             self._check_identity()
             images = [_encode(image, 1024)]
@@ -427,6 +439,7 @@ class OllamaReviewer:
                 # Outward rounding keeps subpixel detector boxes nonempty.
                 crop = image.crop((math.floor(x1), math.floor(y1), math.ceil(x2), math.ceil(y2)))
                 images.append(_encode(crop, 320))
+            generation_started = True
             raw = _request(
                 self.config,
                 "POST",
@@ -440,6 +453,11 @@ class OllamaReviewer:
                     "keep_alive": 0,
                 },
                 timeout=REVIEW_TIMEOUT,
+                **(
+                    {"before_dispatch": self.before_dispatch}
+                    if getattr(self, "before_dispatch", None) is not None
+                    else {}
+                ),
             )
             if raw.get("model") != self.config.model or raw.get("done") is not True:
                 raise ValueError("Incomplete response or unexpected returned model.")
@@ -457,16 +475,22 @@ class OllamaReviewer:
                 "metadata": deepcopy(self.metadata),
             }
         except ProviderResponseError as exc:
-            raise ProviderResponseError(
+            error = ProviderResponseError(
                 str(exc),
                 raw_response=raw if raw is not None else exc.raw_response,
                 metadata=self.metadata,
                 prompt=prompt,
-            ) from exc
+            )
+            error.response_received = raw is not None or (
+                generation_started and getattr(exc, "response_received", False)
+            )
+            raise error from exc
         except (ValueError, TypeError) as exc:
-            raise ProviderResponseError(
+            error = ProviderResponseError(
                 str(exc),
                 raw_response=raw,
                 metadata=self.metadata,
                 prompt=prompt,
-            ) from exc
+            )
+            error.response_received = raw is not None
+            raise error from exc

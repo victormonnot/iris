@@ -1477,8 +1477,21 @@
       notify("API review queued with your approved images and cost limit. Your labels remain subject to human validation.");
       await refreshJobs();
     } catch (failure) {
+      // A lost acknowledgement does not establish that the approved request was rejected.
+      let recorded = null;
+      try {
+        const records = await api(`/api/frames/${encodeURIComponent(preview.frameId)}/assistance`);
+        recorded = window.IRISJobTools.findApprovedRequest(records, preview.id);
+      } catch { /* Keep the outcome uncertain; never repeat the submission. */ }
       invalidatePreview();
-      reportFailure(failure);
+      if (preview.frameId !== editor.frameId) return;
+      if (recorded) {
+        notify("The approved request is already recorded. No second request was sent. Inspect its saved task to check delivery and results.");
+        await refreshJobs().catch(() => {});
+        window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: recorded.job_id || recorded.job.id } }));
+      } else {
+        reportFailure(new Error(`${failure.message} IRIS could not confirm whether this approval was queued. Check Project jobs before preparing another review; another request may incur another charge. No request was repeated automatically.`));
+      }
     } finally {
       finishRequest();
     }

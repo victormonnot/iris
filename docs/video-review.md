@@ -73,7 +73,10 @@ truncated completions fail validation.
 Jobs can be cancelled. Cancellation or a server interruption does not trigger
 another model request. An already submitted request may still run at the
 provider and incur its charge. A fresh preview and explicit action are required
-to retry. Failed reviews never start extraction.
+to retry. Failed reviews never start extraction. Job details distinguish a received
+response from an unknown delivery outcome. After a connection loss, the provider
+may already have processed the request; IRIS does not resend it automatically.
+See [jobs and recovery](job-recovery.md) for retained receipts and partial results.
 
 Timestamps derive from frame index and nominal FPS. As with normal extraction,
 some variable-rate recordings or container metadata can produce inaccurate

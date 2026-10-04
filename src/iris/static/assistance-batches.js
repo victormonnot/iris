@@ -10,6 +10,7 @@
     historyRequest: 0, detailRequest: 0, catalogLoading: false,
     historyLoading: false, comparisonLoading: false, operation: null, operationToken: 0,
     cancelling: false, cancelToken: 0, loaded: false, comparisonJobs: "",
+    retryPreview: null, retryGeneration: 0,
   };
   const sessionURL = (suffix) =>
     `/api/sessions/${encodeURIComponent(batch.sessionId)}/${suffix}`;
@@ -96,7 +97,12 @@
       ? "Starting batch…" : preview?.eligible_count
         ? `Start ${plural(preview.eligible_count, "frame")}` : "Start local review";
     field("refresh-history").disabled = batch.historyLoading;
-    field("history").disabled = !batch.history.length;
+    field("history").disabled = busy || !batch.history.length;
+    field("retry-preview").disabled = busy || batch.cancelling || !window.IRISJobTools.retryableBatchFrames(batch.detail).length;
+    field("retry-preview").textContent = batch.operation === "retry-preview" ? "Checking unfinished frames…" : "Check unfinished frames";
+    field("retry-name").disabled = busy;
+    field("retry-confirm").disabled = busy || batch.cancelling || !batch.retryPreview?.eligible_count || !field("retry-name").value.trim();
+    field("retry-confirm").textContent = batch.operation === "retry" ? "Creating linked batch…" : "Start checked frames in a new batch";
     field("cancel").disabled = batch.cancelling || Boolean(batch.detail?.cancel_requested);
   }
 
@@ -310,6 +316,84 @@
     }
   }
 
+  function clearRetryPreview() {
+    batch.retryGeneration++;
+    batch.retryPreview = null;
+    field("retry-result").hidden = true;
+    field("retry-frames").replaceChildren();
+    showError("retry-error", null);
+  }
+
+  async function previewRetry() {
+    const source = batch.detail;
+    const candidates = window.IRISJobTools.retryableBatchFrames(source);
+    if (field("retry-preview").disabled || !candidates.length || !guardFrames(candidates.map((frame) => frame.frame_id))) return;
+    clearRetryPreview();
+    const generation = batch.retryGeneration;
+    const sessionId = batch.sessionId;
+    const operationToken = ++batch.operationToken;
+    batch.operation = "retry-preview";
+    updateControls();
+    try {
+      const preview = await api(`/api/assistance-batches/${encodeURIComponent(source.id)}/retry-preview`, { method: "POST", body: "{}" });
+      if (sessionId !== batch.sessionId || generation !== batch.retryGeneration || source.id !== batch.currentId) return;
+      if (preview.retry_of !== source.id) throw new Error("The retry preview does not match this saved batch. Refresh its history.");
+      batch.retryPreview = preview;
+      field("retry-name").value = `${source.name.slice(0, 140)} · retry`;
+      field("retry-result").hidden = false;
+      field("retry-summary").textContent = `${preview.eligible_count} frames eligible for a new batch · ${preview.retained_count ?? 0} previous frame results retained. ${preview.reason || "Current saved reviews were checked; no inference has run."}`;
+      for (const frame of preview.frames || []) {
+        const row = node("li");
+        row.append(node("strong", "", labelFor(frame.frame_id, frame.source_filename)), node("p", "field-hint", frame.eligible ? `Eligible · ${plural(frame.candidate_count, "candidate box")} · current saved revision ${frame.base_revision}` : `Excluded · ${frame.reason || "No longer eligible"}`));
+        field("retry-frames").append(row);
+      }
+    } catch (failure) {
+      if (sessionId === batch.sessionId && generation === batch.retryGeneration) showError("retry-error", failure);
+    } finally {
+      if (operationToken === batch.operationToken) { batch.operation = null; updateControls(); }
+    }
+  }
+
+  async function confirmRetry() {
+    const preview = batch.retryPreview;
+    const source = batch.detail;
+    if (field("retry-confirm").disabled || !preview || !field("retry-name").reportValidity()) return;
+    const frames = (preview.frames || []).filter((frame) => frame.eligible).map((frame) => frame.frame_id);
+    if (!guardFrames(frames)) return;
+    const sessionId = batch.sessionId;
+    const operationToken = ++batch.operationToken;
+    batch.operation = "retry";
+    batch.historyRequest++;
+    batch.detailRequest++;
+    batch.historyLoading = false;
+    updateControls();
+    showError("retry-error", null);
+    try {
+      const detail = await api(`/api/assistance-batches/${encodeURIComponent(source.id)}/retry`, {
+        method: "POST", body: JSON.stringify({ name: field("retry-name").value.trim(), expected_fingerprint: preview.fingerprint }),
+      });
+      if (sessionId !== batch.sessionId || operationToken !== batch.operationToken) return;
+      clearRetryPreview();
+      batch.currentId = detail.id;
+      batch.detail = detail;
+      batch.history = [detail, ...batch.history.filter((entry) => entry.id !== detail.id)];
+      renderHistory();
+      renderDetail();
+      notify("A new linked local batch was queued for the checked frames. Previous results and proposals were retained.");
+      await refreshJobs();
+    } catch (failure) {
+      if (sessionId !== batch.sessionId || operationToken !== batch.operationToken) return;
+      clearRetryPreview();
+      showError("retry-error", `${failure.message} Refresh batch history before preparing another retry. No request was repeated automatically.`);
+    } finally {
+      if (operationToken === batch.operationToken) {
+        batch.operation = null;
+        updateControls();
+        loadHistory();
+      }
+    }
+  }
+
   function renderHistory() {
     const select = field("history");
     select.replaceChildren();
@@ -331,6 +415,9 @@
     field("progress").max = 1;
     field("progress").value = Math.min(1, Math.max(0, detail.progress || 0));
     const config = detail.config || {};
+    field("state-counts").textContent = Object.entries(detail.counts).filter(([key, count]) => key !== "total" && count > 0).map(([key, count]) => `${count} ${statusLabel(key)}`).join(" · ");
+    field("lineage").textContent = detail.retry_of || config.retry_of ? `New batch linked to ${detail.retry_of || config.retry_of}. Earlier results were retained.` : "";
+    field("retry-preview").hidden = !window.IRISJobTools.retryableBatchFrames(detail).length;
     const excluded = config.excluded?.length || 0;
     field("excluded").hidden = !excluded;
     field("excluded-summary").textContent = `${plural(excluded, "frame")} skipped at preparation`;
@@ -356,6 +443,12 @@
         "iris:annotation-open-frame", { detail: { frame_id: frame.frame_id } },
       )));
       heading.append(button);
+      if (frame.job_id) {
+        const job = node("button", "text-button", "Job details");
+        job.type = "button";
+        job.addEventListener("click", () => window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: frame.job_id } })));
+        heading.append(job);
+      }
       row.append(heading, node("p", "muted", `${statusLabel(frame.status)} · ${plural(frame.suggestions_created || 0, "proposal")}${frame.message ? ` · ${frame.message}` : ""}`));
       if (["queued", "running"].includes(frame.status)) {
         const progress = document.createElement("progress");
@@ -371,7 +464,7 @@
   }
 
   async function loadHistory() {
-    if (!batch.sessionId || batch.historyLoading || batch.operation === "start" || batch.cancelling) return;
+    if (!batch.sessionId || batch.historyLoading || batch.operation || batch.cancelling) return;
     const request = ++batch.historyRequest;
     batch.detailRequest++;
     const sessionId = batch.sessionId;
@@ -477,7 +570,11 @@
     loadComparisons();
   });
   field("cancel").addEventListener("click", cancelBatch);
+  field("retry-preview").addEventListener("click", previewRetry);
+  field("retry-confirm").addEventListener("click", confirmRetry);
+  field("retry-name").addEventListener("input", updateControls);
   field("history").addEventListener("change", () => {
+    clearRetryPreview();
     batch.historyRequest++;
     batch.historyLoading = false;
     batch.currentId = field("history").value || null;
@@ -486,17 +583,18 @@
     if (batch.currentId) loadDetail(batch.currentId);
   });
   panel.addEventListener("toggle", () => {
-    if (!panel.open) invalidate();
+    if (!panel.open) { invalidate(); clearRetryPreview(); }
     else openPanel();
   });
   window.addEventListener("iris:workspace", (event) => {
     batch.active = event.detail.name === "annotation";
-    if (!batch.active) invalidate();
+    if (!batch.active) { invalidate(); clearRetryPreview(); }
     openPanel();
   });
   window.addEventListener("iris:session", () => {
     if (batch.sessionId === state.sessionId) return;
     batch.sessionId = state.sessionId;
+    clearRetryPreview();
     batch.selected.clear();
     batch.frameKey = "";
     batch.comparisonRequest++;
@@ -543,6 +641,15 @@
       batch.comparisonJobs = key;
       loadComparisons();
     }
+  });
+  window.addEventListener("iris:assistance-batch-open", (event) => {
+    if (!event.detail?.batch_id || !batch.active) return;
+    clearRetryPreview();
+    batch.currentId = event.detail.batch_id;
+    panel.open = true;
+    openPanel();
+    loadDetail(batch.currentId);
+    field("history").scrollIntoView({ block: "nearest" });
   });
   updateControls();
 })();

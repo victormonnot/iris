@@ -1,15 +1,29 @@
 """One local worker at a time; job state survives application restarts."""
 
 import fcntl
+import json
 import os
 import subprocess
 import sys
 import threading
 import time
 
-from iris.store import Store, new_id, now
+from iris.store import Store, _encode, new_id, now
 
 ACTIVE = {"queued", "running"}
+
+
+def update_running(store: Store, job_id: str, changes: dict) -> bool:
+    """A late worker cannot rewrite an attempt already stopped by the supervisor."""
+    encoded = _encode(changes)
+    with store.connect() as conn:
+        return bool(
+            conn.execute(
+                f"UPDATE jobs SET {','.join(f'{key}=?' for key in encoded)} "
+                "WHERE id=? AND status='running'",
+                (*encoded.values(), job_id),
+            ).rowcount
+        )
 
 
 class JobManager:
@@ -36,10 +50,13 @@ class JobManager:
         with self.store.connect() as conn:
             conn.execute(
                 "UPDATE jobs SET status='interrupted', finished_at=?, "
-                "message='Server stopped; artifacts preserved. Start a new job to retry.' "
+                "message='Server stopped; saved work preserved. Inspect recovery options.' "
                 "WHERE status IN ('queued','running')",
                 (now(),),
             )
+        from iris.job_dispatch import reconcile_dispatches
+
+        reconcile_dispatches(self.store)
 
     def close(self):
         self.stop_event.set()
@@ -50,25 +67,38 @@ class JobManager:
         self.lock_file.close()
 
     def submit(self, asset_id: str, config: dict) -> dict:
-        with self.guard:
-            for job in self.store.list("jobs"):
-                if (
-                    job["kind"] == "extract"
-                    and job["status"] in ACTIVE
-                    and job["params"]["asset_id"] == asset_id
-                ):
-                    raise ValueError("Extraction is already queued or running for this video")
-            return self.store.insert(
-                "jobs",
-                {
-                    "id": new_id(),
-                    "kind": "extract",
-                    "status": "queued",
-                    "params": {"asset_id": asset_id, "config": config},
-                    "created_at": now(),
-                    "message": "Waiting for the local worker",
-                },
+        from iris.job_recovery import _result, prepare_extraction_contract
+
+        identifier = new_id()
+        with self.guard, self.store.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute(
+                "SELECT 1 FROM jobs WHERE kind='extract' AND status IN ('queued','running') "
+                "AND json_extract(params,'$.asset_id')=?",
+                (asset_id,),
+            ).fetchone():
+                raise ValueError("Extraction is already queued or running for this video")
+            contract = prepare_extraction_contract(self.store, identifier, asset_id, config)
+            conn.execute(
+                "INSERT INTO jobs (id,kind,status,params,result,created_at,message) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (
+                    identifier,
+                    "extract",
+                    "queued",
+                    json.dumps(
+                        {
+                            "asset_id": asset_id,
+                            "config": config,
+                            "extraction_contract": contract,
+                        }
+                    ),
+                    json.dumps(_result(asset_id, contract, [])),
+                    now(),
+                    "Waiting for the local worker",
+                ),
             )
+        return self.store.get("jobs", identifier)
 
     def cancel(self, job_id: str) -> dict:
         with self.guard, self.store.connect() as conn:
@@ -99,8 +129,8 @@ class JobManager:
             try:
                 self._execute(job)
             except Exception as exc:
-                self.store.update(
-                    "jobs",
+                update_running(
+                    self.store,
                     job["id"],
                     {
                         "status": "failed",
@@ -144,8 +174,8 @@ class JobManager:
                     status = "interrupted"
                 elif current["cancel_requested"]:
                     status = "cancelled"
-                self.store.update(
-                    "jobs",
+                update_running(
+                    self.store,
                     job["id"],
                     {
                         "status": status,

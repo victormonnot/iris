@@ -9,6 +9,7 @@ from iris.annotations import TAXONOMY, AnnotationConflict
 from iris.assistance import MAX_CANDIDATES, _candidates
 from iris.assistance_provider import ProviderConfig, _config, provider_status
 from iris.inference import _load_verified_frame, comparison_lanes
+from iris.job_dispatch import initial_dispatch
 from iris.jobs import ACTIVE
 from iris.store import Store, _decode, new_id, now
 
@@ -335,6 +336,8 @@ def create_batch(
     *,
     name: str,
     expected_fingerprint: str,
+    _retry_parent: dict | None = None,
+    _retry_fingerprint: str | None = None,
     **options,
 ) -> dict:
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 160:
@@ -356,8 +359,22 @@ def create_batch(
         "preview_fingerprint": expected_fingerprint,
         "excluded": [item["row"] for item in prepared if not item["row"]["eligible"]],
     }
+    if _retry_parent is not None:
+        config.update(retry_of=_retry_parent["id"], retry_fingerprint=_retry_fingerprint)
     with jobs.guard, store.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        if _retry_parent is not None:
+            from iris.batch_recovery import find_retry, retry_state
+
+            existing = find_retry(conn, _retry_parent["id"])
+            if existing:
+                if existing["config"].get("retry_fingerprint") != _retry_fingerprint:
+                    raise AnnotationConflict("A new batch was already created")
+                return batch_detail(store, existing["id"])
+            if retry_state(conn, _retry_parent["id"]) != _retry_parent:
+                raise AnnotationConflict(
+                    "The earlier batch changed; preview unfinished images again"
+                )
         for item in prepared:
             row = item["row"]
             frame, revision, active = _frame_state(conn, row["frame_id"])
@@ -417,13 +434,14 @@ def create_batch(
             )
             conn.execute(
                 "INSERT INTO assistance_records "
-                "(id,frame_id,job_id,config,candidates,created_at) VALUES (?,?,?,?,?,?)",
+                "(id,frame_id,job_id,config,candidates,metadata,created_at) VALUES (?,?,?,?,?,?,?)",
                 (
                     record_id,
                     frame_id,
                     job_id,
                     json.dumps(item["config"]),
                     json.dumps(item["candidates"]),
+                    json.dumps({"dispatch": initial_dispatch(item["config"]["provider"])}),
                     created_at,
                 ),
             )

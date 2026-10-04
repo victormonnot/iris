@@ -165,6 +165,8 @@ def validate_review(raw, samples) -> dict:
 
 
 class VideoReviewer:
+    supports_dispatch_callbacks = True
+
     def __init__(self, config: dict):
         if not isinstance(config, dict) or set(config) - {"provider", "endpoint", "model"}:
             raise ValueError("Only the provider, endpoint and model may be configured.")
@@ -230,10 +232,12 @@ class VideoReviewer:
         ]
         prompt = json.dumps(messages, ensure_ascii=False)
         raw, key = None, ""
+        generation_started = False
         try:
             encoded = [base64.b64encode(content).decode("ascii") for content in images]
             if self.provider == "ollama":
                 self._check_identity()
+                generation_started = True
                 raw = local._request(
                     self.config,
                     "POST",
@@ -247,6 +251,11 @@ class VideoReviewer:
                         "keep_alive": 0,
                     },
                     timeout=local.REVIEW_TIMEOUT,
+                    **(
+                        {"before_dispatch": self.before_dispatch}
+                        if getattr(self, "before_dispatch", None) is not None
+                        else {}
+                    ),
                 )
                 if raw.get("model") != self.config.model or raw.get("done") is not True:
                     raise ValueError("Incomplete response or unexpected returned model.")
@@ -255,6 +264,7 @@ class VideoReviewer:
                 message = raw.get("message")
             else:
                 key = remote._api_key()
+                generation_started = True
                 raw = remote._request(
                     self.config,
                     {
@@ -278,6 +288,11 @@ class VideoReviewer:
                         ],
                     },
                     key,
+                    **(
+                        {"before_dispatch": self.before_dispatch}
+                        if getattr(self, "before_dispatch", None) is not None
+                        else {}
+                    ),
                 )
                 self.metadata.update(
                     connection_verified=True,
@@ -311,9 +326,13 @@ class VideoReviewer:
             }
         except (ProviderResponseError, ValueError, TypeError) as exc:
             source = raw if raw is not None else getattr(exc, "raw_response", None)
-            raise ProviderResponseError(
+            error = ProviderResponseError(
                 remote._redact(str(exc), key),
                 raw_response=remote._redact(source, key),
                 metadata=remote._redact(self.metadata, key),
                 prompt=remote._redact(prompt, key),
-            ) from None
+            )
+            error.response_received = raw is not None or (
+                generation_started and getattr(exc, "response_received", False)
+            )
+            raise error from None

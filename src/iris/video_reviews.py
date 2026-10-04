@@ -15,6 +15,14 @@ from PIL import Image
 
 from iris import remote_provider
 from iris.assistance_provider import ProviderConfig, provider_status
+from iris.job_dispatch import (
+    DispatchConflict,
+    claim_dispatch,
+    initial_dispatch,
+    mark_dispatched,
+    record_dispatch_outcome,
+    update_dispatch_record,
+)
 from iris.media import _verified_video_source, _video_position_error
 from iris.store import Store, new_id, now
 from iris.video_sampling import evenly_spaced_indices, plan_extraction
@@ -328,6 +336,7 @@ def queue_review(
     _check_source(store, record)
     _check_provider(config)
     metadata = dict(record["metadata"])
+    metadata["dispatch"] = initial_dispatch(config["provider"])
     if external:
         metadata["consent"] = {
             "allow_external": True,
@@ -418,10 +427,16 @@ def run_video_review(store: Store, review_id: str, progress, cancelled, reviewer
     if cancelled() or not _job_active(store, record):
         return {**outcome, "cancelled": True}
     metadata = dict(record["metadata"])
+    saved_dispatch = metadata.get("dispatch", {})
+    if (
+        metadata.get("attempted_at")
+        or saved_dispatch.get("attempt_id")
+        or saved_dispatch.get("state") in {"dispatching", "response_received", "outcome_unknown"}
+    ):
+        raise DispatchConflict("This video review was already attempted; prepare a new preview")
+    attempt = None
     try:
         config = record["config"]
-        if metadata.get("attempted_at"):
-            raise ValueError("This video review was already attempted; prepare a new preview")
         if datetime.fromisoformat(record["expires_at"]) <= datetime.now(UTC):
             raise ValueError("Video preview expired before review; prepare a new preview")
         images = read_review_images(store, record)
@@ -446,19 +461,22 @@ def run_video_review(store: Store, review_id: str, progress, cancelled, reviewer
             raise ValueError("Video review model changed before generation")
         if cancelled():
             return {**outcome, "cancelled": True}
-        metadata.update(attempted_at=now(), provider=provider_metadata)
+        metadata.update(provider=provider_metadata)
         with store.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             latest = conn.execute(
                 "SELECT metadata,config,images,expires_at FROM video_reviews WHERE id=?",
                 (review_id,),
             ).fetchone()
-            if json.loads(latest["metadata"]).get("attempted_at"):
-                raise ValueError("This video review was already attempted")
+            latest_metadata = json.loads(latest["metadata"])
+            latest_dispatch = latest_metadata.get("dispatch", {})
+            if latest_metadata.get("attempted_at") or latest_dispatch.get("attempt_id"):
+                raise DispatchConflict("This video review was already attempted")
             if (
                 json.loads(latest["config"]) != config
                 or json.loads(latest["images"]) != record["images"]
-                or json.loads(latest["metadata"]) != record["metadata"]
+                or {k: v for k, v in latest_metadata.items() if k != "provider"}
+                != {k: v for k, v in record["metadata"].items() if k != "provider"}
             ):
                 raise ValueError("Storyboard or approval changed before generation")
             if latest["expires_at"] <= now():
@@ -474,16 +492,28 @@ def run_video_review(store: Store, review_id: str, progress, cancelled, reviewer
         if cancelled() or not _job_active(store, record):
             return {**outcome, "cancelled": True}
         _check_source(store, record, cancelled)
+        attempt = claim_dispatch(store, "video_reviews", review_id)
+
+        def dispatch():
+            mark_dispatched(store, "video_reviews", review_id, attempt)
+
+        if getattr(reviewer, "supports_dispatch_callbacks", False):
+            reviewer.before_dispatch = dispatch
+        else:
+            dispatch()
         reviewed = reviewer.review(images, _samples(record), config["instructions"])
         metadata["provider"] = reviewed["metadata"]
-        store.update(
+        record_dispatch_outcome(
+            store,
             "video_reviews",
             review_id,
+            attempt,
             {
                 "metadata": metadata,
                 "prompt": reviewed["prompt"],
                 "raw_response": reviewed["raw_response"],
             },
+            response_received=True,
         )
         if cancelled() or not _job_active(store, record):
             return {**outcome, "cancelled": True}
@@ -515,7 +545,13 @@ def run_video_review(store: Store, review_id: str, progress, cancelled, reviewer
                 (json.dumps(outcome, allow_nan=False), now(), record["job_id"]),
             )
         return outcome
+    except DispatchConflict:
+        raise
     except InterruptedError:
+        if attempt is not None:
+            record_dispatch_outcome(
+                store, "video_reviews", review_id, attempt, {}, response_received=False
+            )
         return {**outcome, "cancelled": True}
     except Exception as exc:
         updates = {"error": str(exc)}
@@ -525,7 +561,17 @@ def run_video_review(store: Store, review_id: str, progress, cancelled, reviewer
         if getattr(exc, "metadata", None):
             metadata["provider"] = exc.metadata
             updates["metadata"] = metadata
-        store.update("video_reviews", review_id, updates)
+        if attempt is None:
+            update_dispatch_record(store, "video_reviews", review_id, updates)
+        else:
+            record_dispatch_outcome(
+                store,
+                "video_reviews",
+                review_id,
+                attempt,
+                updates,
+                response_received=getattr(exc, "response_received", False) is True,
+            )
         raise
 
 
