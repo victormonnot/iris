@@ -5,7 +5,7 @@ import json
 import shutil
 from pathlib import Path
 
-from iris.annotations import TAXONOMY, _coordinates, _latest
+from iris.annotations import _coordinates, _latest
 from iris.dataset_manifest import SCHEMA_VERSION, manifest_mappings, taxonomy_mappings
 from iris.inference import _load_verified_frame
 from iris.media import _file_hash
@@ -24,10 +24,6 @@ SPLIT_POLICY = (
 INDEPENDENCE_WARNING = (
     "Different scene groups are not proof of independent data. Group related sessions and "
     "visually similar scenes together before freezing a dataset."
-)
-ML_LIMITATION = (
-    "Training and evaluation currently support only the original Person / Car definitions. "
-    "This dataset can be inspected and exported with its saved custom classes."
 )
 
 
@@ -120,15 +116,14 @@ def dataset_detail(store: Store, dataset_id: str) -> dict:
 
 def _brief(row: dict, manifest: dict) -> dict:
     taxonomy, class_mapping, coco_mapping = manifest_mappings(manifest)
-    ml_supported = taxonomy == TAXONOMY and class_mapping == CLASS_MAPPING
     return {
         **row,
         "taxonomy_id": taxonomy["id"],
         "taxonomy": taxonomy,
         "class_mapping": class_mapping,
         "coco_mapping": coco_mapping,
-        "ml_supported": ml_supported,
-        "ml_limitation": None if ml_supported else ML_LIMITATION,
+        "ml_supported": True,
+        "ml_limitation": None,
     }
 
 

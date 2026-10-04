@@ -232,9 +232,16 @@ def _metrics(snapshot):
     )
 
 
+def _class_names(snapshot):
+    taxonomy = snapshot["evaluation"]["config"].get("taxonomy")
+    if taxonomy:
+        return {item["id"]: item["name"] for item in taxonomy["classes"]}
+    return {"person": "person", "car": "car"}
+
+
 def _class_metrics(snapshot):
     rows = []
-    for label in ("person", "car"):
+    for label, name in _class_names(snapshot).items():
         for lane in snapshot["lanes"]:
             item = next(
                 (item for item in lane["metrics"]["per_class"] if item["label"] == label), None
@@ -243,7 +250,7 @@ def _class_metrics(snapshot):
                 raise ValueError("A saved report is missing a class result")
             rows.append(
                 [
-                    label,
+                    name if name == label else f"{name} ({label})",
                     _lane_name(lane),
                     _count(item.get("support")),
                     _rate(item.get("ap")),
@@ -266,13 +273,20 @@ def _error_summary(snapshot):
     if analysis.get("comparison") is None:
         return '<p class="note">One run: recovered objects and new misses are not compared.</p>'
     rows = []
-    for label in ("all", "person", "car"):
+    names = _class_names(snapshot)
+    aggregate = analysis.get("aggregate_filter", "all")
+    for label in analysis["summary"]:
         changes = analysis["summary"][label]["changes"]
         delta = changes["fp_delta"]
         if type(delta) is not int:
             raise ValueError("The saved false-positive change must be an integer")
         rows.append(
-            [label, _count(changes["recovered"]), _count(changes["new_misses"]), f"{delta:+d}"]
+            [
+                "All classes" if label == aggregate else names.get(label, label),
+                _count(changes["recovered"]),
+                _count(changes["new_misses"]),
+                f"{delta:+d}",
+            ]
         )
     return _table(
         ["Objects", "Recovered by candidate", "Newly missed by candidate", "False-positive change"],
@@ -396,6 +410,17 @@ def _protocol(snapshot):
         "<details open><summary>Recorded metric and timing definitions</summary>",
         _details(values),
     ]
+    taxonomy = config.get("taxonomy")
+    if taxonomy:
+        output.append("<h3>Frozen class definitions</h3>")
+        output.append(
+            _details(
+                [
+                    (f"{item['name']} ({item['id']})", item["definition"])
+                    for item in taxonomy["classes"]
+                ]
+            )
+        )
     for lane in snapshot["lanes"]:
         timing = lane.get("runtime", {}).get("timing_protocol", {})
         output.append("<h3>" + _e(_lane_name(lane)) + " · Timing</h3>")
@@ -460,7 +485,8 @@ def _box_svg(box, label, color, dashed, width, height):
     )
 
 
-def _visual(example, lane, image_uri, threshold):
+def _visual(example, lane, image_uri, threshold, class_names=None):
+    class_names = class_names or {"person": "person", "car": "car"}
     width, height = example["width"], example["height"]
     if any(type(value) is not int or value <= 0 for value in (width, height)):
         raise ValueError("A saved example has invalid original image dimensions")
@@ -478,7 +504,7 @@ def _visual(example, lane, image_uri, threshold):
         result.append(
             _box_svg(
                 box,
-                f"{'Missed' if absent else 'Label'}: {box['label']}",
+                f"{'Missed' if absent else 'Label'}: {class_names.get(box['label'], box['label'])}",
                 "#b74243" if absent else "#2879a8",
                 True,
                 width,
@@ -486,7 +512,11 @@ def _visual(example, lane, image_uri, threshold):
             )
         )
     for index, detection in enumerate(lane["detections"]):
-        if detection["label"] not in {"person", "car"} or detection["score"] < threshold:
+        if (
+            detection.get("ignored")
+            or detection["label"] not in class_names
+            or detection["score"] < threshold
+        ):
             continue
         score = _rate(detection["score"])
         status, color = (
@@ -496,7 +526,12 @@ def _visual(example, lane, image_uri, threshold):
         )
         result.append(
             _box_svg(
-                detection, f"{status}: {detection['label']} {score}", color, False, width, height
+                detection,
+                f"{status}: {class_names[detection['label']]} {score}",
+                color,
+                False,
+                width,
+                height,
             )
         )
     return "".join([*result, "</svg></div>"])
@@ -552,7 +587,7 @@ def _examples(document, store, report, include_images):
             saved = lanes[lane["run_id"]]
             document.add('<div class="card"><h3>' + _e(_lane_name(saved)) + "</h3>")
             if uri is not None:
-                document.add(_visual(example, lane, uri, threshold))
+                document.add(_visual(example, lane, uri, threshold, _class_names(snapshot)))
             errors = lane["errors"]
             document.add(
                 '<p class="note">'

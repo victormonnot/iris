@@ -46,8 +46,8 @@ Use **Manage classes** to publish custom class IDs, names and definitions for
 manual annotation and COCO imports. Each image retains its saved class version;
 adopting newer definitions creates a draft that requires human review. The initial
 `iris-objects-v1` Person / Car definitions remain available. Custom datasets can
-be frozen and exported as COCO. Training, evaluation and multimodal candidate review currently require those
-original definitions. See [class versions](docs/classes.md) for the supported workflow.
+be frozen, trained, evaluated and exported as COCO. Multimodal candidate review
+and disagreement ranking still require the original definitions. See [class versions](docs/classes.md) for the supported workflow.
 IRIS has no dependency on ARGOS, flight telemetry or a drone-specific file format;
 recordings from any supported source can use the same local workflow.
 See [projects and compatibility](docs/projects.md).
@@ -171,8 +171,9 @@ uv run --extra ml iris --data-dir /path/to/private/iris-data
    runtime; the optional `ml` installation intentionally contains CPU wheels.
 3. Inspect the same frame side by side. Changing the displayed confidence or
    class filters saved predictions; it does not rerun the models. Raw saved
-   outputs include all returned categories, before UI filtering. Trained person/car
-   models retain their native IDs and an explicit mapping to COCO IDs 1 and 3.
+   outputs include all returned categories, before UI filtering. Trained checkpoints
+   retain their frozen class definitions and numeric mappings. Original Person / Car
+   checkpoints retain output IDs 1 and 3; custom checkpoints use their own saved IDs.
 4. Reopen the comparison from its history after a restart. It retains its frame
    selection, frame hashes, checkpoint hashes, model configuration, runtime,
    device, and timing protocol. Subsequent selection changes do not change it.
@@ -420,16 +421,16 @@ API keys are read only by the server/worker and are never returned to the UI.
    manifest. Download the manifest or inspect it in the interface. Later label
    edits, class changes and selection changes leave that version intact. If reviews
    changed since the candidate list was loaded, refresh before freezing again.
-4. For an original **Person / Car** release, choose the dataset and a ready
+4. Choose the frozen dataset and a ready
    **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
-   either the official checkpoint or a previous IRIS checkpoint. Choose a training
+   either the official checkpoint or an IRIS checkpoint with the exact same class version. Choose a training
    depth and preview the plan before starting a CPU run: 20 optimizer steps by
    default, configurable from 1 to 200, batch size one, with an explicit learning
    rate and seed. The preview shows the train image count, visits and complete
    passes. Editing a setting requires a new preview. Runtime depends on the CPU,
    images and depth; these limits bound steps, not wall-clock time. No weights
-   are downloaded. Custom class releases support inspection and COCO export;
-   custom training and evaluation are not available yet.
+   are downloaded. Custom classes use the same workflow; see
+   [custom training and compatibility](docs/custom-training.md).
 5. Follow progress, individual loss components and logs. A completed run registers
    its checkpoint and SHA-256, parent, dataset version and settings. Use it in
    **Model comparison** alongside its parent on the same held-out frames.
@@ -453,8 +454,9 @@ depth without changing its parent:
 | Partial | Last MobileNet feature stage, feature pyramid, proposal network and detection heads | Adapt later visual features, for example when trying footage from a different camera. Earlier feature stages stay fixed. |
 | Full | All learnable detector parameters | Also adapt early visual features; requires more computation and can overfit a small dataset. |
 
-The official parent's background/person/car rows initialize the three-class
-head; an IRIS parent's head is retained. All depths keep the pretrained frozen
+The head contains one slot per frozen class plus background. Official weights
+initialize background and any explicitly mapped COCO classes; other classes use
+the recorded seed for initialization. A compatible IRIS parent's head is retained. All depths keep the pretrained frozen
 batch-normalization statistics fixed and use SGD on the frozen **train** split only.
 The selected depth never silently changes the learning rate. Run metadata records
 the exact trainable modules and parameter counts, plus which modules changed.

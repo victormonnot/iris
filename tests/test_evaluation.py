@@ -470,3 +470,22 @@ def test_test_audit_rejects_different_dataset_even_with_identical_images(workspa
             split="test",
             validation_evaluation_id=validation["id"],
         )
+
+
+def test_historical_validation_without_new_class_fields_can_create_test_audit(workspace):
+    store = workspace[0]
+    validation = queue(workspace)
+    run(store, validation)
+    config = store.get("evaluations", validation["id"])["config"]
+    config.pop("taxonomy")
+    config.pop("model_class_contracts")
+    store.update("evaluations", validation["id"], {"config": config})
+    for model in store.list("evaluation_models", evaluation_id=validation["id"]):
+        metadata = model["metadata"]
+        for key in ("class_contract", "evaluation_taxonomy", "evaluation_class_mapping"):
+            metadata.pop(key)
+        store.update("evaluation_models", model["id"], {"metadata": metadata})
+    audit = queue(workspace, split="test", validation_evaluation_id=validation["id"])
+    run(store, audit)
+    assert store.get("jobs", audit["job_id"])["status"] == "succeeded"
+    assert audit["config"]["protocol"] == config["protocol"]

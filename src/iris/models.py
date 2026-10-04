@@ -175,7 +175,10 @@ def _trained_rows(root: Path) -> list[dict]:
 
 
 def _trained_spec(row: dict) -> dict:
-    return {
+    from iris.model_taxonomy import class_contract
+
+    contract = class_contract(row["metadata"])
+    spec = {
         "id": row["id"],
         "name": row["name"],
         "architecture": row["architecture"],
@@ -189,14 +192,19 @@ def _trained_spec(row: dict) -> dict:
         "task": "object_detection",
         "inference": True,
         "training": row["architecture"] == TRAINING_ARCHITECTURE,
-        "classes": [{"id": 1, "name": "person"}, {"id": 3, "name": "car"}],
-        "taxonomy_id": "iris-objects-v1",
-        "native_to_coco": dict(IRIS_NATIVE_TO_COCO),
+        "classes": [
+            {"id": contract["output_class_mapping"][item["id"]], "name": item["id"]}
+            for item in contract["taxonomy"]["classes"]
+        ],
+        **contract,
         "training_id": row["training_id"],
         "parent_model_id": row["parent_model_id"],
         "provenance": row["metadata"],
         "created_at": row["created_at"],
     }
+    if contract["taxonomy_id"] == "iris-objects-v1":
+        spec["native_to_coco"] = dict(IRIS_NATIVE_TO_COCO)
+    return spec
 
 
 def get_spec(model_id: str, root: Path | None = None) -> dict:
@@ -281,7 +289,31 @@ def catalog(root: Path) -> list[dict]:
     runtime_problem = _runtime_problem()
     result = []
     items = [get_spec(model_id) for model_id in _SPECS]
-    items.extend(_trained_spec(row) for row in _trained_rows(root.resolve()))
+    for row in _trained_rows(root.resolve()):
+        try:
+            items.append(_trained_spec(row))
+        except ValueError as exc:
+            # A broken custom contract must not masquerade as the legacy head,
+            # or hide every other model in the catalog.
+            result.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "architecture": row["architecture"],
+                    "origin": "trained",
+                    "training_id": row["training_id"],
+                    "parent_model_id": row["parent_model_id"],
+                    "created_at": row["created_at"],
+                    "task": "object_detection",
+                    "inference": False,
+                    "training": False,
+                    "classes": [],
+                    "status": "invalid_weights",
+                    "reason": str(exc),
+                    "runtime_load_verified": False,
+                    "runtime_versions_required": dict(RUNTIME_VERSIONS),
+                }
+            )
     for item in items:
         item.update(status="ready", reason=None, runtime_load_verified=False)
         try:
@@ -404,7 +436,11 @@ def _restore_frozen_batchnorm(module, torch, torchvision) -> None:
 
 
 def _serialize_predictions(
-    output: dict, size: tuple[int, int], native_to_coco: dict | None = None
+    output: dict,
+    size: tuple[int, int],
+    native_to_coco: dict | None = None,
+    *,
+    contract: dict | None = None,
 ) -> list[dict]:
     """Preserve model outputs, including classes outside the current project taxonomy."""
     boxes = output["boxes"].detach().cpu().tolist()
@@ -413,10 +449,23 @@ def _serialize_predictions(
     if not len(boxes) == len(labels) == len(scores):
         raise ValueError("Detector returned mismatched boxes, labels and scores.")
     width, height = size
+    native_labels = None
+    if contract is not None:
+        from iris.model_taxonomy import class_contract
+
+        contract = class_contract(contract)
+        native_labels = {slot: label for label, slot in contract["class_mapping"].items()}
+        if native_to_coco is not None:
+            raise ValueError("Choose a single detector class namespace")
     detections = []
     for box, label_id, score in zip(boxes, labels, scores, strict=True):
         native_id = label_id
-        if native_to_coco is not None:
+        if native_labels is not None:
+            if type(native_id) is not int or native_id not in native_labels:
+                raise ValueError("Detector returned an unknown native class ID.")
+            label = native_labels[native_id]
+            label_id = contract["output_class_mapping"][label]
+        elif native_to_coco is not None:
             if type(label_id) is not int or label_id not in native_to_coco:
                 raise ValueError("Detector returned an unknown native class ID.")
             label_id = native_to_coco[label_id]
@@ -424,17 +473,24 @@ def _serialize_predictions(
             len(box) != 4
             or not all(math.isfinite(value) for value in [*box, score])
             or not 0 <= score <= 1
-            or not isinstance(label_id, int)
-            or not 0 <= label_id < len(COCO_CATEGORIES)
+            or type(label_id) is not int
+            or (native_labels is None and not 0 <= label_id < len(COCO_CATEGORIES))
             or not 0 <= box[0] < box[2] <= width
             or not 0 <= box[1] < box[3] <= height
         ):
             raise ValueError("Detector returned invalid original-image coordinates or scores.")
         detections.append(
-            {"box": box, "label_id": label_id, "label": COCO_CATEGORIES[label_id], "score": score}
+            {
+                "box": box,
+                "label_id": label_id,
+                "label": label if native_labels is not None else COCO_CATEGORIES[label_id],
+                "score": score,
+            }
         )
-        if native_to_coco is not None:
+        if native_to_coco is not None or native_labels is not None:
             detections[-1]["native_label_id"] = native_id
+        if native_labels is not None:
+            detections[-1]["taxonomy_id"] = contract["taxonomy_id"]
     return detections
 
 
@@ -452,8 +508,13 @@ class TorchvisionDetector:
     """Load a verified official or trained checkpoint, without implicit downloads."""
 
     def __init__(self, root: Path, model_id: str, device: str = "cpu"):
+        from iris.model_taxonomy import class_contract
+
         self.spec = get_spec(model_id, root)
         self.native_to_coco = self.spec.get("native_to_coco")
+        self.class_contract = (
+            class_contract(self.spec) if self.spec.get("origin") == "trained" else None
+        )
         if not re.fullmatch(r"cpu|cuda(?::\d+)?", device):
             raise ValueError("Device must be cpu, cuda, or cuda:<index>.")
         problem = _runtime_problem()
@@ -479,7 +540,7 @@ class TorchvisionDetector:
         torch.set_num_threads(min(4, os.cpu_count() or 1))
         architecture = self.spec["architecture"]
         builder = getattr(torchvision.models.detection, architecture)
-        num_classes = 3 if self.native_to_coco else 91
+        num_classes = len(self.class_contract["class_mapping"]) + 1 if self.class_contract else 91
         options = {"weights": None, "weights_backbone": None, "num_classes": num_classes}
         if architecture.startswith("ssdlite"):
             options.update(score_thresh=0.001, nms_thresh=0.5, detections_per_img=100)
@@ -539,14 +600,15 @@ class TorchvisionDetector:
             "timing_protocol": deepcopy(TIMING_PROTOCOL),
             "coordinates": "xyxy pixels, original oriented image, exclusive right/bottom edge",
         }
-        if self.native_to_coco:
+        if self.class_contract:
             self.metadata.update(
-                native_to_coco=self.native_to_coco,
-                taxonomy_id="iris-objects-v1",
+                **self.class_contract,
                 training_id=self.spec["training_id"],
                 parent_model_id=self.spec["parent_model_id"],
                 training_provenance=self.spec["provenance"],
             )
+            if self.native_to_coco:
+                self.metadata["native_to_coco"] = self.native_to_coco
 
     def _synchronize(self) -> None:
         if self.device.type == "cuda":
@@ -570,7 +632,14 @@ class TorchvisionDetector:
         self._synchronize()
         inferred = time.perf_counter()
         detections = _serialize_predictions(
-            output, oriented.size, getattr(self, "native_to_coco", None)
+            output,
+            oriented.size,
+            getattr(self, "native_to_coco", None),
+            contract=(
+                getattr(self, "class_contract", None)
+                if not getattr(self, "native_to_coco", None)
+                else None
+            ),
         )
         self._synchronize()
         finished = time.perf_counter()

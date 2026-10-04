@@ -46,6 +46,9 @@
   const frames = () => view.detail?.frames || [];
   const split = () => view.detail?.split || "val";
   const config = () => view.detail?.config || {};
+  const detailTaxonomy = () => datasetTools.taxonomyOf(view.detail);
+  const className = (id) => datasetTools.className(detailTaxonomy(), id);
+  const aggregateClass = () => datasetTools.aggregateFilter(view.analysis);
   const modeName = (variant) => variant === "tiled" ? "Tiled" : "Full image";
   function lanes() {
     const detail = view.detail;
@@ -190,7 +193,11 @@
       $("#evaluation-iou").value !== "" &&
       Number.isFinite(payload.confidence_threshold) && payload.confidence_threshold >= 0 && payload.confidence_threshold <= 1 &&
       Number.isFinite(payload.iou_threshold) && payload.iou_threshold >= 0.01 && payload.iou_threshold <= 1;
-    const valid = datasetTools.mlSupported(dataset) && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    const compatibleSelection = [...view.chosen].every((id) => {
+      const model = view.models.find((item) => item.id === id);
+      return model?.status === "ready" && datasetTools.modelCompatibility(dataset, model).compatible;
+    });
+    const valid = datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
     $("#evaluation-tiling-fields").hidden = !tiled;
     $("#evaluation-tile-size").disabled = !tiled;
     $("#evaluation-tile-overlap").disabled = !tiled;
@@ -200,7 +207,7 @@
         ? "Evaluate merged crop detections in the original image. Tile size and overlap are saved with the quality metrics."
         : "Evaluate each selected model on the whole image.";
     $("#evaluation-dataset-context").textContent = dataset
-      ? `${size} validation frames · ${dataset.summary.split_counts.test || 0} reserved test frames · frozen labels and scene groups`
+      ? `${size} validation frames · ${dataset.summary.split_counts.test || 0} reserved test frames · ${datasetTools.taxonomyOf(dataset).classes.map((item) => item.name).join(", ")}`
       : "Freeze a release with validation data in Dataset & training first.";
     $("#evaluation-selection").textContent =
       `${size} validation frames · ${view.chosen.size} models · ${mode === "paired" ? "Full image vs tiled" : modeName(mode)} · CPU`;
@@ -238,8 +245,10 @@
   function renderModels() {
     const container = $("#evaluation-models");
     container.replaceChildren();
+    const dataset = view.datasets.find((item) => item.id === $("#evaluation-dataset").value);
     for (const model of view.models) {
-      const ready = model.status === "ready";
+      const compatibility = datasetTools.modelCompatibility(dataset, model);
+      const ready = model.status === "ready" && compatibility.compatible;
       const card = node(
         "label",
         `model-card${ready ? " ready" : " unavailable"}`,
@@ -262,8 +271,8 @@
           "span",
           "model-description",
           ready
-            ? "Ready · local verified weights"
-            : model.reason || "Local dependencies are unavailable",
+            ? `Ready · ${compatibility.reason}`
+            : !compatibility.compatible ? compatibility.reason : model.reason || "Local dependencies are unavailable",
         ),
       );
       card.append(input, content);
@@ -277,6 +286,15 @@
           "No models available. Check Model comparison for local setup.",
         ),
       );
+  }
+  function selectCompatibleModels() {
+    const dataset = view.datasets.find((item) => item.id === $("#evaluation-dataset").value);
+    view.chosen = new Set(view.models.filter((model) =>
+      model.status === "ready" && datasetTools.modelCompatibility(dataset, model).compatible &&
+      (!view.touched || view.chosen.has(model.id)),
+    ).slice(0, $("#evaluation-inference-mode").value === "paired" ? 1 : 2).map((model) => model.id));
+    renderModels();
+    updateLaunch();
   }
   async function refreshCatalogs() {
     const request = ++view.catalogRequest;
@@ -305,21 +323,8 @@
       if (supported.some((item) => item.id === previous))
         select.value = previous;
       select.disabled = !supported.length;
-      $("#evaluation-dataset-limitation").textContent = datasets.length > supported.length
-        ? `${datasets.length - supported.length} custom-class release${datasets.length - supported.length === 1 ? " is" : "s are"} available for inspection and COCO export in Dataset & training. Evaluation currently requires the original person / car definitions.`
-        : "Evaluation currently supports releases using the original person / car definitions.";
-      view.chosen = new Set(
-        models
-          .filter(
-            (model) =>
-              model.status === "ready" &&
-              (!view.touched || view.chosen.has(model.id)),
-          )
-          .slice(0, 2)
-          .map((model) => model.id),
-      );
-      renderModels();
-      updateLaunch();
+      $("#evaluation-dataset-limitation").textContent = "Trained checkpoints must use the dataset's exact saved class definitions. Official models require an explicit COCO mapping for every dataset class.";
+      selectCompatibleModels();
       error("#evaluation-error", null);
     } catch (failure) {
       if (request !== view.catalogRequest) return;
@@ -388,7 +393,7 @@
       if (changed) {
         view.frameId = null;
         $("#evaluation-errors-only").checked = false;
-        $("#evaluation-analysis-class").value = "all";
+        $("#evaluation-analysis-class").replaceChildren(new Option("All classes", ""));
         $("#evaluation-analysis-filter").value = "all";
         $("#evaluation-analysis-sort").value = "source";
         $("#evaluation-audit-confirm").checked = false;
@@ -485,7 +490,7 @@
       for (const item of model.metrics.per_class || [])
         rows.push([
           laneName(runLanes[index]),
-          item.label,
+          className(item.label),
           count(item.support),
           percent(item.ap),
           percent(item.ap50),
@@ -531,7 +536,7 @@
       ?.metrics?.frames?.find((frame) => frame.frame_id === id);
   }
   function normalizeAnalysis(result) {
-    if (result.protocol !== "iris-error-analysis-v2") return result;
+    if (!result.runs) return result;
     const counts = (scopes) => Object.fromEntries(Object.entries(scopes).map(
       ([scope, stats]) => [scope, { ...stats, models: stats.runs }],
     ));
@@ -548,10 +553,10 @@
     };
   }
   function analysisClass() {
-    return view.analysis ? $("#evaluation-analysis-class").value : "all";
+    return view.analysis ? $("#evaluation-analysis-class").value || aggregateClass() : aggregateClass();
   }
   function includesClass(label) {
-    return analysisClass() === "all" || label === analysisClass();
+    return analysisClass() === aggregateClass() || label === analysisClass();
   }
   function resetAnalysis(message) {
     ++view.analysisRequest;
@@ -589,6 +594,12 @@
       });
       if (!current()) return;
       view.analysis = normalizeAnalysis(result);
+      const classSelect = $("#evaluation-analysis-class");
+      const previousClass = classSelect.value;
+      classSelect.replaceChildren();
+      for (const scope of datasetTools.analysisScopes(view.analysis, detailTaxonomy()))
+        classSelect.append(new Option(scope.label, scope.value));
+      classSelect.value = Object.hasOwn(view.analysis.summary, previousClass) ? previousClass : aggregateClass();
       $("#evaluation-analysis-status").textContent = "";
       for (const selector of ["class", "filter", "sort"])
         $(`#evaluation-analysis-${selector}`).disabled = false;
@@ -692,7 +703,7 @@
       node(
         "strong",
         "",
-        `Whole ${analysis.split === "test" ? "test" : "validation"} split · ${scope === "all" ? "all classes" : scope} · ${stats.frame_count} frames · ${stats.ground_truth_count} labeled objects`,
+        `Whole ${analysis.split === "test" ? "test" : "validation"} split · ${scope === aggregateClass() ? "all classes" : className(scope)} · ${stats.frame_count} frames · ${stats.ground_truth_count} labeled objects`,
       ),
     );
     for (const model of analysis.models) {
@@ -869,9 +880,9 @@
     $("#evaluation-frame-context").textContent = frame
       ? `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${(frame.boxes || []).length ? `${frame.boxes.length} human-validated boxes` : "Validated negative frame: no labeled objects"}`
       : "No frozen frame matches this filter.";
-    if (frame && analysisClass() !== "all")
+    if (frame && analysisClass() !== aggregateClass())
       $("#evaluation-frame-context").textContent =
-        `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${labels.length} ${analysisClass()} human-validated boxes (class filter)`;
+        `${frame.scene_group || "Scene"} · ${frame.width} × ${frame.height} · ${labels.length} ${className(analysisClass())} human-validated boxes (class filter)`;
     container.classList.toggle(
       "single-model",
       lanes().length === 1,
@@ -885,14 +896,8 @@
       const card = node("article", "prediction-card");
       const heading = node("div", "prediction-heading");
       heading.append(node("h3", "", laneName(lane)));
-      const shown = (prediction?.detections || [])
-        .map((detection, index) => ({ ...detection, index }))
-        .filter(
-          (detection) =>
-            ["person", "car"].includes(detection.label) &&
-            includesClass(detection.label) &&
-            detection.score >= config().confidence_threshold,
-        );
+      const shown = datasetTools.displayedDetections(detailTaxonomy(), prediction?.detections, config().confidence_threshold)
+        .filter((detection) => includesClass(detection.label));
       heading.append(
         node(
           "span",
@@ -923,7 +928,7 @@
         overlayBox(
           svg,
           box.box,
-          `${missed.has(index) ? "Missed" : "Label"}: ${box.label}`,
+          `${missed.has(index) ? "Missed" : "Label"}: ${className(box.label)}`,
           missed.has(index) ? "#ff8888" : "#80c5ff",
           true,
           frame.width,
@@ -934,7 +939,7 @@
         overlayBox(
           svg,
           detection.box,
-          `${errors ? (falsePositives.has(detection.index) ? "FP " : "TP ") : ""}${detection.label} ${Math.round(detection.score * 100)}%`,
+          `${errors ? (falsePositives.has(detection.index) ? "FP " : "TP ") : ""}${className(detection.label)} ${Math.round(detection.score * 100)}%`,
           errors
             ? falsePositives.has(detection.index)
               ? "#ffd078"
@@ -948,13 +953,13 @@
       const context = node("div", "evaluation-frame-errors");
       const scoped =
         view.analysis?.frames.find((item) => item.frame_id === view.frameId)
-          ?.counts[analysisClass()].models[view.analysis?.protocol === "iris-error-analysis-v2" ? laneKey(lane) : lane.model_id] || errors;
+          ?.counts[analysisClass()].models[view.analysis?.runs ? laneKey(lane) : lane.model_id] || errors;
       context.append(
         node(
           "p",
           "field-hint",
           errors
-            ? `${scoped.tp} matched · ${scoped.fp} false positives · ${scoped.fn} missed labels${analysisClass() === "all" ? "" : ` · ${analysisClass()} only`}`
+            ? `${scoped.tp} matched · ${scoped.fp} false positives · ${scoped.fn} missed labels${analysisClass() === aggregateClass() ? "" : ` · ${className(analysisClass())} only`}`
             : prediction
               ? "Raw predictions available; complete frame error metrics are not available yet."
               : "This model and inference mode have not processed this frame.",
@@ -966,13 +971,13 @@
           const detection = prediction?.detections[index];
           if (detection && includesClass(detection.label))
             descriptions.push(
-              `FP: ${detection.label} (${percent(detection.score)} confidence)`,
+              `FP: ${className(detection.label)} (${percent(detection.score)} confidence)`,
             );
         }
         for (const index of errors.false_negatives || []) {
           const box = frame.boxes?.[index];
           if (box && includesClass(box.label))
-            descriptions.push(`Missed: ${box.label}, label ${index + 1}`);
+            descriptions.push(`Missed: ${className(box.label)}, label ${index + 1}`);
         }
         context.append(node("p", "field-hint", descriptions.join(" · ")));
       }
@@ -1046,7 +1051,7 @@
       warnings.append(node("p", "field-hint", String(warning)));
     renderMetrics();
     $("#evaluation-inspection-thresholds").textContent =
-      `Saved confidence ≥ ${config().confidence_threshold} · matching IoU ≥ ${config().iou_threshold} · person / car only`;
+      `Saved confidence ≥ ${config().confidence_threshold} · matching IoU ≥ ${config().iou_threshold} · ${detailTaxonomy().classes.map((item) => item.name).join(", ")}`;
     $("#evaluation-errors-only").disabled = !(detail.models || []).some(
       (model) => model.metrics?.frames?.length,
     );
@@ -1242,7 +1247,10 @@
     }
   });
   $("#evaluation-refresh").addEventListener("click", refresh);
-  $("#evaluation-dataset").addEventListener("change", updateLaunch);
+  $("#evaluation-dataset").addEventListener("change", () => {
+    view.touched = false;
+    selectCompatibleModels();
+  });
   $("#evaluation-inference-mode").addEventListener("change", updateLaunch);
   for (const selector of ["tile-size", "tile-overlap", "confidence", "iou"])
     $(`#evaluation-${selector}`).addEventListener("input", updateLaunch);

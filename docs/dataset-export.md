@@ -18,9 +18,9 @@ An optional parent release must belong to the same project and use the same clas
 version. To use different definitions, start an independent release; existing split
 reservations still apply. Empty images require human validation like positive images.
 
-Custom releases can be inspected and exported. Training and quality evaluation in
-IRIS currently require the original Person / Car definitions; neither runs implicitly
-as part of freezing or exporting a custom release.
+Custom releases can be inspected, trained, evaluated and exported. Training and
+evaluation require compatible checkpoints and explicit launches; neither runs
+as part of freezing or exporting a release. See [custom training](custom-training.md).
 
 ## Download
 

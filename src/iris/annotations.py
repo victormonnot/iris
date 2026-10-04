@@ -6,6 +6,7 @@ import math
 import sqlite3
 
 from iris.inference import _load_verified_frame
+from iris.prediction_taxonomy import annotation_mapping, validate_output_labels
 from iris.store import Store, _decode, new_id, now
 from iris.taxonomies import TAXONOMY, get_taxonomy
 
@@ -100,13 +101,14 @@ def get_annotation(store: Store, frame_id: str) -> dict:
     latest = revisions[0] if revisions else None
     taxonomy = get_taxonomy(store, _taxonomy_id(frame, latest), session["project_id"])
     current_taxonomy = get_taxonomy(store, project["taxonomy_id"], session["project_id"])
-    coco_mapping = _coco_mapping(taxonomy)
     decisions = latest["decisions"] if latest else {}
     prediction_sources = []
     for prediction in store.list("predictions", frame_id=frame_id):
         comparison = store.get("comparisons", prediction["comparison_id"])
         run = store.get("runs", prediction["run_id"])
-        if comparison["config"].get("taxonomy") != "coco-2017-v1":
+        try:
+            source_mapping, _ = annotation_mapping(comparison, run, taxonomy)
+        except ValueError:
             continue
         prediction_sources.append(
             {
@@ -117,7 +119,8 @@ def get_annotation(store: Store, frame_id: str) -> dict:
                 "comparison_id": prediction["comparison_id"],
                 "comparison_name": comparison["name"],
                 "detection_count": sum(
-                    type(detection.get("label_id")) is int and detection["label_id"] in coco_mapping
+                    type(detection.get("label_id")) is int
+                    and detection["label_id"] in source_mapping
                     for detection in prediction["detections"]
                 ),
                 "created_at": prediction["created_at"],
@@ -464,8 +467,7 @@ def add_detector_suggestions(
     run = store.get("runs", prediction["run_id"])
     config = comparison["config"]
     if (
-        config.get("taxonomy") != "coco-2017-v1"
-        or run["comparison_id"] != comparison["id"]
+        run["comparison_id"] != comparison["id"]
         or run["model_id"] != prediction["model_id"]
         or prediction["input_size"] != [frame["width"], frame["height"]]
         or frame_id not in comparison["frame_ids"]
@@ -476,11 +478,15 @@ def add_detector_suggestions(
         )
     annotation = require_revision(store, frame_id, expected_revision)
     taxonomy = annotation["taxonomy"]
-    coco_mapping = _coco_mapping(taxonomy)
+    source_mapping, source_taxonomy = annotation_mapping(comparison, run, taxonomy)
+    if "model_class_contracts" in config:
+        validate_output_labels(
+            prediction["detections"], config["model_class_contracts"][run["model_id"]]
+        )
     proposals = []
     for index, detection in enumerate(prediction["detections"]):
         label_id, score = detection.get("label_id"), detection.get("score")
-        if type(label_id) is not int or label_id not in coco_mapping:
+        if type(label_id) is not int or label_id not in source_mapping:
             continue
         if not _finite_number(score) or not 0 <= score <= 1:
             raise ValueError("The saved prediction contains an invalid confidence")
@@ -495,7 +501,7 @@ def add_detector_suggestions(
         proposals.append(
             {
                 "id": hashlib.sha256(identity.encode()).hexdigest(),
-                "label": coco_mapping[label_id],
+                "label": source_mapping[label_id],
                 "box": coordinates,
                 "metadata": {
                     "prediction_id": prediction_id,
@@ -508,7 +514,7 @@ def add_detector_suggestions(
                     "threshold": float(threshold),
                     "original_label_id": label_id,
                     "original_label": detection.get("label"),
-                    "source_taxonomy": "coco-2017-v1",
+                    "source_taxonomy": source_taxonomy,
                     "target_taxonomy": taxonomy["id"],
                     "frame_sha256": config["frame_hashes"][frame_id],
                 },

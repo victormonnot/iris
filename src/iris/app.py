@@ -583,7 +583,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 "workspace_backup": True,
                 "coco_import": True,
                 "training": True,
+                "custom_class_training": True,
                 "evaluation": True,
+                "custom_class_evaluation": True,
                 "review_queue": True,
             },
         }

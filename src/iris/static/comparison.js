@@ -101,6 +101,17 @@
     return comparison.models.find((model) => model.id === id)?.name || id;
   }
 
+  function modelClasses(id) {
+    const model = comparison.models.find((item) => item.id === id);
+    const taxonomy = comparison.detail?.config?.model_class_contracts?.[id]?.taxonomy || model?.taxonomy;
+    return taxonomy?.classes?.map((item) => ({ id: item.id, name: item.name })) ||
+      (model?.classes || []).map((item) => ({ id: item.name, name: item.display_name || item.name }));
+  }
+
+  function className(modelId, label) {
+    return modelClasses(modelId).find((item) => item.id === label)?.name || label;
+  }
+
   function selectedFrames() {
     return state.frames.filter((frame) => frame.selected);
   }
@@ -439,18 +450,19 @@
   function populateClasses(reset) {
     const select = $("#comparison-class");
     const previous = reset ? "" : select.value;
-    const labels = new Set();
+    const labels = new Map();
+    const addLabel = (id, name) => {
+      if (!labels.has(id)) labels.set(id, new Set());
+      labels.get(id).add(name);
+    };
     for (const prediction of comparison.detail.predictions)
       for (const detection of prediction.detections)
-        labels.add(detection.label);
+        addLabel(detection.label, className(prediction.model_id, detection.label));
     for (const modelId of comparison.detail.model_ids)
-      for (const label of comparison.models.find(
-        (model) => model.id === modelId,
-      )?.classes || [])
-        labels.add(label.name);
+      for (const label of modelClasses(modelId)) addLabel(label.id, label.name);
     select.replaceChildren(new Option("All classes", ""));
-    for (const label of [...labels].sort())
-      select.append(new Option(label, label));
+    for (const [label, names] of [...labels].sort(([left], [right]) => left.localeCompare(right)))
+      select.append(new Option([...names].join(" / "), label));
     select.value = labels.has(previous) ? previous : "";
   }
 
@@ -555,7 +567,7 @@
     return element;
   }
 
-  function predictionVisual(frame, detections, color) {
+  function predictionVisual(frame, detections, color, modelId) {
     const svg = svgNode("svg", {
       viewBox: `0 0 ${frame.width} ${frame.height}`,
       preserveAspectRatio: "xMidYMid meet",
@@ -575,7 +587,7 @@
       const [x1, y1, x2, y2] = detection.box;
       const group = svgNode("g");
       const title = svgNode("title");
-      title.textContent = `${detection.label} · ${(detection.score * 100).toFixed(1)}%`;
+      title.textContent = `${className(modelId, detection.label)} · ${(detection.score * 100).toFixed(1)}%`;
       group.append(
         title,
         svgNode("rect", {
@@ -589,7 +601,7 @@
           "vector-effect": "non-scaling-stroke",
         }),
       );
-      const caption = `${detection.label} ${(detection.score * 100).toFixed(0)}%`;
+      const caption = `${className(modelId, detection.label)} ${(detection.score * 100).toFixed(0)}%`;
       const text = svgNode("text", {
         x: Math.max(
           2,
@@ -664,6 +676,7 @@
             frame,
             detections,
             index === 0 ? "#b1ee88" : "#80d4ff",
+            lane.model_id,
           ),
         );
       if (!imageAvailable || !prediction || !detections.length)
@@ -730,7 +743,7 @@
               node(
                 "li",
                 "",
-                `${detection.label} · ${(detection.score * 100).toFixed(1)}% · box [${detection.box.map((value) => Math.round(value)).join(", ")}] px`,
+                `${className(lane.model_id, detection.label)} · ${(detection.score * 100).toFixed(1)}% · box [${detection.box.map((value) => Math.round(value)).join(", ")}] px`,
               ),
             );
           details.append(list);

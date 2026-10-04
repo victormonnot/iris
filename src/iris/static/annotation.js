@@ -234,9 +234,8 @@
           : editor.dirty
             ? "Changes are local until you save. Saving edits creates a new revision."
             : "Saved revisions remain available below.";
-    const mappedClasses = document.taxonomy.classes.filter((item) => item.coco_id != null);
     $("#annotation-import").disabled =
-      blocked || editor.dirty || !$("#annotation-prediction").value || !mappedClasses.length;
+      blocked || editor.dirty || !$("#annotation-prediction").value;
     $("#annotation-assist").disabled =
       blocked ||
       document.taxonomy.id !== taxonomyTools.builtinId ||
@@ -248,9 +247,7 @@
         !$("#annotation-prediction").value);
     $("#annotation-proposal-hint").textContent = editor.dirty
       ? "Save your draft before importing proposals or requesting model review."
-      : !mappedClasses.length
-        ? "These class definitions have no COCO mapping. Draw labels manually or import an annotated dataset with explicit class choices."
-        : `Detector proposals use explicit COCO mappings for: ${mappedClasses.map((item) => item.name).join(", ")}. Importing does not validate any labels.`;
+      : "Import proposals from a checkpoint with matching saved definitions, or from an official detector through explicit COCO mappings. Every proposal still needs human review.";
     $("#annotation-assistance-availability").hidden = document.taxonomy.id === taxonomyTools.builtinId;
     $("#annotation-adopt-taxonomy").disabled = blocked || editor.dirty || assistActive();
     const position = editor.frames.findIndex(

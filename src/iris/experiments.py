@@ -185,6 +185,11 @@ def _training_summary(store, model_id, expected_sha256=None):
     if dataset is None or dataset["manifest_sha256"] != config.get("dataset_manifest_sha256"):
         return None
     history = run["history"]
+    selected_config = _pick(config, _TRAINING_CONFIG_FIELDS)
+    if "taxonomy" in config:
+        from iris.model_taxonomy import class_contract
+
+        selected_config.update(class_contract(config))
     return {
         "id": run["id"],
         "name": run["name"],
@@ -194,7 +199,7 @@ def _training_summary(store, model_id, expected_sha256=None):
         "parent_model_id": run["parent_model_id"],
         "parent_weight_sha256": config.get("parent_weight_sha256"),
         "created_at": run["created_at"],
-        "config": _pick(config, _TRAINING_CONFIG_FIELDS),
+        "config": selected_config,
         "metadata": _pick(run["metadata"], _TRAINING_METADATA_FIELDS),
         "history_summary": {
             "steps_completed": len(history),
@@ -323,7 +328,7 @@ def _metrics(metrics):
 
 def _counts(counts, identifiers, *, summary=False):
     result = {}
-    for label in ("all", "person", "car"):
+    for label in counts:
         item = counts[label]
         source = item.get("runs", item.get("models"))
         result[label] = {
@@ -419,6 +424,8 @@ def _prepare(store, evaluation_id, captured_at):
                 }
             )
         dataset = store.get("dataset_versions", detail["dataset_id"])
+        manifest = load_manifest(store, dataset["id"], verify_images=False)
+        class_ids = tuple(manifest["class_mapping"])
         summary = _pick(
             dataset["summary"],
             (
@@ -432,10 +439,10 @@ def _prepare(store, evaluation_id, captured_at):
         )
         for key in ("split_counts", "class_counts", "split_class_counts"):
             if key in dataset["summary"]:
-                keys = ("train", "val", "test") if key != "class_counts" else ("person", "car")
+                keys = ("train", "val", "test") if key != "class_counts" else class_ids
                 if key == "split_class_counts":
                     summary[key] = {
-                        split: _pick(dataset["summary"][key][split], ("person", "car"))
+                        split: _pick(dataset["summary"][key][split], class_ids)
                         for split in keys
                         if split in dataset["summary"][key]
                     }
@@ -445,6 +452,10 @@ def _prepare(store, evaluation_id, captured_at):
         config.update(
             inference=_inference(detail["config"]), protocol=_protocol(detail["config"]["protocol"])
         )
+        if "taxonomy" in detail["config"]:
+            for key in ("taxonomy", "class_mapping", "model_class_contracts"):
+                if key in detail["config"]:
+                    config[key] = deepcopy(detail["config"][key])
         normalized_frames = {
             frame["frame_id"]: _counts(frame["counts"], identifiers) for frame in analysis["frames"]
         }
@@ -491,6 +502,16 @@ def _prepare(store, evaluation_id, captured_at):
             ),
             "examples": [],
         }
+        if "aggregate_filter" in analysis:
+            snapshot["error_analysis"].update(
+                aggregate_filter=analysis["aggregate_filter"], filters=deepcopy(analysis["filters"])
+            )
+        if manifest["taxonomy"]["id"] != "iris-objects-v1":
+            snapshot["dataset"].update(
+                taxonomy=deepcopy(manifest["taxonomy"]),
+                class_mapping=deepcopy(manifest["class_mapping"]),
+                coco_mapping=deepcopy(manifest["coco_mapping"]),
+            )
         available = [
             {
                 "frame_id": frame["frame_id"],
@@ -571,7 +592,17 @@ def _example(detail, frame, counts):
                 "variant": lane["variant"],
                 "detections": [
                     _pick(
-                        item, ("label", "label_id", "native_label_id", "box", "score", "tile_index")
+                        item,
+                        (
+                            "label",
+                            "label_id",
+                            "native_label_id",
+                            "box",
+                            "score",
+                            "tile_index",
+                            "taxonomy_id",
+                            "ignored",
+                        ),
                     )
                     for item in prediction["detections"]
                 ],

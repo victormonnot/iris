@@ -20,6 +20,7 @@ from pathlib import Path
 from PIL import Image
 
 from iris.media import _pixel_hash
+from iris.model_taxonomy import class_contract, compatible_parent, dataset_contract
 from iris.models import (
     IRIS_NATIVE_TO_COCO,
     TRAINING_ARCHITECTURE,
@@ -35,7 +36,7 @@ TRAINING_SCOPES = {
     "prediction_head_only": {
         "id": "prediction_head_only",
         "label": "Prediction head only",
-        "description": "Adjust the person/car prediction head while keeping visual features fixed.",
+        "description": "Adjust the class prediction head while keeping visual features fixed.",
         "trainable_modules": ["roi_heads.box_predictor"],
     },
     "partial_backbone": {
@@ -90,16 +91,7 @@ def _manifest(store: Store, dataset_id: str) -> dict:
     # Keep importing the optional dataset/training surfaces independent at startup.
     from iris.datasets import load_manifest
 
-    manifest = load_manifest(store, dataset_id, verify_images=False)
-    if (
-        manifest["taxonomy"]["id"] != "iris-objects-v1"
-        or manifest.get("class_mapping") != CLASS_MAPPING
-    ):
-        raise ValueError(
-            "Training requires the iris-objects-v1 person/car dataset mapping. "
-            "Custom class training is not available yet; custom releases can be exported as COCO."
-        )
-    return manifest
+    return load_manifest(store, dataset_id, verify_images=False)
 
 
 def _ready_parent(store: Store, parent_model_id: str) -> dict:
@@ -158,12 +150,14 @@ def _prepare_training(
     if dataset is None:
         raise ValueError("Dataset version not found")
     manifest = _manifest(store, dataset_id)
+    contract = dataset_contract(manifest)
     training_frames = [frame for frame in manifest["frames"] if frame["split"] == "train"]
     if not training_frames:
         raise ValueError("The dataset needs at least one training image")
     if not any(frame["boxes"] for frame in training_frames):
-        raise ValueError("Training needs at least one positive person or car annotation")
+        raise ValueError("Training needs at least one positive annotation in the selected classes")
     parent = _ready_parent(store, parent_model_id)
+    compatible_parent(parent, contract)
     _check_holdouts(manifest, parent)
     config = {
         "steps": steps,
@@ -179,8 +173,7 @@ def _prepare_training(
         "weight_decay": 0.0005,
         "dataset_manifest_sha256": dataset["manifest_sha256"],
         "parent_weight_sha256": parent["weight_sha256"],
-        "taxonomy_id": "iris-objects-v1",
-        "class_mapping": CLASS_MAPPING,
+        **contract,
         "quality_metrics": "Not computed; training loss does not measure detection quality",
     }
     return name, config, dataset, parent, training_frames
@@ -343,11 +336,14 @@ class _HeadTrainer:
 
         self.torch = torch
         self.scope = _scope_from_config(config)
+        self.contract = class_contract(config)
+        self.class_mapping = self.contract["class_mapping"]
         torch.manual_seed(config["seed"])
         torch.use_deterministic_algorithms(True)
         self.detector = TorchvisionDetector(root, parent_id, device="cpu")
         if self.detector.metadata["weight_sha256"] != config["parent_weight_sha256"]:
             raise ValueError("Parent checkpoint changed since training was queued")
+        compatible_parent(self.detector.spec, self.contract)
         self.model = self.detector.model
         inference_proposal_threshold = self.model.rpn.score_thresh
         # The MobileNet320 inference preset drops RPN proposals below 0.05.
@@ -359,19 +355,35 @@ class _HeadTrainer:
         if self.detector.spec.get("origin") != "trained":
             previous = self.model.roi_heads.box_predictor
             predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
-                previous.cls_score.in_features, 3
+                previous.cls_score.in_features, len(self.class_mapping) + 1
             )
-            # Preserve the parent's learned background/person/car initialization.
-            classes = [0, 1, 3]
-            box_rows = [
-                category * 4 + coordinate for category in classes for coordinate in range(4)
-            ]
+            # Keep seeded initialization for unmapped classes. Only an explicit
+            # native COCO mapping authorizes copying an official category's rows.
+            source_rows = {
+                0: 0,
+                **{
+                    self.class_mapping[item["id"]]: item["coco_id"]
+                    for item in self.contract["taxonomy"]["classes"]
+                    if item.get("coco_id") is not None
+                },
+            }
             with torch.no_grad():
-                predictor.cls_score.weight.copy_(previous.cls_score.weight[classes])
-                predictor.cls_score.bias.copy_(previous.cls_score.bias[classes])
-                predictor.bbox_pred.weight.copy_(previous.bbox_pred.weight[box_rows])
-                predictor.bbox_pred.bias.copy_(previous.bbox_pred.bias[box_rows])
+                for target, source in source_rows.items():
+                    predictor.cls_score.weight[target].copy_(previous.cls_score.weight[source])
+                    predictor.cls_score.bias[target].copy_(previous.cls_score.bias[source])
+                    predictor.bbox_pred.weight[target * 4 : (target + 1) * 4].copy_(
+                        previous.bbox_pred.weight[source * 4 : (source + 1) * 4]
+                    )
+                    predictor.bbox_pred.bias[target * 4 : (target + 1) * 4].copy_(
+                        previous.bbox_pred.bias[source * 4 : (source + 1) * 4]
+                    )
             self.model.roi_heads.box_predictor = predictor
+        if (
+            self.model.roi_heads.box_predictor.cls_score.out_features != len(self.class_mapping) + 1
+            or self.model.roi_heads.box_predictor.bbox_pred.out_features
+            != (len(self.class_mapping) + 1) * 4
+        ):
+            raise ValueError("Parent prediction head does not match its frozen class mapping")
         modules = dict(self.model.named_modules())
         selected_modules = self.scope["trainable_modules"]
         if any(prefix not in modules for prefix in selected_modules):
@@ -432,6 +444,7 @@ class _HeadTrainer:
         )
         self.metadata = {
             **self.detector.metadata,
+            **self.contract,
             "trainable_parameters": sum(parameter.numel() for parameter in self.parameters),
             "frozen_parameters": sum(
                 parameter.numel() for parameter in self.frozen_parameters.values()
@@ -451,15 +464,24 @@ class _HeadTrainer:
             },
             "deterministic_algorithms": True,
             "head_initialization": (
-                "Preserved the trained parent's three-class prediction head"
+                "Preserved the trained parent's compatible prediction head"
                 if self.detector.spec.get("origin") == "trained"
-                else "Copied parent background/person/car classifier and box regression rows"
+                else "Copied background and explicitly mapped COCO rows; seeded new class rows"
             ),
-            "head_class_slots": 3,
-            "native_to_coco": IRIS_NATIVE_TO_COCO,
+            "head_initialization_rows": {
+                item["id"]: (
+                    "parent"
+                    if self.detector.spec.get("origin") == "trained"
+                    else item.get("coco_id")
+                )
+                for item in self.contract["taxonomy"]["classes"]
+            },
+            "head_class_slots": len(self.class_mapping) + 1,
             "validation_consumed": False,
             "test_consumed": False,
         }
+        if self.contract["taxonomy_id"] == "iris-objects-v1":
+            self.metadata["native_to_coco"] = IRIS_NATIVE_TO_COCO
 
     def step(self, image: Image.Image, boxes: list[dict]) -> dict:
         torch = self.torch
@@ -467,7 +489,9 @@ class _HeadTrainer:
         coordinates = torch.tensor([box["box"] for box in boxes], dtype=torch.float32).reshape(
             -1, 4
         )
-        labels = torch.tensor([CLASS_MAPPING[box["label"]] for box in boxes], dtype=torch.int64)
+        labels = torch.tensor(
+            [self.class_mapping[box["label"]] for box in boxes], dtype=torch.int64
+        )
         self.optimizer.zero_grad(set_to_none=True)
         losses = self.model([tensor], [{"boxes": coordinates, "labels": labels}])
         loss = sum(losses.values())
@@ -563,15 +587,20 @@ def run_training(
     if dataset is None or dataset["manifest_sha256"] != config["dataset_manifest_sha256"]:
         raise ValueError("Dataset changed since training was queued")
     manifest = _manifest(store, training["dataset_id"])
+    contract = dataset_contract(manifest)
+    if class_contract(config) != contract:
+        raise ValueError("Dataset class definitions or training mappings changed since queueing")
     parent = _ready_parent(store, training["parent_model_id"])
     if parent["weight_sha256"] != config["parent_weight_sha256"]:
         raise ValueError("Parent checkpoint changed since training was queued")
+    compatible_parent(parent, contract)
     _check_holdouts(manifest, parent)
     frames = [frame for frame in manifest["frames"] if frame["split"] == "train"]
     progress(0, f"Loading the local parent checkpoint; scope: {selected_scope['label']}")
     trainer = (trainer_factory or _HeadTrainer)(store.root, training["parent_model_id"], config)
     metadata = {
         **trainer.metadata,
+        **contract,
         "dataset_id": dataset["id"],
         "dataset_manifest_sha256": dataset["manifest_sha256"],
         "parent_model_id": training["parent_model_id"],

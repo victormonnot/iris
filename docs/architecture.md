@@ -81,15 +81,17 @@ objects may require higher resolution or different models after measurement.
 Torchvision supports a [standard detection fine-tuning workflow](https://docs.pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
 The training integration replaces the Faster R-CNN prediction head for the
 project classes and records the frozen layers and optimizer configuration.
-It copies the parent's background/person/car rows, optimizes only the final
+It copies background and explicitly mapped COCO rows into an N+1 class head,
+initializes other rows using the saved seed, and optimizes only the final
 classifier and box regressor by default, and preserves the feature extractor and
 proposal network in this light mode. Each run can instead select partial or full
 adaptation. Partial training unfreezes the last MobileNet stage (`backbone.body`
 blocks 13–16), the FPN, RPN and ROI heads; full training unfreezes all learnable
 parameters. Frozen batch-normalization statistics remain fixed in all modes.
-Trained descendants can become parents of subsequent runs at any depth. Native
-labels 1/2 map explicitly to COCO IDs 1/3 for saved comparisons and annotation
-proposals; raw native IDs remain recorded.
+Trained descendants can become parents at any depth when their frozen class
+snapshot and mappings exactly match the dataset. Legacy native labels 1/2 retain
+COCO output IDs 1/3; custom outputs use saved class IDs 1…N. Complete class
+contracts travel with training, model specs, comparisons, evaluation and reports.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
 
@@ -136,8 +138,9 @@ Custom classes and definitions are supported in the manual editor and COCO impor
 Publication uses compare-and-swap on the project's current version. Adoption creates
 a new draft revision, retains earlier revisions and requires human validation again.
 Custom detector proposal mappings use explicitly configured COCO IDs. Frozen datasets
-and COCO exports support custom classes; training, evaluation and multimodal candidate review remain limited to the original
-definition. See [class version behavior](classes.md).
+and COCO exports support custom classes, as do Faster R-CNN training, inference,
+evaluation and reports. Multimodal candidate review and disagreement ranking retain
+the original definitions. See [class version behavior](classes.md).
 An unsupported class is not silently mapped to a superficially similar class.
 
 Assisted annotation uses a configurable local Ollama endpoint, initially

@@ -123,8 +123,8 @@ def test_full_custom_snapshot_mappings_zero_counts_and_negative_are_frozen(works
     mapping = {"helmet": 1, "vehicle": 2, "marker": 3}
     assert manifest["class_mapping"] == manifest["coco_mapping"] == mapping
     assert manifest_mappings(manifest) == (taxonomy, mapping, mapping)
-    assert dataset["taxonomy_id"] == taxonomy["id"] and dataset["ml_supported"] is False
-    assert "Training and evaluation" in dataset["ml_limitation"]
+    assert dataset["taxonomy_id"] == taxonomy["id"] and dataset["ml_supported"] is True
+    assert dataset["ml_limitation"] is None
     assert dataset["summary"]["class_counts"] == {"helmet": 1, "vehicle": 1, "marker": 0}
     assert dataset["summary"]["split_class_counts"]["test"] == dict.fromkeys(mapping, 0)
     assert dataset["summary"]["negative_count"] == 1

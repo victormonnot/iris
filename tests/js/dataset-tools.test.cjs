@@ -2,7 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { taxonomyId, mlSupported, compatibleParents, revisionTokens, classRows } =
+const { taxonomyId, mlSupported, compatibleParents, revisionTokens, classRows,
+  modelCompatibility, aggregateFilter, analysisScopes, displayedDetections } =
   require("../../src/iris/static/dataset-tools.js");
 const taxonomyTools = require("../../src/iris/static/taxonomy-tools.js");
 
@@ -26,14 +27,66 @@ test("release parent selection requires identical class version and project", ()
   assert.deepEqual(compatibleParents(records, "new-version", "workshop"), []);
 });
 
-test("training and evaluation compatibility keeps legacy releases usable and excludes custom ones", () => {
+test("runtime eligibility honors the API decision and keeps older records conservative", () => {
   assert.equal(mlSupported({ id: "legacy" }), true);
   assert.equal(taxonomyId({ id: "legacy" }), "iris-objects-v1");
   assert.equal(mlSupported({ taxonomy: custom }), false);
   assert.equal(mlSupported({ manifest: { taxonomy: custom } }), false);
   assert.equal(mlSupported({ taxonomy_id: custom.id }), false);
   assert.equal(mlSupported({ taxonomy_id: "iris-objects-v1", ml_supported: false }), false);
+  assert.equal(mlSupported({ taxonomy: custom, ml_supported: true }), true);
   assert.equal(mlSupported(undefined), false);
+});
+
+test("official checkpoints train custom classes but evaluate only fully mapped taxonomies", () => {
+  const dataset = { taxonomy: custom, ml_supported: true };
+  const model = { origin: "official", training: true, classes: [{ id: 1 }, { id: 3 }] };
+  assert.equal(modelCompatibility(dataset, model, "training").compatible, true);
+  const unsupported = modelCompatibility(dataset, model);
+  assert.equal(unsupported.compatible, false);
+  assert.match(unsupported.reason, /Safety helmet.*Road cone/);
+  const fullyMapped = { ...dataset, taxonomy: { id: "people-v2", classes: [{ id: "worker", name: "Worker", coco_id: 1 }] } };
+  assert.equal(modelCompatibility(fullyMapped, model).compatible, true);
+  assert.equal(modelCompatibility(dataset, { ...model, training: false }, "training").compatible, false);
+});
+
+test("trained parent and evaluation require the exact saved class snapshot", () => {
+  const dataset = { taxonomy: custom, ml_supported: true };
+  const model = { origin: "trained", taxonomy_id: custom.id, taxonomy: structuredClone(custom), training: true };
+  assert.equal(modelCompatibility(dataset, model, "training").compatible, true);
+  assert.equal(modelCompatibility(dataset, model).compatible, true);
+  // Reordered JSON keys are semantically equal; edited definitions are not.
+  model.taxonomy = { classes: custom.classes, version: 2, id: custom.id };
+  assert.equal(modelCompatibility(dataset, model).compatible, true);
+  model.taxonomy = structuredClone(custom);
+  model.taxonomy.classes[0].definition = "A changed annotation rule.";
+  assert.equal(modelCompatibility(dataset, model).compatible, false);
+  assert.equal(modelCompatibility(dataset, { ...model, taxonomy: undefined }).compatible, false);
+  assert.equal(modelCompatibility({ id: "legacy" }, { origin: "trained", taxonomy_id: "iris-objects-v1" }).compatible, true);
+});
+
+test("custom analysis keeps a class named all distinct from aggregate results", () => {
+  const analysis = { aggregate_filter: "__all__", summary: { __all__: {}, all: {}, helmet: {} } };
+  const taxonomy = { id: "edge-case", classes: [{ id: "all", name: "All marker" }, { id: "helmet", name: "Helmet" }] };
+  assert.equal(aggregateFilter(analysis), "__all__");
+  assert.deepEqual(analysisScopes(analysis, taxonomy), [
+    { value: "__all__", label: "All classes" },
+    { value: "all", label: "All marker" },
+    { value: "helmet", label: "Helmet" },
+  ]);
+  assert.equal(aggregateFilter({ summary: { all: {} } }), "all");
+});
+
+test("overlays display custom labels without confusing ignored official output IDs", () => {
+  const detections = [
+    { label: "helmet", label_id: 1, score: 0.9 },
+    { label: "vehicle", label_id: 2, score: 0.8 },
+    { label: "car", label_id: 3, score: 0.95, ignored: true },
+    { label: "helmet", label_id: 1, score: 0.99, ignored: true },
+    { label: "cone", label_id: 3, score: 0.1 },
+  ];
+  assert.deepEqual(displayedDetections(custom, detections, 0.5).map((item) => [item.label, item.index]),
+    [["helmet", 0], ["vehicle", 1]]);
 });
 
 test("freeze captures exactly the viewed revisions of included scene groups", () => {

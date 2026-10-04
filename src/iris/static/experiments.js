@@ -1,6 +1,12 @@
 "use strict";
 
 (() => {
+  const datasetTools = window.IRISDatasetTools;
+  const taxonomyTools = window.IRISTaxonomyTools;
+  const reportTaxonomy = (snapshot) => datasetTools.taxonomyOf(
+    snapshot.evaluation?.config?.taxonomy ? snapshot.evaluation : snapshot.dataset,
+  );
+  const aggregateCounts = (snapshot, counts) => counts?.[datasetTools.aggregateFilter(snapshot.error_analysis)];
   const field = (name) => $(`#experiments-${name}`);
   const library = {
     visible: false,
@@ -346,7 +352,7 @@
     }
     const count =
       candidate.frame_count ??
-      snapshot.error_analysis?.summary?.all?.frame_count;
+      aggregateCounts(snapshot, snapshot.error_analysis?.summary)?.frame_count;
     field("frame-count").textContent = `${number(count)} evaluated frames`;
     const config = snapshot.evaluation.config;
     field("metric-context").textContent =
@@ -378,7 +384,8 @@
       heading.append(cell);
     }
     head.append(heading);
-    for (const label of ["person", "car"])
+    for (const category of reportTaxonomy(snapshot).classes) {
+      const label = category.id;
       lanes.forEach((lane, index) => {
         const metric = lane.metrics?.per_class?.find(
           (item) => item.label === label,
@@ -388,7 +395,7 @@
         const name = node(
           "th",
           "",
-          `${label} · ${lanes.length === 1 ? "evaluated" : index ? "candidate" : "baseline"}`,
+          `${category.name} · ${lanes.length === 1 ? "evaluated" : index ? "candidate" : "baseline"}`,
         );
         name.scope = "row";
         row.append(name);
@@ -402,6 +409,7 @@
           row.append(node("td", "", value));
         body.append(row);
       });
+    }
     table.append(head, body);
     field("class-table").replaceChildren(table);
     field("timing").textContent =
@@ -472,6 +480,7 @@
   }
 
   function renderExamples(record, lanes) {
+    const taxonomy = reportTaxonomy(record.snapshot);
     const examples = record.snapshot.examples || [];
     const container = field("examples");
     container.replaceChildren();
@@ -535,7 +544,7 @@
           overlay(
             svg,
             label.box,
-            `GT ${label.label}`,
+            `GT ${datasetTools.className(taxonomy, label.label)}`,
             "#ffffff",
             true,
             example.width,
@@ -543,18 +552,12 @@
           );
         const threshold =
           record.snapshot.evaluation.config.confidence_threshold;
-        for (const detection of saved?.detections || []) {
-          if (
-            ![1, 3].includes(detection.label_id) ||
-            !Number.isFinite(detection.score) ||
-            detection.score < threshold
-          )
-            continue;
+        for (const detection of datasetTools.displayedDetections(taxonomy, saved?.detections, threshold)) {
           overlay(
             svg,
             detection.box,
-            `${detection.label} ${ratio(detection.score)}`,
-            detection.label === "person" ? "#a4ef90" : "#8dc6ff",
+            `${datasetTools.className(taxonomy, detection.label)} ${ratio(detection.score)}`,
+            taxonomyTools.classColor(taxonomy, detection.label),
             false,
             example.width,
             example.height,
@@ -562,7 +565,7 @@
         }
         visual.append(img, svg);
         panel.append(visual);
-        const counts = example.counts?.all?.runs?.[lane.id] || saved?.errors;
+        const counts = aggregateCounts(record.snapshot, example.counts)?.runs?.[lane.id] || saved?.errors;
         panel.append(
           node(
             "p",
@@ -680,7 +683,7 @@
         ),
       );
       const counts = orderedLanes(compose.preview.snapshot)
-        .map((lane) => item.counts?.all?.runs?.[lane.id])
+        .map((lane) => aggregateCounts(compose.preview.snapshot, item.counts)?.runs?.[lane.id])
         .filter(Boolean);
       label.append(
         node(
@@ -694,7 +697,7 @@
             .join(" · "),
         ),
       );
-      const changes = item.counts?.all?.changes;
+      const changes = aggregateCounts(compose.preview.snapshot, item.counts)?.changes;
       if (changes)
         label.append(
           node(

@@ -33,6 +33,7 @@
     trainingPreviewRequest: 0,
     trainingModelsRequest: 0,
     trainingModelsLoading: false,
+    trainingModelsError: null,
     historyRequest: 0,
     jobStatuses: new Map(),
   };
@@ -293,9 +294,7 @@
     if (supported.some((item) => item.id === oldTraining))
       training.value = oldTraining;
     training.disabled = !supported.length || workspace.trainingBusy;
-    $("#training-dataset-limitation").textContent = workspace.datasets.length > supported.length
-      ? `${workspace.datasets.length - supported.length} custom-class release${workspace.datasets.length - supported.length === 1 ? " is" : "s are"} available for inspection and COCO export in Dataset releases. Training currently requires the original person / car definitions.`
-      : "Training currently supports releases using the original person / car definitions.";
+    renderTrainingModels();
     if (training.value !== oldTraining) invalidateTrainingPreview();
     else updateTrainingLaunch();
   }
@@ -387,7 +386,7 @@
       renderDefinitions("#dataset-detail-definitions", taxonomy);
       $("#dataset-detail-ml").textContent = datasetTools.mlSupported(detail)
         ? "Compatible with current training and evaluation."
-        : detail.ml_limitation || "This custom-class release can be inspected and exported. Training and evaluation currently require the original person / car definitions.";
+        : detail.ml_limitation || "This release is available for inspection and export; the current runtime cannot train or evaluate it.";
       warnings("#dataset-detail-warnings", detail.summary.warnings);
       $("#dataset-manifest-download").href =
         projectURL(`/api/datasets/${encodeURIComponent(id)}/manifest`);
@@ -528,10 +527,12 @@
     const model = workspace.models.find(
       (item) => item.id === $("#training-parent").value,
     );
+    const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
     const unavailable =
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
       !datasetTools.mlSupported(dataset) ||
+      !compatibility.compatible ||
       model?.status !== "ready" ||
       !model.training;
     for (const field of $("#training-form").querySelectorAll("input, select"))
@@ -541,7 +542,15 @@
     $("#training-parent").disabled =
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
-      !workspace.models.some((item) => item.training && item.status === "ready");
+      !workspace.models.some((item) => item.status === "ready" && datasetTools.modelCompatibility(dataset, item, "training").compatible);
+    const taxonomy = datasetTools.taxonomyOf(dataset);
+    $("#training-dataset-limitation").textContent = dataset
+      ? `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.map((item) => item.name).join(", ")}. Trained parents must use these exact saved definitions.`
+      : "Choose a frozen release to see compatible starting checkpoints.";
+    if (!workspace.trainingModelsLoading)
+      $("#training-model-status").textContent = workspace.trainingModelsError || (model?.status === "ready"
+        ? compatibility.reason
+        : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional CPU runtime are required. Check Model comparison for setup instructions.");
     $("#training-preview").disabled = unavailable;
     $("#training-preview").textContent =
       workspace.trainingOperation === "preview"
@@ -641,40 +650,41 @@
     }
   }
 
+  function renderTrainingModels() {
+    const select = $("#training-parent");
+    const previous = select.value;
+    const dataset = workspace.datasets.find((item) => item.id === $("#training-dataset").value);
+    const eligible = workspace.models.filter((model) => model.training);
+    select.replaceChildren();
+    for (const model of eligible) {
+      const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
+      const option = new Option(`${model.name}${!compatibility.compatible ? " · incompatible classes" : model.status !== "ready" ? " · setup required" : ""}`, model.id);
+      option.disabled = model.status !== "ready" || !compatibility.compatible;
+      option.title = compatibility.reason;
+      select.append(option);
+    }
+    const ready = eligible.filter((model) => model.status === "ready" && datasetTools.modelCompatibility(dataset, model, "training").compatible);
+    if (!ready.length) select.prepend(new Option("No compatible ready checkpoint", ""));
+    select.value = ready.some((model) => model.id === previous) ? previous : ready[0]?.id || "";
+    if (select.value !== previous) invalidateTrainingPreview();
+    else updateTrainingLaunch();
+  }
+
   async function refreshTrainingModels() {
     const request = ++workspace.trainingModelsRequest;
     const select = $("#training-parent");
-    const previous = select.value;
     workspace.trainingModelsLoading = true;
+    workspace.trainingModelsError = null;
     invalidateTrainingPreview();
     try {
       const models = await api("/api/models");
       if (request !== workspace.trainingModelsRequest) return;
       workspace.models = models;
-      const eligible = workspace.models.filter((model) => model.training);
-      select.replaceChildren();
-      for (const model of eligible) {
-        const option = new Option(
-          `${model.name}${model.status === "ready" ? "" : " · setup required"}`,
-          model.id,
-        );
-        option.disabled = model.status !== "ready";
-        select.append(option);
-      }
-      const ready = eligible.filter((model) => model.status === "ready");
-      select.disabled = !ready.length || workspace.trainingBusy;
-      if (!eligible.length)
-        select.append(new Option("No supported training model", ""));
-      select.value = ready.some((model) => model.id === previous)
-        ? previous
-        : ready[0]?.id || "";
-      $("#training-model-status").textContent = ready.length
-        ? "Local weights available. Training creates a new checkpoint and preserves its parent."
-        : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional CPU runtime are required. Check Model comparison for setup instructions.";
-      updateTrainingLaunch();
+      renderTrainingModels();
     } catch (error) {
       if (request !== workspace.trainingModelsRequest) return;
       workspace.models = [];
+      workspace.trainingModelsError = error.message;
       select.replaceChildren(new Option("Model availability unavailable", ""));
       select.disabled = true;
       $("#training-model-status").textContent = error.message;
@@ -858,6 +868,7 @@
     loadTraining(workspace.trainingId);
   });
   $("#training-form").addEventListener("input", invalidateTrainingPreview);
+  $("#training-dataset").addEventListener("change", renderTrainingModels);
   $("#training-form").addEventListener("change", invalidateTrainingPreview);
   $("#dataset-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -895,6 +906,7 @@
       await Promise.all([refreshDatasets(), refreshCandidates()]);
       if (datasetTools.mlSupported(dataset)) $("#training-dataset").value = dataset.id;
       $("#dataset-parent").value = dataset.id;
+      renderTrainingModels();
       invalidateTrainingPreview();
       notify(
         `Dataset release “${dataset.name}” saved with frozen labels and split assignments.`,

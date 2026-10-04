@@ -1071,7 +1071,7 @@
                     </button>
                   </div>
                   <p id="annotation-proposal-hint" class="field-hint">
-                    Only explicitly mapped classes from this frame are imported. Importing
+                    Matching trained classes or explicitly mapped official detector classes are imported. Importing
                     does not validate any labels.
                   </p>
                   <div
@@ -1114,7 +1114,7 @@
                       remain responsible for missed objects and final
                       validation.
                     </p>
-                    <p id="annotation-assistance-availability" class="field-hint" hidden>Model review currently supports the original person / car definitions. Use manual annotation or explicitly mapped detector proposals for these classes.</p>
+                    <p id="annotation-assistance-availability" class="field-hint" hidden>Multimodal review currently supports the original person / car definitions. Use manual annotation, a matching trained checkpoint or explicitly mapped official detector proposals for these classes.</p>
                     <details
                       id="annotation-provider-setup"
                       class="setup-help"
@@ -1254,7 +1254,7 @@ ollama pull qwen3-vl:4b-instruct</pre
               across all sessions in this project. Sessions in the same scene group stay
               together in every release.
             </p>
-            <p class="dataset-scope">Freeze and export datasets with your project's classes. Training and evaluation currently require the original person / car definitions; existing releases remain usable.</p>
+            <p class="dataset-scope">Freeze, export and train with your project's classes. Saved definitions determine which checkpoints can be reused and compared in a quality evaluation.</p>
             <section
               class="panel dataset-panel"
               aria-labelledby="dataset-create-title"
@@ -1448,7 +1448,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     id="training-name"
                     required
                     maxlength="160"
-                    placeholder="e.g. People and cars · first pass"
+                    placeholder="e.g. Project detector · first pass"
                     autocomplete="off"
                   />
                   <label for="training-dataset">Dataset release</label>
@@ -1527,7 +1527,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     guarantee a better detector.
                   </p>
                   <p class="field-hint">
-                    Batch size 1 · person / car. FrozenBatchNorm statistics stay
+                    Batch size 1 · classes from the frozen dataset. FrozenBatchNorm statistics stay
                     fixed at every depth. Only training frames update the model;
                     validation and test frames are preserved for evaluation.
                   </p>
@@ -1776,7 +1776,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                 <p class="field-hint">
                   These thresholds are saved for error inspection and precision
                   / recall. AP uses the retained detections across confidence
-                  scores, at IoU 0.50–0.95. Only person and car are evaluated.
+                  scores, at IoU 0.50–0.95. Classes come from the frozen dataset.
                   Choose thresholds on validation data.
                 </p>
                 <p id="evaluation-plan" class="field-hint" role="status" aria-live="polite"></p>
@@ -1907,8 +1907,6 @@ ollama pull qwen3-vl:4b-instruct</pre
                         <label for="evaluation-analysis-class">Class</label>
                         <select id="evaluation-analysis-class" disabled>
                           <option value="all">All classes</option>
-                          <option value="person">Person</option>
-                          <option value="car">Car</option>
                         </select>
                       </div>
                       <div>
@@ -3219,7 +3217,7 @@ ollama pull qwen3-vl:4b-instruct</pre
         <button id="taxonomy-close" type="button" class="icon-button" aria-label="Close class editor">×</button>
       </div>
       <p class="small muted">Define each class once and refine its annotation rules in saved versions. Published class identifiers remain stable. Existing images and annotation revisions keep their original definitions.</p>
-      <p class="field-hint">Custom classes support manual annotation, COCO import, frozen datasets and COCO export. Training, evaluation and model review currently require the original person / car definitions. Existing releases remain usable.</p>
+      <p class="field-hint">Custom classes support annotation, dataset import and export, training and evaluation. Trained checkpoints retain the exact class definitions of their dataset. Multimodal model review currently supports the original person / car definitions.</p>
       <div class="taxonomy-history">
         <div><label for="taxonomy-history">Saved class versions</label><select id="taxonomy-history"></select></div>
         <button id="taxonomy-refresh" type="button" class="text-button">Reload versions</button>

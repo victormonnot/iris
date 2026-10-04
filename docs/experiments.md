@@ -11,8 +11,9 @@ inference, training, annotation or an external request.
 Use **Experiments** or the report action in **Quality evaluation**. Select a
 completed evaluation and review its scope before saving. Reports support one
 detector, two detectors, or full-image and tiled runs of the same checkpoint.
-All compared lanes belong to that evaluation and share its frozen split and
-metric settings. Results from unrelated evaluations are not merged into a
+All compared lanes belong to that evaluation and share its frozen split, class
+definitions and metric settings. Custom reports retain the complete class snapshot,
+per-class counts and checkpoint mappings; tables and overlays use those saved labels. Results from unrelated evaluations are not merged into a
 comparison.
 
 Select zero to six example images from the evaluated split. Each example retains

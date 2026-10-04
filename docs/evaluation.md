@@ -36,7 +36,7 @@ copies, not the current annotation editor. Image file and pixel hashes are check
 before inference. The manifest, selected checkpoint hashes and training ancestry
 are frozen at queue time and rechecked in the worker.
 
-The fixed taxonomy is `iris-objects-v1`: visible people, including riders, and
+The original taxonomy is `iris-objects-v1`: visible people, including riders, and
 passenger cars, including SUVs/minivans. Cars exclude buses, trucks, motorcycles
 and bicycles. Boxes enclose visible extents with continuous `xyxy` pixel
 coordinates and exclusive right/bottom edges. The scoring adapter converts them
@@ -47,7 +47,15 @@ native IDs 1 and 2; their adapter records the mapping to COCO and preserves the
 native ID. Other valid COCO classes remain in raw outputs but do not contribute
 to person/car metrics. Their ignored count is recorded. Unknown or inconsistent
 class identifiers are rejected. There are no crowd annotations or ignored regions
-in this taxonomy; unsupported annotation flags are rejected rather than inferred.
+in these datasets; unsupported annotation flags are rejected rather than inferred.
+
+Custom evaluations save the complete class snapshot and use its output IDs 1…N.
+A trained checkpoint must have the exact same definitions and mappings. An official
+COCO baseline is permitted only when every target class has an explicit COCO ID.
+Its mapped detections receive the target IDs while preserving native IDs; other
+COCO outputs carry an explicit ignored marker and their source taxonomy. Numeric
+ID collisions never imply class equivalence. No partial class baseline is scored.
+See [custom training and compatibility](custom-training.md).
 
 ## Scores and errors
 
@@ -59,7 +67,7 @@ the IRIS protocol version. The application reports:
 | --- | --- |
 | mAP | Mean interpolated AP over IoU thresholds 0.50, 0.55, …, 0.95 and classes with reference objects. |
 | AP50 / AP75 | AP at IoU 0.50 / 0.75, averaged over classes with reference objects. |
-| Per-class AP | The same calculations for person or car individually. |
+| Per-class AP | The same calculations for each frozen class individually. |
 | Precision | `TP / (TP + FP)` at the recorded confidence and IoU thresholds. |
 | Recall | `TP / (TP + FN)` at those thresholds. |
 
@@ -76,7 +84,8 @@ accepts up to 300 final detections per image while keeping the same COCO AP
 `maxDets=[1,10,100]` definition for both runs. Precision/recall and error counts
 use all saved predictions above the operating-point threshold, including those
 beyond the AP cap. Full-image evaluations retain `coco-bbox-iris-v1` and the
-100-output limit. The metric version and each run's native/merge limits are
+100-output limit. Custom class evaluations use `coco-bbox-iris-v3`, recording the
+snapshot, output mapping and 100/300 saved-output limit explicitly. The metric version and each run's native/merge limits are
 recorded; no silent truncation is applied before scoring.
 
 At the precision/recall operating point, detections with score greater than or
@@ -85,7 +94,7 @@ score order, to unmatched reference boxes of the same class. The best overlap
 must be greater than or equal to the chosen IoU threshold. A reference object
 can match only once; additional detections become false positives. An unmatched
 reference object becomes a false negative. Micro totals aggregate these counts
-across both classes and all images. The result retains matched indices and IoUs,
+across all evaluated classes and images. The result retains matched indices and IoUs,
 false-positive prediction indices and false-negative annotation indices so the
 image viewer can inspect the exact errors counted.
 
@@ -106,7 +115,7 @@ the scores. A small or unbalanced reference cannot support broad quality claims.
 
 The error explorer uses completed evaluation results to find examples, without
 running inference or calculating a new set of metrics. Choose all classes,
-person or car, then filter missed objects, false positives or changes between
+or one frozen class, then filter missed objects, false positives or changes between
 the two runs. The table opens the same frozen image in the existing side-by-side
 viewer. Class filtering retains the original annotation and prediction indices.
 

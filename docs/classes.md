@@ -58,10 +58,13 @@ validated images using that version. Other versions remain selectable; there is
 no implicit relabeling or merging of different definitions. The release records
 the complete class snapshot and its internal and export numeric mappings.
 
-Training, evaluation, disagreement ranking and multimodal candidate review still
-support the original Person / Car definitions. Custom releases stay available for
-inspection and export, with these limits shown in the interface. Existing releases
-and results remain usable. No provider or network call is required for the manual
+Custom releases also support Faster R-CNN training, inference, evaluation, error
+analysis and experiment reports. Trained parents must share the exact saved class
+version. Official evaluation baselines require an explicit COCO mapping for every
+target class. Matching trained predictions can become reviewable proposals without
+COCO mappings. See [custom training](custom-training.md). Disagreement ranking and
+multimodal candidate review still use the original Person / Car definitions.
+Existing releases and results remain usable. No provider or network call is required for the manual
 workflow or dataset export. See [frozen datasets](dataset-export.md).
 
 ## Local API

@@ -5,16 +5,21 @@ import re
 
 from iris.evaluation import (
     _timing_protocol,
+    evaluation_classes,
     evaluation_detail,
     evaluation_inference,
     evaluation_lanes,
+    validate_evaluation_detections,
 )
-from iris.metrics import CLASS_IDS, _iou, _number, _validate, get_protocol
+from iris.metrics import _iou, _number, _validate, get_protocol
+from iris.model_taxonomy import class_contract
 from iris.store import Store
+from iris.taxonomies import TAXONOMY
 from iris.tiling import _validate_tile_prediction, tile_boxes
 
 PROTOCOL = "iris-error-analysis-v1"
 RUN_PROTOCOL = "iris-error-analysis-v2"
+GENERIC_PROTOCOL = "iris-error-analysis-v3"
 FILTERS = ("all", "person", "car")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 WARNINGS = [
@@ -51,10 +56,12 @@ def _recorded_protocol(config: dict) -> dict:
     confidence = _number(config["confidence_threshold"], "Saved confidence threshold")
     iou = _number(config["iou_threshold"], "Saved IoU threshold")
     max_detections = 300 if config.get("inference", {}).get("mode", "full") != "full" else 100
+    taxonomy, mapping = evaluation_classes(config)
+    kwargs = {"taxonomy": taxonomy, "class_mapping": mapping} if taxonomy != TAXONOMY else {}
     supported = (
-        get_protocol(confidence, iou, max_detections=max_detections)
+        get_protocol(confidence, iou, max_detections=max_detections, **kwargs)
         if max_detections != 100
-        else get_protocol(confidence, iou)
+        else get_protocol(confidence, iou, **kwargs)
     )
     recorded = config["protocol"]
     _require(isinstance(recorded, dict), "Saved evaluation protocol is missing")
@@ -88,12 +95,25 @@ def _validate_identity(detail: dict, evaluation_id: str) -> tuple[list[str], dic
         and len(set(model_ids)) == len(model_ids),
         "Saved evaluation requires one or two distinct ordered models",
     )
-    _require(
-        detail["split"] in {"val", "test"}
-        and config["taxonomy_id"] == "iris-objects-v1"
-        and config["class_mapping"] == CLASS_IDS,
-        "Saved evaluation split or taxonomy is incompatible",
-    )
+    taxonomy, mapping = evaluation_classes(config)
+    _require(detail["split"] in {"val", "test"}, "Saved evaluation split is incompatible")
+    if taxonomy != TAXONOMY or "model_class_contracts" in config:
+        contracts = config.get("model_class_contracts")
+        _require(
+            isinstance(contracts, dict) and set(contracts) == set(model_ids),
+            "Saved evaluation checkpoint class definitions are incomplete",
+        )
+        for contract in contracts.values():
+            if contract == {"taxonomy_id": "coco-2017-v1"}:
+                _require(
+                    all(type(item.get("coco_id")) is int for item in taxonomy["classes"]),
+                    "Saved official evaluation needs a complete frozen COCO mapping",
+                )
+            else:
+                _require(
+                    class_contract(contract)["taxonomy"] == taxonomy,
+                    "Saved checkpoint taxonomy differs from the frozen evaluation",
+                )
     protocol = _recorded_protocol(config)
     _require(
         config["frame_ids"] == [frame["frame_id"] for frame in frames]
@@ -123,7 +143,7 @@ def _validate_identity(detail: dict, evaluation_id: str) -> tuple[list[str], dic
             and isinstance(frame["sha256"], str)
             and _SHA256.fullmatch(frame["sha256"]) is not None
             and annotation["status"] == "validated"
-            and annotation["taxonomy_id"] == "iris-objects-v1"
+            and annotation["taxonomy_id"] == taxonomy["id"]
             and annotation["frame_id"] == frame["frame_id"]
             and annotation["frame_sha256"] == frame["sha256"]
             and annotation["boxes"] == frame["boxes"]
@@ -224,7 +244,7 @@ def _run_inference(detail: dict, model: dict) -> dict:
     return inference
 
 
-def _prediction_inference(prediction: dict, inference: dict):
+def _prediction_inference(prediction: dict, inference: dict, taxonomy: dict, contract: dict):
     metadata = prediction["metadata"]
     _require(isinstance(metadata, dict), "Saved prediction metadata must be an object")
     if inference["variant"] == "full":
@@ -241,7 +261,14 @@ def _prediction_inference(prediction: dict, inference: dict):
             type(tile["tile_index"]) is int and tile["tile_index"] == index and tile["box"] == box,
             "Saved prediction crops differ from the recorded tile plan",
         )
-        _validate_tile_prediction(tile, box[2] - box[0], box[3] - box[1])
+        width, height = box[2] - box[0], box[3] - box[1]
+        _validate_tile_prediction(tile, width, height)
+        _validate(
+            [{"frame_id": "tile", "width": width, "height": height, "boxes": []}],
+            [{"frame_id": "tile", "detections": tile["detections"]}],
+            taxonomy=taxonomy,
+        )
+        validate_evaluation_detections(tile["detections"], contract, taxonomy)
         sources.append(
             [
                 {
@@ -268,6 +295,15 @@ def _prediction_inference(prediction: dict, inference: dict):
 def _model_results(detail: dict, model: dict, protocol: dict, *, versioned: bool) -> dict:
     identifier, config = model["model_id"], detail["config"]
     metadata, metrics = model["metadata"], model["metrics"]
+    taxonomy, mapping = evaluation_classes(config)
+    contract = config.get("model_class_contracts", {}).get(identifier, {})
+    if "model_class_contracts" in config:
+        _require(
+            metadata.get("class_contract") == contract
+            and metadata.get("evaluation_taxonomy") == taxonomy
+            and metadata.get("evaluation_class_mapping") == mapping,
+            "Saved model run class definitions differ from its evaluation",
+        )
     device = metadata.get("device")
     compatible_device = (config["device"] == "cpu" and device == "cpu") or (
         config["device"] == "cuda"
@@ -295,8 +331,9 @@ def _model_results(detail: dict, model: dict, protocol: dict, *, versioned: bool
             prediction["evaluation_id"] == detail["id"] and prediction["model_id"] == identifier,
             "Saved prediction has an inconsistent evaluation or model identity",
         )
+        validate_evaluation_detections(prediction["detections"], contract, taxonomy)
         if inference is not None:
-            _prediction_inference(prediction, inference)
+            _prediction_inference(prediction, inference, taxonomy, contract)
     if inference is not None and inference["variant"] == "full":
         _require(
             all(len(prediction["detections"]) <= 100 for prediction in predictions),
@@ -306,6 +343,8 @@ def _model_results(detail: dict, model: dict, protocol: dict, *, versioned: bool
         detail["frames"],
         predictions,
         max_detections=protocol.get("max_saved_detections_per_image", 100),
+        taxonomy=taxonomy,
+        class_mapping=mapping,
     )
     by_prediction = {row["frame_id"]: row for row in predictions}
     rows = metrics["frames"]
@@ -320,7 +359,7 @@ def _model_results(detail: dict, model: dict, protocol: dict, *, versioned: bool
             "Saved prediction dimensions differ from the frozen image",
         )
         results[frame["frame_id"]] = _frame_results(frame, row, protocol)
-    _validate_totals(metrics, results, normalized, predictions, ignored)
+    _validate_totals(metrics, results, normalized, predictions, ignored, protocol)
     return results
 
 
@@ -343,7 +382,9 @@ def _frame_results(frame: dict, row: dict, protocol: dict) -> dict:
         "Saved false positives must identify distinct retained source detections",
     )
     matched_truth, matched_detections = set(), set()
-    counts = {label: {"tp": 0, "fp": 0, "fn": 0} for label in CLASS_IDS}
+    classes = protocol["classes"]
+    aggregate = "all" if protocol["taxonomy_id"] == TAXONOMY["id"] else "__all__"
+    counts = {label: {"tp": 0, "fp": 0, "fn": 0} for label in classes}
     for match in matches:
         target, detection = match["ground_truth_index"], match["detection_index"]
         _require(
@@ -379,29 +420,32 @@ def _frame_results(frame: dict, row: dict, protocol: dict) -> dict:
         counts[truth[index]["label"]]["fn"] += 1
     for index in false_positives:
         counts[retained[index]["label"]]["fp"] += 1
-    counts["all"] = {
-        key: sum(counts[label][key] for label in CLASS_IDS) for key in ("tp", "fp", "fn")
+    counts[aggregate] = {
+        key: sum(counts[label][key] for label in classes) for key in ("tp", "fp", "fn")
     }
     _require(
-        all(_count(row[key], key) == counts["all"][key] for key in ("tp", "fp", "fn")),
+        all(_count(row[key], key) == counts[aggregate][key] for key in ("tp", "fp", "fn")),
         "Saved frame error counts disagree with their source indices",
     )
     return {"counts": counts, "matched": matched_truth, "missed": false_negatives}
 
 
-def _validate_totals(metrics, results, frames, predictions, ignored):
+def _validate_totals(metrics, results, frames, predictions, ignored, protocol):
+    class_ids = protocol["classes"]
+    aggregate = "all" if protocol["taxonomy_id"] == TAXONOMY["id"] else "__all__"
+    filters = [aggregate, *class_ids]
     totals = {
         label: {
             key: sum(result["counts"][label][key] for result in results.values())
             for key in ("tp", "fp", "fn")
         }
-        for label in FILTERS
+        for label in filters
     }
     summary = metrics["summary"]
     expected = {
-        **totals["all"],
-        "ground_truth_count": totals["all"]["tp"] + totals["all"]["fn"],
-        "prediction_count": totals["all"]["tp"] + totals["all"]["fp"],
+        **totals[aggregate],
+        "ground_truth_count": totals[aggregate]["tp"] + totals[aggregate]["fn"],
+        "prediction_count": totals[aggregate]["tp"] + totals[aggregate]["fp"],
         "frame_count": len(frames),
         "ignored_prediction_count": ignored,
         "native_prediction_count": sum(len(row["detections"]) for row in predictions),
@@ -416,8 +460,8 @@ def _validate_totals(metrics, results, frames, predictions, ignored):
     classes = metrics["per_class"]
     _require(
         isinstance(classes, list)
-        and len(classes) == len(CLASS_IDS)
-        and {row["label"] for row in classes} == set(CLASS_IDS),
+        and len(classes) == len(class_ids)
+        and {row["label"] for row in classes} == set(class_ids),
         "Saved per-class metrics are incomplete",
     )
     for row in classes:
@@ -435,6 +479,10 @@ def _validate_totals(metrics, results, frames, predictions, ignored):
 
 def _analyze(detail: dict, evaluation_id: str) -> dict:
     model_ids, protocol = _validate_identity(detail, evaluation_id)
+    taxonomy, mapping = evaluation_classes(detail["config"])
+    generic = taxonomy != TAXONOMY
+    aggregate = "__all__" if generic else "all"
+    filters = [aggregate, *mapping]
     models, versioned = _ordered_runs(detail, model_ids)
     collection = "runs" if versioned else "models"
     identifiers = [model["id"] if versioned else model["model_id"] for model in models]
@@ -452,9 +500,11 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
     for position, frame in enumerate(detail["frames"], 1):
         identifier, truth = frame["frame_id"], frame["boxes"]
         counts = {}
-        for label in FILTERS:
+        for label in filters:
             indices = {
-                index for index, box in enumerate(truth) if label == "all" or box["label"] == label
+                index
+                for index, box in enumerate(truth)
+                if label == aggregate or box["label"] == label
             }
             changes = None
             if comparison:
@@ -488,7 +538,7 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
             }
         )
     summary = {}
-    for label in FILTERS:
+    for label in filters:
         stats = [frame["counts"][label] for frame in frames]
         summary[label] = {
             "frame_count": len(frames),
@@ -521,7 +571,17 @@ def _analyze(detail: dict, evaluation_id: str) -> dict:
         "evaluation_id": evaluation_id,
         "dataset_id": detail["dataset_id"],
         "split": detail["split"],
-        "protocol": RUN_PROTOCOL if versioned else PROTOCOL,
+        "protocol": GENERIC_PROTOCOL if generic else RUN_PROTOCOL if versioned else PROTOCOL,
+        **(
+            {
+                "taxonomy": taxonomy,
+                "class_mapping": mapping,
+                "aggregate_filter": aggregate,
+                "filters": filters,
+            }
+            if generic
+            else {}
+        ),
         "confidence_threshold": protocol["confidence_threshold"],
         "iou_threshold": protocol["iou_threshold"],
         collection: [

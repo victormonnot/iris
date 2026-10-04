@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from test_custom_classes_api import HELMET, intake, publish, save
 
-from iris import evaluation, training
+from iris import evaluation, models, training
 from iris.app import create_app
 from iris.store import new_id, now
 from iris.taxonomies import TAXONOMY
@@ -63,7 +63,7 @@ def test_custom_release_download_and_lists_use_frozen_classes_after_edits(client
     taxonomy, frames, payload = reviewed
     dataset = freeze(client, payload)
     assert dataset["taxonomy_id"] == taxonomy["id"]
-    assert not dataset["ml_supported"] and dataset["ml_limitation"]
+    assert dataset["ml_supported"] is True and dataset["ml_limitation"] is None
     assert dataset["manifest"]["schema_version"] == 2
     assert dataset["manifest"]["taxonomy"] == taxonomy
     assert (
@@ -196,31 +196,39 @@ def test_other_project_cannot_read_freeze_or_export_custom_release(client, revie
     assert len(client.app.state.store.list("dataset_versions")) == 1
 
 
-def test_custom_releases_cannot_launch_training_or_evaluation_before_model_access(
+def test_custom_releases_can_train_and_require_mapping_for_official_evaluation(
     client, reviewed, monkeypatch
 ):
     dataset = freeze(client, reviewed[2])
 
-    def unexpected(*args, **kwargs):
-        pytest.fail("Unsupported custom releases must fail before accessing a model")
-
-    monkeypatch.setattr(training, "catalog", unexpected)
-    monkeypatch.setattr(evaluation, "catalog", unexpected)
-    for kind, fields in (
-        ("trainings", {"parent_model_id": PARENT}),
-        ("evaluations", {"model_ids": [PARENT]}),
-    ):
-        for suffix in ("", "/preview"):
-            response = client.post(
-                "/api/" + kind + suffix,
-                json={"name": "Unsupported custom run", "dataset_id": dataset["id"], **fields},
-            )
-            assert response.status_code == 422 and "custom" in response.text.lower(), response.text
+    parent = {**models.get_spec(PARENT), "status": "ready", "weight_sha256": "a" * 64}
+    monkeypatch.setattr(training, "catalog", lambda _root: [parent])
+    monkeypatch.setattr(evaluation, "catalog", lambda _root: [parent])
+    for suffix, status in (("/preview", 200), ("", 202)):
+        response = client.post(
+            "/api/trainings" + suffix,
+            json={"name": "Custom run", "dataset_id": dataset["id"], "parent_model_id": PARENT},
+        )
+        assert response.status_code == status, response.text
+        config = response.json()["config"]
+        assert config["taxonomy"] == reviewed[0]
+        assert config["class_mapping"] == config["output_class_mapping"] == dataset["class_mapping"]
+    for suffix in ("", "/preview"):
+        response = client.post(
+            "/api/evaluations" + suffix,
+            json={"name": "Unmapped classes", "dataset_id": dataset["id"], "model_ids": [PARENT]},
+        )
+        assert response.status_code == 422 and "explicit COCO mapping" in response.text, (
+            response.text
+        )
     store = client.app.state.store
-    assert store.list("jobs") == store.list("training_runs") == store.list("evaluations") == []
+    assert len(store.list("training_runs")) == len(store.list("jobs")) == 1
+    assert store.list("evaluations") == []
 
 
-def test_custom_evaluation_worker_rejects_persisted_request_before_detector_load(client, reviewed):
+def test_custom_evaluation_worker_rejects_missing_frozen_contract_before_detector_load(
+    client, reviewed
+):
     dataset = freeze(client, reviewed[2])
     store = client.app.state.store
     job = store.insert(
@@ -231,20 +239,24 @@ def test_custom_evaluation_worker_rejects_persisted_request_before_detector_load
         "evaluations",
         {
             "id": new_id(),
-            "name": "Unsupported persisted fixture",
+            "name": "Missing persisted contract fixture",
             "dataset_id": dataset["id"],
             "split": "val",
             "model_ids": [PARENT],
-            "config": {"frame_ids": [reviewed[1][1]["id"]]},
+            "config": {
+                "frame_ids": [reviewed[1][1]["id"]],
+                "frame_hashes": {reviewed[1][1]["id"]: reviewed[1][1]["sha256"]},
+                "dataset_manifest_sha256": dataset["manifest_sha256"],
+            },
             "job_id": job["id"],
             "created_at": now(),
         },
     )
 
     def unexpected(*args, **kwargs):
-        pytest.fail("Unsupported persisted request must not load a detector")
+        pytest.fail("A missing class contract must not load a detector")
 
-    with pytest.raises(ValueError, match="custom class"):
+    with pytest.raises(ValueError, match="frozen class definition"):
         evaluation.run_evaluation(
             store, row["id"], lambda *_: None, lambda: False, detector_factory=unexpected
         )
@@ -294,10 +306,8 @@ def test_legacy_taxonomy_alias_cannot_override_custom_person_car_definitions(cli
     digest = hashlib.sha256(raw).hexdigest()
     store.update("dataset_versions", dataset["id"], {"manifest_sha256": digest})
 
-    def unexpected(*args, **kwargs):
-        pytest.fail("A legacy alias must never override the frozen class definitions")
-
-    monkeypatch.setattr(training, "catalog", unexpected)
+    parent = {**models.get_spec(PARENT), "status": "ready", "weight_sha256": "a" * 64}
+    monkeypatch.setattr(training, "catalog", lambda _root: [parent])
     response = client.post(
         "/api/trainings/preview",
         json={
@@ -306,7 +316,10 @@ def test_legacy_taxonomy_alias_cannot_override_custom_person_car_definitions(cli
             "parent_model_id": PARENT,
         },
     )
-    assert response.status_code == 422 and "Custom class training" in response.text, response.text
+    assert response.status_code == 200, response.text
+    config = response.json()["config"]
+    assert config["taxonomy"] == custom and config["taxonomy_id"] == custom["id"]
+    assert config["output_class_mapping"] == {"person": 1, "car": 2}
     job = store.insert(
         "jobs",
         {
@@ -329,7 +342,11 @@ def test_legacy_taxonomy_alias_cannot_override_custom_person_car_definitions(cli
             "created_at": now(),
         },
     )
-    with pytest.raises(ValueError, match="Custom class training"):
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("A legacy queued config must never override the frozen custom definitions")
+
+    with pytest.raises(ValueError, match="class definitions.*changed"):
         training.run_training(
             store, run["id"], lambda *_: None, lambda: False, trainer_factory=unexpected
         )

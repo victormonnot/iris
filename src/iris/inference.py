@@ -10,6 +10,7 @@ from PIL import Image
 from iris.comparison_replay import comparison_replay
 from iris.media import _pixel_hash
 from iris.models import TorchvisionDetector, catalog, get_spec
+from iris.prediction_taxonomy import output_contract, validate_output_labels
 from iris.store import Store, new_id, now
 from iris.tiling import (
     MAX_TILES_PER_FRAME,
@@ -214,6 +215,13 @@ def create_comparison(
         "lanes": plan["lanes"],
         "work": {key: value for key, value in plan.items() if key not in {"inference", "lanes"}},
     }
+    contracts = {model_id: output_contract(available[model_id]) for model_id in model_ids}
+    if any(
+        contract["taxonomy_id"] not in {"coco-2017-v1", "iris-objects-v1"}
+        for contract in contracts.values()
+    ):
+        config.update(taxonomy="model-specific-v1", model_class_contracts=contracts)
+        config.pop("class_mapping")
     # Publish the frozen input selection and its queue entry together. A worker
     # can never claim a job whose comparison has not been committed yet.
     with jobs.guard, store.connect() as conn:
@@ -361,6 +369,13 @@ def run_comparison(
     if "work" in config and work != config["work"]:
         raise ValueError("The saved inference plan no longer matches the selected frames")
     total = len(frame_ids) * len(lanes)
+    contracts = config.get("model_class_contracts")
+    if contracts is not None:
+        if not isinstance(contracts, dict) or set(contracts) != set(model_ids):
+            raise ValueError("Saved comparison class definitions do not match its models")
+        for model_id in model_ids:
+            if output_contract(get_spec(model_id, store.root)) != contracts[model_id]:
+                raise ValueError("Checkpoint class definitions changed since comparison was queued")
     for model_id in model_ids:
         if cancelled():
             result["cancelled"] = True
@@ -393,6 +408,8 @@ def run_comparison(
                     "protocol": config["protocol"],
                     "inference": {"variant": variant},
                 }
+                if contracts is not None:
+                    metadata["class_contract"] = contracts[model_id]
                 if variant == "tiled":
                     metadata["inference"].update(
                         algorithm=inference["algorithm"],
@@ -462,6 +479,8 @@ def run_comparison(
                             )
                     elapsed_ms = max(0, time.perf_counter() - started - progress_overhead) * 1000
                     _validate_prediction(prediction, frame)
+                    if contracts is not None:
+                        validate_output_labels(prediction["detections"], contracts[model_id])
                     if cancelled():
                         raise TiledInferenceCancelled()
                     store.insert(

@@ -223,6 +223,7 @@ def structural_trainer(tmp_path, monkeypatch):
             self.zero_loss = False
 
         def forward(self, images, targets):
+            self.last_targets = targets
             loss = sum(
                 (parameter - 0.25).square().sum()
                 for name, parameter in self.named_parameters()
@@ -234,9 +235,21 @@ def structural_trainer(tmp_path, monkeypatch):
                 loss = loss * 0
             return {"fixture_loss": loss}
 
-    def make(scope="prediction_head_only", *, origin="trained", alter=None):
+    def make(
+        scope="prediction_head_only",
+        *,
+        origin="trained",
+        alter=None,
+        contract=None,
+        parent_contract=None,
+    ):
         def detector(*args, **kwargs):
-            model = SyntheticDetector(3 if origin == "trained" else 91)
+            classes = (
+                len((parent_contract or contract)["class_mapping"]) + 1
+                if (parent_contract or contract)
+                else 3
+            )
+            model = SyntheticDetector(classes if origin == "trained" else 91)
             if alter:
                 alter(model)
             return SimpleNamespace(
@@ -246,7 +259,7 @@ def structural_trainer(tmp_path, monkeypatch):
                     "runtime": "tiny structural fixture",
                     "native_filtering": {"rpn": {"score_threshold": model.rpn.score_thresh}},
                 },
-                spec={"origin": origin},
+                spec={"origin": origin, **(parent_contract or contract or {})},
                 functional=torchvision.transforms.functional,
             )
 
@@ -260,6 +273,7 @@ def structural_trainer(tmp_path, monkeypatch):
             "learning_rate": 0.01,
             "momentum": 0.9,
             "weight_decay": 0.0005,
+            **(contract or {}),
         }
         return training._HeadTrainer(tmp_path, "fixture", config)
 

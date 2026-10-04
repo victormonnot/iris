@@ -12,11 +12,26 @@ import importlib.metadata
 import io
 import math
 
+from iris.dataset_manifest import taxonomy_mappings
 from iris.models import COCO_CATEGORIES
+from iris.taxonomies import TAXONOMY
 
 PROTOCOL_ID = "coco-bbox-iris-v1"
 CLASS_IDS = {"person": 1, "car": 3}
 MAX_DETECTIONS = 100
+GENERIC_PROTOCOL_ID = "coco-bbox-iris-v3"
+
+
+def _class_contract(taxonomy=None, class_mapping=None) -> tuple[dict, dict]:
+    snapshot = TAXONOMY if taxonomy is None else taxonomy
+    _, expected = taxonomy_mappings(snapshot)
+    if class_mapping is not None and (
+        class_mapping != expected
+        or not isinstance(class_mapping, dict)
+        or any(type(value) is not int for value in class_mapping.values())
+    ):
+        raise ValueError("Metric class mapping must match the frozen taxonomy output IDs")
+    return snapshot, expected
 
 
 def _number(value, description: str) -> float:
@@ -42,6 +57,8 @@ def get_protocol(
     iou_threshold: float = 0.5,
     *,
     max_detections: int = MAX_DETECTIONS,
+    taxonomy: dict | None = None,
+    class_mapping: dict | None = None,
 ) -> dict:
     """Return the serializable metric definition, including the installed engine version."""
     confidence = _number(confidence_threshold, "Confidence threshold")
@@ -51,6 +68,7 @@ def get_protocol(
     if not 0 < iou <= 1:
         raise ValueError("IoU threshold must be greater than 0 and at most 1")
     limit = _prediction_limit(max_detections)
+    snapshot, classes = _class_contract(taxonomy, class_mapping)
     protocol = {
         "id": PROTOCOL_ID,
         "engine": "pycocotools.COCOeval",
@@ -105,6 +123,30 @@ def get_protocol(
                 "Metrics have no object-size breakdown or uncertainty estimate.",
             ],
         )
+    if snapshot["id"] != TAXONOMY["id"]:
+        protocol.pop("native_max_detections_per_image", None)
+        protocol.update(
+            id=GENERIC_PROTOCOL_ID,
+            taxonomy_id=snapshot["id"],
+            taxonomy=snapshot,
+            classes=classes,
+            max_saved_detections_per_image=limit,
+            native_max_detections_per_call=MAX_DETECTIONS,
+            limitations=[
+                "All frozen dataset classes are evaluated; explicitly marked unmapped official "
+                "COCO detections are counted as ignored.",
+                "All reviewed boxes are ordinary non-crowd objects; "
+                "no ignored areas are supported.",
+                "Each run scores its final original-image predictions after detector filtering "
+                "and any recorded tile merging; discarded predictions cannot be recovered.",
+                "COCO AP keeps maxDets=100. Operating-point counts use every saved prediction "
+                "above threshold, including merged outputs beyond that AP limit.",
+                "Metrics have no object-size breakdown or uncertainty estimate.",
+            ],
+        )
+        protocol["operating_point"]["aggregation"] = (
+            "micro across frames and all frozen dataset classes"
+        )
     return protocol
 
 
@@ -122,7 +164,12 @@ def _validate(
     predictions: list[dict],
     *,
     max_detections: int = MAX_DETECTIONS,
+    taxonomy: dict | None = None,
+    class_mapping: dict | None = None,
 ) -> tuple[list[dict], int]:
+    snapshot, classes = _class_contract(taxonomy, class_mapping)
+    legacy = snapshot["id"] == TAXONOMY["id"]
+    native_ids = {item.get("coco_id") for item in snapshot["classes"]}
     limit = _prediction_limit(max_detections)
     if not isinstance(frames, list) or not frames:
         raise ValueError("Evaluation requires at least one reviewed frame")
@@ -144,9 +191,9 @@ def _validate(
             if (
                 not isinstance(item, dict)
                 or not isinstance(item.get("label"), str)
-                or item["label"] not in CLASS_IDS
+                or item["label"] not in classes
             ):
-                raise ValueError("Ground truth must use the person/car project taxonomy")
+                raise ValueError("Ground truth must use the frozen project taxonomy")
             if item.get("iscrowd", 0) != 0 or item.get("ignore", 0) != 0:
                 raise ValueError("Crowd and ignored ground-truth boxes are unsupported")
             boxes.append({"label": item["label"], "box": _box(item.get("box"), width, height)})
@@ -175,18 +222,36 @@ def _validate(
             if not isinstance(item, dict):
                 raise ValueError("Every detection must be an object")
             category = item.get("label_id")
-            if (
+            ignored_native = not legacy and item.get("ignored") is True
+            if legacy or ignored_native:
+                if (
+                    type(category) is not int
+                    or not 0 < category < len(COCO_CATEGORIES)
+                    or COCO_CATEGORIES[category] == "N/A"
+                    or item.get("label") != COCO_CATEGORIES[category]
+                ):
+                    raise ValueError("Detection class ID/name must use the canonical COCO taxonomy")
+                if ignored_native and (
+                    item.get("taxonomy_id") != "coco-2017-v1"
+                    or type(item.get("native_label_id")) is not int
+                    or item["native_label_id"] != category
+                    or category in native_ids
+                    or None in native_ids
+                ):
+                    raise ValueError("Ignored detection must be an unmapped official COCO class")
+            elif (
                 type(category) is not int
-                or not 0 < category < len(COCO_CATEGORIES)
-                or COCO_CATEGORIES[category] == "N/A"
-                or item.get("label") != COCO_CATEGORIES[category]
+                or not isinstance(item.get("label"), str)
+                or classes.get(item["label"]) != category
+                or item.get("taxonomy_id", snapshot["id"]) != snapshot["id"]
+                or item.get("ignored", False) is not False
             ):
-                raise ValueError("Detection class ID/name must use the canonical COCO taxonomy")
+                raise ValueError("Detection class ID/name must match the frozen taxonomy mapping")
             box = _box(item.get("box"), frame["width"], frame["height"])
             score = _number(item.get("score"), "Detection score")
             if not 0 <= score <= 1:
                 raise ValueError("Detection scores must be between 0 and 1")
-            if category not in CLASS_IDS.values():
+            if ignored_native or (legacy and category not in classes.values()):
                 ignored += 1
                 continue
             frame["detections"].append(
@@ -205,13 +270,13 @@ def _xywh(box: list[float]) -> list[float]:
     return [box[0], box[1], box[2] - box[0], box[3] - box[1]]
 
 
-def _average_precision(frames: list[dict]) -> dict:
+def _average_precision(frames: list[dict], classes: dict = CLASS_IDS) -> dict:
     import numpy as np
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
 
     images, ground_truth, detections = [], [], []
-    categories = [{"id": identifier, "name": label} for label, identifier in CLASS_IDS.items()]
+    categories = [{"id": identifier, "name": label} for label, identifier in classes.items()]
     for image_id, frame in enumerate(frames, 1):
         images.append({"id": image_id, "width": frame["width"], "height": frame["height"]})
         for target, source in ((ground_truth, frame["boxes"]), (detections, frame["detections"])):
@@ -220,7 +285,7 @@ def _average_precision(frames: list[dict]) -> dict:
                 annotation = {
                     "id": len(target) + 1,
                     "image_id": image_id,
-                    "category_id": CLASS_IDS[item["label"]],
+                    "category_id": classes[item["label"]],
                     "bbox": box,
                     "area": box[2] * box[3],
                     "iscrowd": 0,
@@ -237,7 +302,7 @@ def _average_precision(frames: list[dict]) -> dict:
             obj.createIndex()
         evaluator = COCOeval(reference, predicted, "bbox")
         evaluator.params.imgIds = [item["id"] for item in images]
-        evaluator.params.catIds = list(CLASS_IDS.values())
+        evaluator.params.catIds = list(classes.values())
         evaluator.params.iouThrs = np.linspace(0.5, 0.95, 10)
         evaluator.params.recThrs = np.linspace(0.0, 1.0, 101)
         evaluator.params.areaRng = [[0, 1e10]]
@@ -257,7 +322,7 @@ def _average_precision(frames: list[dict]) -> dict:
         "map75": mean(precision[5]),
         "per_class": {},
     }
-    for index, label in enumerate(CLASS_IDS):
+    for index, label in enumerate(classes):
         values = precision[:, :, index]
         result["per_class"][label] = {
             "ap": mean(values),
@@ -293,17 +358,32 @@ def evaluate_predictions(
     confidence_threshold: float = 0.5,
     iou_threshold: float = 0.5,
     max_detections: int = MAX_DETECTIONS,
+    taxonomy: dict | None = None,
+    class_mapping: dict | None = None,
 ) -> dict:
     """Score complete saved predictions against a frozen, reviewed frame list.
 
     Frame and detection order are preserved, making equal-score results repeatable
     and error-example indices traceable to the unchanged source artifacts.
     """
-    protocol = get_protocol(confidence_threshold, iou_threshold, max_detections=max_detections)
-    normalized, ignored = _validate(frames, predictions, max_detections=max_detections)
+    snapshot, classes = _class_contract(taxonomy, class_mapping)
+    protocol = get_protocol(
+        confidence_threshold,
+        iou_threshold,
+        max_detections=max_detections,
+        taxonomy=snapshot,
+        class_mapping=classes,
+    )
+    normalized, ignored = _validate(
+        frames,
+        predictions,
+        max_detections=max_detections,
+        taxonomy=snapshot,
+        class_mapping=classes,
+    )
     confidence, threshold = protocol["confidence_threshold"], protocol["iou_threshold"]
-    ap = _average_precision(normalized)
-    totals = {label: {"tp": 0, "fp": 0, "fn": 0, "support": 0} for label in CLASS_IDS}
+    ap = _average_precision(normalized, classes)
+    totals = {label: {"tp": 0, "fp": 0, "fn": 0, "support": 0} for label in classes}
     details = []
     for frame in normalized:
         matched, matches, false_positives = set(), [], []
@@ -362,10 +442,14 @@ def evaluate_predictions(
     evaluated_classes = [label for label, counts in totals.items() if counts["support"]]
     warnings = []
     if ignored:
-        warnings.append(f"Ignored {ignored} detections from valid COCO classes outside person/car.")
+        warnings.append(
+            f"Ignored {ignored} detections from valid COCO classes outside person/car."
+            if snapshot["id"] == TAXONOMY["id"]
+            else f"Ignored {ignored} official COCO detections outside the frozen class mapping."
+        )
     if not evaluated_classes:
         warnings.append("No ground-truth objects: AP and recall are undefined, not perfect scores.")
-    elif len(evaluated_classes) < len(CLASS_IDS):
+    elif len(evaluated_classes) < len(classes):
         warnings.append("Classes without ground-truth objects are excluded from macro AP.")
     return {
         "protocol": protocol,

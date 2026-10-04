@@ -5,12 +5,15 @@ import math
 import time
 from collections.abc import Callable
 
-from iris.datasets import CLASS_MAPPING, MAX_FRAMES, load_manifest
+from iris.dataset_manifest import manifest_mappings
+from iris.datasets import MAX_FRAMES, load_manifest
 from iris.inference import PROTOCOL as TIMING_PROTOCOL
 from iris.inference import TILED_PROTOCOL, _validate_prediction, _work_plan, comparison_lanes
-from iris.metrics import evaluate_predictions, get_protocol
-from iris.models import TorchvisionDetector, catalog
+from iris.metrics import _class_contract, _validate, evaluate_predictions, get_protocol
+from iris.model_taxonomy import class_contract
+from iris.models import COCO_CATEGORIES, TorchvisionDetector, catalog
 from iris.store import DEFAULT_PROJECT_ID, Store, _decode, new_id, now
+from iris.taxonomies import TAXONOMY
 from iris.tiling import (
     TiledInferenceCancelled,
     tile_boxes,
@@ -90,14 +93,6 @@ def _heldout_frames(store: Store, dataset_id: str, split: str) -> tuple[dict, li
     if dataset is None:
         raise ValueError("Dataset version not found")
     manifest = load_manifest(store, dataset_id)
-    if (
-        manifest["taxonomy"]["id"] != "iris-objects-v1"
-        or manifest["class_mapping"] != CLASS_MAPPING
-    ):
-        raise ValueError(
-            "Evaluation with custom class definitions is not available yet. "
-            "Use an original Person / Car release; custom releases can be exported as COCO."
-        )
     frames = [frame for frame in manifest["frames"] if frame["split"] == split]
     if not 1 <= len(frames) <= MAX_FRAMES:
         raise ValueError(f"Choose a dataset with 1 to {MAX_FRAMES} images in its {split} split")
@@ -113,14 +108,12 @@ def _model_lineage(model: dict, available: dict, frames: list[dict]) -> list[dic
         if identifier in visited:
             raise ValueError("Checkpoint ancestry contains a cycle")
         visited.add(identifier)
-        classes = {item["id"]: item["name"] for item in current.get("classes", [])}
-        if classes.get(1) != "person" or classes.get(3) != "car":
-            raise ValueError("Checkpoint taxonomy must expose COCO person=1 and car=3")
+        _model_contract(current)
         origin = current.get("origin")
         if origin == "official":
             lineage.append({"model_id": identifier, "origin": origin})
             break
-        if origin != "trained" or current.get("taxonomy_id") != "iris-objects-v1":
+        if origin != "trained":
             raise ValueError("Checkpoint has unknown training provenance or taxonomy")
         provenance = current.get("provenance", {})
         groups = provenance.get("training_scene_groups")
@@ -159,13 +152,60 @@ def _model_lineage(model: dict, available: dict, frames: list[dict]) -> list[dic
     return lineage
 
 
-def _ready_models(store: Store, model_ids: list[str], frames: list[dict]) -> tuple[dict, dict]:
+def _model_contract(model: dict) -> dict:
+    classes = {item["id"]: item["name"] for item in model.get("classes", [])}
+    if model.get("origin") == "official":
+        if classes.get(1) != "person" or classes.get(3) != "car":
+            raise ValueError("Official checkpoint taxonomy must expose canonical COCO classes")
+        return {"taxonomy_id": "coco-2017-v1"}
+    if model.get("origin") != "trained":
+        raise ValueError("Checkpoint has unknown training provenance or taxonomy")
+    contract = class_contract(model)
+    expected = {value: key for key, value in contract["output_class_mapping"].items()}
+    if ("taxonomy" in model and classes != expected) or any(
+        classes.get(value) != key for value, key in expected.items()
+    ):
+        raise ValueError("Checkpoint taxonomy classes differ from its frozen output mapping")
+    return contract
+
+
+def evaluation_classes(config: dict) -> tuple[dict, dict]:
+    """Read a saved scoring namespace; historical records retain the builtin contract."""
+    if not isinstance(config.get("class_mapping"), dict) or (
+        "taxonomy" in config and not isinstance(config["taxonomy"], dict)
+    ):
+        raise ValueError("Saved evaluation is missing its frozen class definition or mapping")
+    taxonomy, mapping = _class_contract(config.get("taxonomy"), config["class_mapping"])
+    if config.get("taxonomy_id") != taxonomy["id"]:
+        raise ValueError("Saved evaluation taxonomy ID differs from its frozen class definitions")
+    return taxonomy, mapping
+
+
+def _dataset_classes(store: Store, dataset_id: str) -> tuple[dict, dict]:
+    taxonomy, _, mapping = manifest_mappings(load_manifest(store, dataset_id))
+    return taxonomy, mapping
+
+
+def _ready_models(
+    store: Store, model_ids: list[str], frames: list[dict], taxonomy: dict = TAXONOMY
+) -> tuple[dict, dict]:
     available = {model["id"]: model for model in catalog(store.root)}
     selected, lineages = {}, {}
     for identifier in model_ids:
         model = available.get(identifier)
         if model is None:
             raise ValueError(f"Unknown detector: {identifier}")
+        contract = _model_contract(model)
+        if model.get("origin") == "trained":
+            if contract["taxonomy"] != taxonomy:
+                raise ValueError(
+                    "Checkpoint taxonomy must exactly match the frozen dataset class definitions"
+                )
+        elif any(type(item.get("coco_id")) is not int for item in taxonomy["classes"]):
+            raise ValueError(
+                "Official COCO evaluation requires an explicit COCO mapping for every frozen "
+                "dataset class. Train a compatible custom checkpoint for unmapped classes."
+            )
         if model.get("status") != "ready":
             raise RuntimeError(model.get("reason") or f"Model {identifier} is not ready")
         digest = model.get("weight_sha256")
@@ -191,6 +231,13 @@ def _complete_models(store: Store, evaluation: dict) -> list[dict]:
     ):
         raise ValueError("Evaluation must finish successfully for every model first")
     _, frames = _heldout_frames(store, evaluation["dataset_id"], evaluation["split"])
+    taxonomy, mapping = _dataset_classes(store, evaluation["dataset_id"])
+    if evaluation_classes(evaluation["config"]) != (taxonomy, mapping):
+        raise ValueError("Saved evaluation class definitions differ from its frozen dataset")
+    if taxonomy != TAXONOMY and set(evaluation["config"].get("model_class_contracts", {})) != set(
+        evaluation["model_ids"]
+    ):
+        raise ValueError("Saved evaluation checkpoint class definitions are incomplete")
     inference = evaluation_inference(evaluation)
     legacy = "inference" not in evaluation["config"]
     for row in rows:
@@ -202,6 +249,15 @@ def _complete_models(store: Store, evaluation: dict) -> list[dict]:
         recorded = metadata.get("inference", {"variant": "full"} if legacy else None)
         if (
             recorded != expected
+            or (
+                "model_class_contracts" in evaluation["config"]
+                and (
+                    metadata.get("class_contract")
+                    != evaluation["config"]["model_class_contracts"].get(row["model_id"])
+                    or metadata.get("evaluation_taxonomy") != taxonomy
+                    or metadata.get("evaluation_class_mapping") != mapping
+                )
+            )
             or metadata.get("model_id") != row["model_id"]
             or metadata.get("weight_sha256")
             != evaluation["config"]["model_hashes"][row["model_id"]]
@@ -237,6 +293,11 @@ def _validation_audit(
             raise ValueError(
                 "A test audit must retain validation checkpoints and evaluation settings"
             )
+    if evaluation_classes(previous["config"]) != evaluation_classes(config) or (
+        "model_class_contracts" in previous["config"]
+        and previous["config"]["model_class_contracts"] != config.get("model_class_contracts")
+    ):
+        raise ValueError("A test audit must retain validation class definitions and mappings")
     inference = evaluation_inference({"model_ids": model_ids, "config": config})
     previous_inference = evaluation_inference(previous)
     if (
@@ -298,7 +359,8 @@ def _prepare_evaluation(
         inference.update(algorithm="iris-tiling-v1", tiling=tiling)
     lanes = evaluation_lanes({"model_ids": model_ids, "config": {"inference": inference}})
     work = _evaluation_work(frames, lanes, inference)
-    selected, lineages = _ready_models(store, model_ids, frames)
+    taxonomy, mapping = _dataset_classes(store, dataset_id)
+    selected, lineages = _ready_models(store, model_ids, frames, taxonomy)
     config = {
         "dataset_name": dataset["name"],
         "dataset_manifest_sha256": dataset["manifest_sha256"],
@@ -313,12 +375,18 @@ def _prepare_evaluation(
         "iou_threshold": float(iou_threshold),
         "device": device,
         "warmup": 1,
-        "taxonomy_id": "iris-objects-v1",
-        "class_mapping": {"person": 1, "car": 3},
+        "taxonomy_id": taxonomy["id"],
+        "taxonomy": taxonomy,
+        "class_mapping": mapping,
+        "model_class_contracts": {
+            identifier: _model_contract(selected[identifier]) for identifier in model_ids
+        },
         "protocol": get_protocol(
             confidence_threshold=confidence_threshold,
             iou_threshold=iou_threshold,
             max_detections=100 if inference_mode == "full" else 300,
+            taxonomy=taxonomy,
+            class_mapping=mapping,
         ),
         "timing_protocol": _timing_protocol(inference_mode),
         "inference": inference,
@@ -427,7 +495,9 @@ def evaluation_detail(store: Store, evaluation_id: str) -> dict:
     if row is None:
         raise KeyError(evaluation_id)
     dataset, frames = _heldout_frames(store, row["dataset_id"], row["split"])
-    if dataset["manifest_sha256"] != row["config"]["dataset_manifest_sha256"]:
+    if dataset["manifest_sha256"] != row["config"]["dataset_manifest_sha256"] or _dataset_classes(
+        store, row["dataset_id"]
+    ) != evaluation_classes(row["config"]):
         raise ValueError("Dataset changed since evaluation was queued")
     return {
         **evaluation_summary(store, row),
@@ -442,6 +512,79 @@ def evaluation_detail(store: Store, evaluation_id: str) -> dict:
         "models": store.list("evaluation_models", evaluation_id=evaluation_id),
         "predictions": store.list("evaluation_predictions", evaluation_id=evaluation_id),
     }
+
+
+def validate_evaluation_detections(detections: list[dict], contract: dict, taxonomy: dict) -> None:
+    """Check source and target namespaces without consulting the current model registry."""
+    if taxonomy["id"] == TAXONOMY["id"]:
+        return
+    official = contract == {"taxonomy_id": "coco-2017-v1"}
+    if not official and class_contract(contract)["taxonomy"] != taxonomy:
+        raise ValueError("Saved checkpoint class definitions differ from the evaluated taxonomy")
+    by_label = {item["id"]: item for item in taxonomy["classes"]}
+    for detection in detections:
+        if official and detection.get("ignored") is True:
+            continue  # The metric validator verifies canonical COCO identity and exclusion.
+        label = detection.get("label")
+        if not isinstance(label, str) or label not in by_label:
+            raise ValueError("Saved prediction has no class in the frozen dataset")
+        native = by_label[label].get("coco_id") if official else contract["class_mapping"][label]
+        if (
+            detection.get("taxonomy_id") != taxonomy["id"]
+            or type(detection.get("native_label_id")) is not int
+            or detection["native_label_id"] != native
+            or detection.get("ignored", False) is not False
+        ):
+            raise ValueError(
+                "Saved prediction class mapping disagrees with its checkpoint namespace"
+            )
+
+
+def _normalize_predictions(
+    prediction: dict, frame: dict, contract: dict, taxonomy: dict, mapping: dict
+) -> None:
+    official = contract == {"taxonomy_id": "coco-2017-v1"}
+    custom = taxonomy["id"] != TAXONOMY["id"]
+    by_native = {item.get("coco_id"): item["id"] for item in taxonomy["classes"]}
+
+    def normalize(detections, width, height, limit):
+        source_taxonomy = TAXONOMY if official else taxonomy
+        _validate(
+            [{"frame_id": "source", "width": width, "height": height, "boxes": []}],
+            [{"frame_id": "source", "detections": detections}],
+            max_detections=limit,
+            taxonomy=source_taxonomy,
+        )
+        if not custom:
+            return detections
+        if official:
+            normalized = []
+            for detection in detections:
+                native = detection["label_id"]
+                label = by_native.get(native)
+                normalized.append(
+                    {
+                        **detection,
+                        "label": label or COCO_CATEGORIES[native],
+                        "label_id": mapping[label] if label else native,
+                        "native_label_id": native,
+                        "taxonomy_id": taxonomy["id"] if label else "coco-2017-v1",
+                        **({} if label else {"ignored": True}),
+                    }
+                )
+        else:
+            normalized = detections
+        validate_evaluation_detections(normalized, contract, taxonomy)
+        return normalized
+
+    prediction["detections"] = normalize(
+        prediction["detections"],
+        frame["width"],
+        frame["height"],
+        300 if "tiles" in prediction.get("metadata", {}) else 100,
+    )
+    for tile in prediction.get("metadata", {}).get("tiles", []):
+        tile["detections"] = normalize(tile["detections"], *tile["input_size"], 100)
 
 
 def _publish_metrics(
@@ -507,7 +650,15 @@ def run_evaluation(
         or {frame["frame_id"]: frame["sha256"] for frame in frames} != config["frame_hashes"]
     ):
         raise ValueError("Dataset changed since evaluation was queued")
-    selected, lineages = _ready_models(store, model_ids, frames)
+    taxonomy, mapping = _dataset_classes(store, row["dataset_id"])
+    if evaluation_classes(config) != (taxonomy, mapping):
+        raise ValueError("Evaluation class definitions differ from the frozen dataset")
+    selected, lineages = _ready_models(store, model_ids, frames, taxonomy)
+    contracts = {identifier: _model_contract(selected[identifier]) for identifier in model_ids}
+    if (taxonomy != TAXONOMY or "model_class_contracts" in config) and contracts != config.get(
+        "model_class_contracts"
+    ):
+        raise ValueError("Checkpoint class definitions changed since evaluation was queued")
     if {identifier: selected[identifier]["weight_sha256"] for identifier in model_ids} != config[
         "model_hashes"
     ] or lineages != config["model_lineages"]:
@@ -520,6 +671,8 @@ def run_evaluation(
             confidence_threshold=config["confidence_threshold"],
             iou_threshold=config["iou_threshold"],
             max_detections=maximum,
+            taxonomy=taxonomy,
+            class_mapping=mapping,
         )
         != config["protocol"]
     ):
@@ -543,6 +696,13 @@ def run_evaluation(
         try:
             if detector.metadata.get("weight_sha256") != config["model_hashes"][model_id]:
                 raise ValueError("Checkpoint changed since evaluation was queued")
+            if (
+                selected[model_id]["origin"] == "trained"
+                and class_contract(detector.metadata) != contracts[model_id]
+            ):
+                raise ValueError(
+                    "Loaded checkpoint class definitions differ from the frozen evaluation"
+                )
             model_lanes = [lane for lane in lanes if lane["model_id"] == model_id]
             for lane_index, lane in enumerate(model_lanes):
                 if cancelled():
@@ -561,6 +721,9 @@ def run_evaluation(
                             "model_name": config["model_names"][model_id],
                             "protocol": config["protocol"],
                             "lineage": lineages[model_id],
+                            "class_contract": contracts[model_id],
+                            "evaluation_taxonomy": taxonomy,
+                            "evaluation_class_mapping": mapping,
                             "inference": saved_inference,
                             "timing_protocol": _timing_protocol(variant),
                         },
@@ -625,6 +788,9 @@ def run_evaluation(
                             }
                     elapsed = max(0, time.perf_counter() - started - progress_overhead) * 1000
                     _validate_prediction(prediction, frame)
+                    _normalize_predictions(
+                        prediction, frame, contracts[model_id], taxonomy, mapping
+                    )
                     if cancelled():
                         raise TiledInferenceCancelled()
                     prediction_row = store.insert(
@@ -660,6 +826,8 @@ def run_evaluation(
                     confidence_threshold=config["confidence_threshold"],
                     iou_threshold=config["iou_threshold"],
                     max_detections=maximum,
+                    taxonomy=taxonomy,
+                    class_mapping=mapping,
                 )
                 if cancelled():
                     raise TiledInferenceCancelled()
@@ -736,15 +904,25 @@ def promote_reference(
     selected = matches[0]
     selected_variant = selected.get("variant", "full")
     dataset, frames = _heldout_frames(store, row["dataset_id"], "val")
-    available, lineages = _ready_models(store, [model_id], frames)
+    taxonomy, mapping = _dataset_classes(store, row["dataset_id"])
+    available, lineages = _ready_models(store, [model_id], frames, taxonomy)
     if (
         dataset["manifest_sha256"] != row["config"]["dataset_manifest_sha256"]
         or available[model_id]["weight_sha256"] != row["config"]["model_hashes"][model_id]
         or lineages[model_id] != row["config"]["model_lineages"][model_id]
+        or (
+            "model_class_contracts" in row["config"]
+            and _model_contract(available[model_id])
+            != row["config"]["model_class_contracts"][model_id]
+        )
     ):
         raise ValueError("Dataset, checkpoint or training provenance changed since evaluation")
     metadata = {
         "project_id": dataset["project_id"],
+        "taxonomy": taxonomy,
+        "taxonomy_id": taxonomy["id"],
+        "class_mapping": mapping,
+        "class_contract": _model_contract(available[model_id]),
         "model_name": row["config"]["model_names"][model_id],
         "weight_sha256": row["config"]["model_hashes"][model_id],
         "dataset_id": row["dataset_id"],
