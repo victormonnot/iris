@@ -1,0 +1,154 @@
+/* Studio foundations. Local font distributions and OFL licences in fonts/. */
+@font-face {
+  font-family:"IBM Plex Sans";
+  font-style:normal;
+  font-weight:400 500;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-sans-400-500-latin-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family:"IBM Plex Sans";
+  font-style:normal;
+  font-weight:400 500;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-sans-400-500-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family:"IBM Plex Mono";
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family:"IBM Plex Mono";
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family:"IBM Plex Mono";
+  font-style:normal;
+  font-weight:500;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family:"IBM Plex Mono";
+  font-style:normal;
+  font-weight:500;
+  font-display:swap;
+  src:url("/static/fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family:"Marcellus";
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+  src:url("/static/fonts/marcellus-400-latin-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family:"Marcellus";
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+  src:url("/static/fonts/marcellus-400-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Keep colors here so every workspace and native dialog shares an appearance. */
+:root {
+  color-scheme: light;
+  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Marcellus", Georgia, serif;
+  --radius: 2px;
+  --radius-sm: 2px;
+  --page: #f4f2eb;
+  --surface: #fcfbf7;
+  --surface-raised: #f8f7f1;
+  --field: #eae6da;
+  --hover: #eae6da;
+  --ink: #29352d;
+  --muted: #5e685e;
+  --line: #cbcfc3;
+  --control-line: #74806e;
+  --accent: #74634c;
+  --accent-strong: #5c4d38;
+  --accent-soft: #eae3d6;
+  --on-accent: #fcfbf7;
+  --primary: #c7b79b;
+  --primary-hover: #bbaa8c;
+  --on-primary: #302d27;
+  --success: #44653d;
+  --success-soft: #e6ede1;
+  --warning: #805b25;
+  --warning-soft: #f1e8d6;
+  --danger: #9b443b;
+  --danger-soft: #f6e9e3;
+  --info: #38617a;
+  --info-soft: #e4eced;
+  --canvas: #dddcd5;
+  --canvas-ink: #41483f;
+  --canvas-muted: #555b52;
+  --focus: #74634c;
+  --backdrop: #1c211d80;
+  /* Image overlays need their own opaque contrast, independent of the photo. */
+  --overlay-bg: #202820ed;
+  --overlay-ink: #f4f2eb;
+  --annotation: #96c9b0;
+  --annotation-fill: #96c9b01f;
+  --annotation-selected: #c7b79b;
+  --annotation-selected-fill: #c7b79b24;
+  --annotation-proposal: #e7ad66;
+  --annotation-edge: #26332d;
+  /* Compatibility aliases while individual workflows are refined. */
+  --green: var(--accent);
+  --green-dark: var(--accent-strong);
+  --pale: var(--field);
+  --white: var(--surface);
+  --orange: var(--warning);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #1c1e1c;
+  --surface: #252923;
+  --surface-raised: #2b3028;
+  --field: #32372e;
+  --hover: #3c4236;
+  --ink: #eeeae0;
+  --muted: #b0b9ab;
+  --line: #434b40;
+  --control-line: #7d8875;
+  --accent: #e2c280;
+  --accent-strong: #eed6a5;
+  --accent-soft: #3b3629;
+  --on-accent: #202218;
+  --primary: #e2c280;
+  --primary-hover: #eed6a5;
+  --on-primary: #202218;
+  --success: #b7caa8;
+  --success-soft: #2c3828;
+  --warning: #e0bd80;
+  --warning-soft: #3d3324;
+  --danger: #f0aca0;
+  --danger-soft: #412d29;
+  --info: #a7c9da;
+  --info-soft: #283840;
+  --canvas: #111713;
+  --canvas-ink: #eeeae0;
+  --canvas-muted: #b0b9ab;
+  --focus: #a7c9da;
+  --backdrop: #080d0bc4;
+  --annotation-selected: #e2c280;
+  --annotation-selected-fill: #e2c28024;
+}

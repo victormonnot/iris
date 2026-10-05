@@ -9,7 +9,7 @@
   max-width: 440px;
 }
 .experiments-search input {
-  background: #fff;
+  background: var(--field);
   padding-left: 16px;
 }
 .experiments-toolbar > .button {
@@ -53,8 +53,8 @@
   text-align: left;
   padding: 16px;
   border: 1px solid transparent;
-  border-radius: 9px;
-  background: #edf1ec;
+  border-radius: var(--radius);
+  background: var(--field);
   cursor: pointer;
   color: var(--ink);
   transition:
@@ -63,12 +63,11 @@
   overflow-wrap: anywhere;
 }
 .experiments-list-item:hover {
-  background: #e7eee5;
+  background: var(--hover);
 }
 .experiments-list-item.active {
-  background: #fff;
-  border-color: #8ca78d;
-  box-shadow: 0 3px 12px #23333006;
+  background: var(--surface);
+  border-color: var(--accent);
 }
 .experiments-list-item strong {
   font-size: 13px;
@@ -76,8 +75,8 @@
   font-weight: 600;
 }
 .experiments-list-meta {
-  color: #5e745f;
-  font-size: 9px;
+  color: var(--muted);
+  font-size: 11px;
   letter-spacing: 0.03em;
 }
 .experiments-list-dataset {
@@ -86,41 +85,41 @@
   color: var(--muted);
 }
 .experiments-list-foot {
-  font-size: 9px;
+  font-size: 11px;
   padding-top: 7px;
-  border-top: 1px solid #dfe7dc;
-  color: #778271;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
 }
 .experiments-reading {
   min-width: 0;
 }
 .experiments-report {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 .experiments-report-header {
   padding: 30px 30px 24px;
-  background: #f5f6ee;
-  border-bottom: 1px solid #e1e5d9;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
 }
 .experiments-kicker {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  color: #73806a;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .experiments-badge {
   display: inline-block;
-  background: #e8eddf;
-  border: 1px solid #dce3d2;
-  color: #526b45;
-  font-size: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 11px;
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 .experiments-report-header h2 {
@@ -133,7 +132,7 @@
 }
 .experiments-report-header > p {
   font-size: 12px;
-  color: #75806e;
+  color: var(--muted);
   overflow-wrap: anywhere;
   line-height: 1.7;
 }
@@ -145,7 +144,7 @@
   margin-top: 22px;
 }
 .experiments-report-actions .button {
-  background: #fff;
+  background: var(--surface);
 }
 .experiments-report h3 {
   font-size: 13px;
@@ -165,14 +164,14 @@
   overflow-wrap: anywhere;
 }
 .experiments-conclusion {
-  border-left: 3px solid #809e6f;
+  border-left: 3px solid var(--accent);
   padding: 13px 17px;
-  background: #f8faf5;
+  background: var(--field);
 }
 .experiments-caption {
   display: block;
-  color: #778271;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 11px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -181,7 +180,7 @@
 }
 .experiments-section {
   padding: 25px 30px;
-  border-top: 1px solid #ebeee6;
+  border-top: 1px solid var(--line);
 }
 .experiments-section > .field-hint {
   line-height: 1.8;
@@ -196,21 +195,21 @@
   gap: 9px;
 }
 .experiments-stage {
-  background: #f7f9f4;
+  background: var(--field);
   padding: 13px 11px;
-  border: 1px solid #e7ebdf;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   min-width: 0;
 }
 .experiments-stage-number {
-  color: #9bab8f;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   margin-right: 5px;
 }
 .experiments-stage-label {
-  font-size: 10px;
-  color: #5b7450;
+  font-size: 11px;
+  color: var(--muted);
 }
 .experiments-stage strong {
   display: block;
@@ -221,7 +220,7 @@
   overflow-wrap: anywhere;
 }
 .experiments-stage .experiments-caption {
-  font-size: 9px;
+  font-size: 11px;
 }
 .experiments-lane-key {
   display: grid;
@@ -231,16 +230,16 @@
 }
 .experiments-lane {
   padding-left: 12px;
-  border-left: 3px solid #92a487;
+  border-left: 3px solid var(--accent);
   min-width: 0;
 }
 .experiments-lane-1 {
-  border-color: #557d99;
+  border-color: var(--info);
 }
 .experiments-lane > span {
   display: block;
-  font-size: 9px;
-  color: #6f7f68;
+  font-size: 11px;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -261,13 +260,13 @@
 .experiments-metric {
   min-width: 0;
   padding: 15px 11px;
-  border: 1px solid #e3e9df;
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 .experiments-metric-label {
   display: block;
-  font-size: 10px;
-  color: #75836d;
+  font-size: 11px;
+  color: var(--muted);
 }
 .experiments-metric > strong {
   display: block;
@@ -279,12 +278,12 @@
 }
 .experiments-metric-delta {
   display: block;
-  font-size: 10px;
-  color: #61736a;
+  font-size: 11px;
+  color: var(--muted);
   line-height: 1.65;
 }
 .experiments-metric .experiments-caption {
-  font-size: 9px;
+  font-size: 11px;
   margin-top: 3px;
 }
 .experiments-table-wrap {
@@ -294,34 +293,34 @@
 .experiments-table-wrap table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .experiments-table-wrap th,
 .experiments-table-wrap td {
   padding: 11px 8px;
-  border-bottom: 1px solid #e7ebdf;
+  border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 .experiments-table-wrap th {
-  color: #6a7b62;
+  color: var(--muted);
   font-weight: 500;
 }
 .experiments-table-wrap th:first-child {
   text-align: left;
 }
 .experiments-table-wrap thead {
-  background: #f6f8f2;
+  background: var(--field);
 }
 .experiments-table-wrap tbody tr:nth-child(even) {
-  background: #fcfdf9;
+  background: var(--surface-raised);
 }
 .experiments-warnings:not(:empty) {
-  border-left: 2px solid #bca675;
+  border-left: 2px solid var(--warning);
   padding: 4px 12px;
   margin-top: 15px;
-  background: #fbf9f1;
+  background: var(--warning-soft);
 }
 .experiments-warnings p {
   line-height: 1.7;
@@ -329,12 +328,12 @@
 .experiments-empty-examples {
   padding: 24px;
   margin-top: 16px;
-  border: 1px dashed #dbe3d3;
-  color: #7d8875;
-  background: #fafcf7;
+  border: 1px dashed var(--control-line);
+  color: var(--muted);
+  background: var(--field);
   font-size: 12px;
   line-height: 1.8;
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .experiments-examples {
   display: grid;
@@ -364,10 +363,10 @@
   place-items: center;
   width: 21px;
   height: 21px;
-  background: #eef2e8;
-  color: #6e855c;
-  border-radius: 4px;
-  font-size: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
 }
 .experiments-example-panels {
   display: grid;
@@ -378,14 +377,14 @@
   grid-column: 1 / -1;
 }
 .experiments-example-lane {
-  font-size: 10px;
-  color: #6e7e68;
+  font-size: 11px;
+  color: var(--muted);
   margin-bottom: 7px;
 }
 .experiments-visual {
   position: relative;
-  background: #25372f;
-  border-radius: 5px;
+  background: var(--canvas);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .experiments-visual img,
@@ -411,26 +410,26 @@
   place-items: center;
   text-align: center;
   padding: 20px;
-  color: #c7d2bf;
+  color: var(--canvas-muted);
   font-size: 11px;
   line-height: 1.7;
 }
 .experiments-example-counts {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
-  color: #75836d;
+  color: var(--muted);
   margin-top: 9px;
 }
 .experiments-export {
   margin: 0 30px 28px;
   padding: 20px;
-  border: 1px solid #dfe7d7;
-  background: #f6f9f1;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  border-radius: var(--radius);
 }
 .experiments-export > div > p {
   font-size: 11px;
-  color: #75816d;
+  color: var(--muted);
   line-height: 1.7;
   margin-top: 5px;
 }
@@ -449,12 +448,12 @@
 }
 .experiments-provenance {
   padding: 18px 30px 24px;
-  border-top: 1px solid #ebeee6;
+  border-top: 1px solid var(--line);
   font-size: 11px;
 }
 .experiments-provenance summary {
   cursor: pointer;
-  color: #718267;
+  color: var(--muted);
 }
 .experiments-provenance > p {
   margin: 12px 0;
@@ -462,10 +461,10 @@
 .experiments-provenance pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.7;
-  background: #f6f8f2;
-  border-radius: 5px;
+  background: var(--field);
+  border-radius: var(--radius-sm);
   padding: 14px;
   max-height: 300px;
   overflow: auto;
@@ -481,10 +480,10 @@
   margin: 0 auto 23px;
   width: 60px;
   height: 67px;
-  border: 1px solid #b6c5aa;
-  border-radius: 5px 5px 18px 5px;
-  color: #7e986a;
-  background: #f2f6eb;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--accent);
+  background: var(--accent-soft);
   font-size: 20px;
   font-weight: 300;
 }
@@ -499,7 +498,7 @@
   margin: 0 auto 25px;
   font-size: 13px;
   line-height: 1.9;
-  color: #7a8572;
+  color: var(--muted);
 }
 .experiments-empty > .field-hint {
   display: block;
@@ -516,9 +515,9 @@
   width: 100%;
   resize: vertical;
   min-height: 86px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: #fff;
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
   color: var(--ink);
   padding: 12px 14px;
   font: inherit;
@@ -527,7 +526,7 @@
 }
 .experiments-compose textarea:focus-visible,
 .experiments-edit textarea:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .experiments-edit {
@@ -545,8 +544,8 @@
 .experiments-compose select:disabled,
 .experiments-edit input:disabled,
 .experiments-edit textarea:disabled {
-  background: #f2f5ee;
-  color: #8a9682;
+  background: var(--field);
+  color: var(--muted);
 }
 .experiments-example-picker,
 .experiments-measurement-picker {
@@ -574,22 +573,22 @@
   gap: 6px;
   padding: 7px;
   margin: 0;
-  border: 1px solid #e1e7da;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
   min-width: 0;
 }
 .experiments-picker-card.selected {
-  border-color: #6b8d57;
-  background: #f3f7ed;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .experiments-picker-card img {
   display: block;
   aspect-ratio: 16 / 10;
   object-fit: cover;
   width: 100%;
-  border-radius: 3px;
-  background: #e4ebdc;
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
 }
 .experiments-picker-card input {
   position: absolute;
@@ -600,17 +599,17 @@
   accent-color: var(--green);
 }
 .experiments-picker-card strong {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   font-weight: 500;
 }
 .experiments-picker-card .experiments-caption {
-  font-size: 9px;
+  font-size: 11px;
 }
 .experiments-picker-counts {
-  font-size: 9px;
-  color: #7f8976;
+  font-size: 11px;
+  color: var(--muted);
   line-height: 1.5;
 }
 .experiments-picker-filters {
@@ -636,16 +635,16 @@
   margin: 15px 0 8px;
 }
 .experiments-change {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  color: #5d7055;
+  color: var(--success);
 }
 .experiments-change-regressed,
 .experiments-parity.failed {
-  color: #a13e36;
+  color: var(--danger);
 }
 .experiments-change-mixed {
-  color: #856121;
+  color: var(--warning);
 }
 .experiments-sampling {
   display: grid;
@@ -668,8 +667,8 @@
 .experiments-target {
   min-width: 0;
   padding: 16px;
-  border: 1px solid #e1e7da;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 .experiments-target > p {
   margin-top: 8px;
@@ -677,7 +676,7 @@
 .experiments-parity {
   display: block;
   font-size: 11px;
-  color: #526b45;
+  color: var(--success);
   line-height: 1.7;
 }
 .experiments-measurement-choice {
@@ -685,14 +684,14 @@
   align-items: flex-start;
   gap: 11px;
   padding: 13px;
-  border: 1px solid #e1e7da;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
   min-width: 0;
 }
 .experiments-measurement-choice:has(input:checked) {
-  border-color: #6b8d57;
-  background: #f3f7ed;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .experiments-measurement-choice input {
   flex: 0 0 auto;

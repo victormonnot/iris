@@ -3,17 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
       content="IRIS — a local workbench to improve detectors with your images and videos."
     />
     <title>IRIS · Vision workbench</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <script src="/static/appearance.js"></script>
+    <link rel="stylesheet" href="/static/studio-tokens.css" />
     <link rel="stylesheet" href="/static/style.css" />
     <link rel="stylesheet" href="/static/experiments.css" />
     <link rel="stylesheet" href="/static/workspace-backup.css" />
     <link rel="stylesheet" href="/static/comparison-replay.css" />
+    <link rel="stylesheet" href="/static/studio.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -21,6 +24,7 @@
     <script src="/static/partition-tools.js" defer></script>
     <script src="/static/job-tools.js" defer></script>
     <script src="/static/app.js" defer></script>
+    <script src="/static/navigation.js" defer></script>
     <script src="/static/taxonomies.js" defer></script>
     <script src="/static/video-review.js" defer></script>
     <script src="/static/comparison-replay.js" defer></script>
@@ -55,15 +59,81 @@
         ><span>IRIS</span
         ><span class="brand-description">Vision workbench</span></a
       >
-      <div class="workspace-state">
-        <span class="status-dot" aria-hidden="true"></span>Local workspace<span
-          id="version"
-          class="version"
-        ></span>
+      <div class="topbar-actions">
+        <button id="sidebar-toggle" class="button button-secondary sidebar-toggle"
+          type="button" aria-controls="workspace-sidebar" aria-expanded="true">
+          Projects &amp; sessions
+        </button>
+        <div class="appearance-control">
+          <label for="appearance-select">Appearance</label>
+          <select id="appearance-select">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="workspace-state">
+          <span class="status-dot" aria-hidden="true"></span>Local workspace<span
+            id="version"
+            class="version"
+          ></span>
+        </div>
       </div>
     </header>
-    <div class="shell">
-      <aside class="sidebar" aria-label="Sessions">
+    <nav id="workspace-navigation" class="workspace-tabs" aria-label="Project workspaces">
+      <button
+        id="workspace-intake"
+        class="workspace-tab active"
+        type="button"
+        aria-pressed="true"
+        aria-controls="intake-workspace"
+      >
+        <span>01</span> Data intake
+      </button>
+      <button
+        id="workspace-comparison"
+        class="workspace-tab"
+        type="button"
+        aria-pressed="false"
+        aria-controls="comparison-workspace"
+      >
+        <span>02</span> Model comparison
+      </button>
+      <button
+        id="workspace-annotation"
+        class="workspace-tab"
+        type="button"
+        aria-pressed="false"
+        aria-controls="annotation-workspace"
+      >
+        <span>03</span> Annotation
+      </button>
+      <button
+        id="workspace-training"
+        class="workspace-tab"
+        type="button"
+        aria-pressed="false"
+        aria-controls="training-workspace"
+      >
+        <span>04</span> Dataset &amp; training
+      </button>
+      <button
+        id="workspace-evaluation"
+        class="workspace-tab"
+        type="button"
+        aria-pressed="false"
+        aria-controls="evaluation-workspace"
+      >
+        <span>05</span> Quality evaluation
+      </button>
+      <button id="workspace-experiments" class="workspace-tab" type="button"
+        aria-pressed="false" aria-controls="experiments-workspace">
+        <span>06</span> Experiments
+      </button>
+      <button id="workspace-benchmark" class="workspace-tab" type="button" aria-pressed="false" aria-controls="benchmark-workspace"><span>07</span> Benchmark</button>
+    </nav>
+    <div class="shell" data-sidebar-open="true">
+      <aside id="workspace-sidebar" class="sidebar" aria-label="Projects and sessions">
         <div class="sidebar-heading">
           <span class="eyebrow">Workspace</span
           ><span class="local-label">LOCAL</span>
@@ -222,58 +292,6 @@
               </div>
             </div>
           </section>
-          <nav class="workspace-tabs" aria-label="Session workspace">
-            <button
-              id="workspace-intake"
-              class="workspace-tab active"
-              type="button"
-              aria-pressed="true"
-              aria-controls="intake-workspace"
-            >
-              <span>01</span> Data intake
-            </button>
-            <button
-              id="workspace-comparison"
-              class="workspace-tab"
-              type="button"
-              aria-pressed="false"
-              aria-controls="comparison-workspace"
-            >
-              <span>02</span> Model comparison
-            </button>
-            <button
-              id="workspace-annotation"
-              class="workspace-tab"
-              type="button"
-              aria-pressed="false"
-              aria-controls="annotation-workspace"
-            >
-              <span>03</span> Annotation
-            </button>
-            <button
-              id="workspace-training"
-              class="workspace-tab"
-              type="button"
-              aria-pressed="false"
-              aria-controls="training-workspace"
-            >
-              <span>04</span> Dataset &amp; training
-            </button>
-            <button
-              id="workspace-evaluation"
-              class="workspace-tab"
-              type="button"
-              aria-pressed="false"
-              aria-controls="evaluation-workspace"
-            >
-              <span>05</span> Quality evaluation
-            </button>
-            <button id="workspace-experiments" class="workspace-tab" type="button"
-              aria-pressed="false" aria-controls="experiments-workspace">
-              <span>06</span> Experiments
-            </button>
-            <button id="workspace-benchmark" class="workspace-tab" type="button" aria-pressed="false" aria-controls="benchmark-workspace"><span>07</span> Benchmark</button>
-          </nav>
           <div id="intake-workspace">
             <section
               class="panel sources-panel"
@@ -1333,6 +1351,7 @@ ollama pull qwen3-vl:4b-instruct</pre
               </details>
             </div>
           </section>
+        </div>
           <section
             id="training-workspace"
             aria-label="Dataset and training"
@@ -2665,7 +2684,6 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
               </div>
             </div>
           </section>
-        </div>
         <section
           id="jobs-section"
           class="panel jobs-panel"

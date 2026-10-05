@@ -1,9 +1,9 @@
 .comparison-replay {
   margin: 24px 0;
   padding: 22px;
-  border: 1px solid #dfe7d9;
-  background: #fafcf7;
-  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  border-radius: var(--radius);
 }
 .comparison-replay-heading {
   display: flex;
@@ -24,11 +24,11 @@
   color: var(--muted);
 }
 .comparison-replay-badge {
-  font-size: 10px;
+  font-size: 11px;
   padding: 6px 9px;
-  background: #edf3e5;
-  color: #667e55;
-  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 .comparison-replay-source {
@@ -43,8 +43,8 @@
 }
 .comparison-replay-media {
   position: relative;
-  background: #1d2823;
-  border-radius: 6px;
+  background: var(--canvas);
+  border-radius: var(--radius);
   overflow: hidden;
   min-height: 150px;
 }
@@ -76,16 +76,16 @@
   max-width: 350px;
   font-size: 11px;
   line-height: 1.8;
-  color: #d1ddc8;
+  color: var(--canvas-muted);
 }
 .comparison-replay-unavailable-mark {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
-  border: 1px solid #607159;
-  color: #adc49b;
-  border-radius: 6px;
+  border: 1px solid var(--canvas-muted);
+  color: var(--canvas-ink);
+  border-radius: var(--radius);
   font-size: 18px;
 }
 .comparison-replay-controls {
@@ -133,7 +133,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  color: #65785d;
+  color: var(--muted);
   font-size: 11px;
 }
 .comparison-replay-track {
@@ -148,14 +148,14 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #dce5d3;
+  background: var(--line);
 }
 .comparison-replay-playhead {
   position: absolute;
   width: 1px;
   top: 7px;
   bottom: 4px;
-  background: #576859;
+  background: var(--ink);
   z-index: 2;
   pointer-events: none;
 }
@@ -166,8 +166,8 @@
   top: -2px;
   width: 7px;
   height: 7px;
-  background: #576859;
-  border-radius: 2px;
+  background: var(--ink);
+  border-radius: var(--radius-sm);
   transform: rotate(45deg);
 }
 .comparison-replay-marker {
@@ -177,20 +177,20 @@
   height: 18px;
   padding: 0;
   margin-left: -9px;
-  border: 2px solid #e7eee0;
+  border: 2px solid var(--surface-raised);
   border-radius: 50%;
-  background: #71995b;
+  background: var(--success);
   z-index: 3;
 }
 .comparison-replay-marker.partial {
-  background: #c69c51;
+  background: var(--warning);
 }
 .comparison-replay-marker.empty {
-  background: #f9fbf6;
-  border-color: #8a9681;
+  background: var(--field);
+  border-color: var(--control-line);
 }
 .comparison-replay-marker.selected {
-  outline: 2px solid #285f47;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   z-index: 4;
 }
@@ -199,7 +199,7 @@
   z-index: 5;
 }
 .comparison-replay-marker:focus-visible {
-  outline: 3px solid #203e30;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
   z-index: 6;
 }
@@ -212,7 +212,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #76836c;
+  color: var(--muted);
   font-size: 11px;
 }
 .comparison-replay-legend i {
@@ -220,29 +220,29 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #71995b;
+  background: var(--success);
 }
 .comparison-replay-legend i.partial {
-  background: #c69c51;
+  background: var(--warning);
 }
 .comparison-replay-legend i.empty {
-  background: #fff;
-  border: 1px solid #8a9681;
+  background: var(--field);
+  border: 1px solid var(--control-line);
 }
 .comparison-replay-timestamp-note {
   margin: 15px 0;
   font-size: 11px;
   line-height: 1.8;
-  color: #7f8875;
+  color: var(--muted);
 }
 .comparison-replay-context {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px 18px;
   padding: 15px 17px;
-  border-left: 3px solid #96ae81;
-  background: #f0f5e9;
-  border-radius: 0 5px 5px 0;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .comparison-replay-context > div {
   min-width: 0;
@@ -250,28 +250,28 @@
 .comparison-replay-context span {
   display: block;
   font-size: 11px;
-  color: #708267;
+  color: var(--muted);
   margin-bottom: 5px;
 }
 .comparison-replay-context strong {
   font-size: 13px;
-  color: #37583f;
+  color: var(--ink);
   font-weight: 550;
 }
 .comparison-replay-context > p {
   grid-column: 1/-1;
   font-size: 12px;
   line-height: 1.8;
-  color: #6e7d64;
+  color: var(--muted);
   margin-top: 4px;
 }
 .comparison-replay-notice {
   padding: 13px 16px;
   font-size: 12px;
   line-height: 1.8;
-  color: #718064;
-  background: #eff4e8;
-  border-radius: 6px;
+  color: var(--muted);
+  background: var(--field);
+  border-radius: var(--radius);
 }
 @media (max-width: 1100px) {
   .comparison-replay-body {

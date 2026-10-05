@@ -39,69 +39,6 @@
     element.hidden = !error;
   }
 
-  function setWorkspace(name) {
-    if (!window.dispatchEvent(new CustomEvent("iris:before-workspace", { cancelable: true, detail: { name } }))) return;
-    const workspaces = {
-      intake: [
-        "01",
-        "Data intake",
-        "From sources to useful frames.",
-        "Import source footage, sample frames and select the data worth keeping.",
-      ],
-      comparison: [
-        "02",
-        "Model comparison",
-        "See what your models see.",
-        "Run detectors on a shared selection, inspect their differences and keep a reproducible baseline.",
-      ],
-      annotation: [
-        "03",
-        "Annotation",
-        "Turn observations into labels.",
-        "Review proposals, correct bounding boxes and validate each frame before it becomes training data.",
-      ],
-      training: [
-        "04",
-        "Dataset & training",
-        "Build on what you have learned.",
-        "Freeze validated data, train a local detector and bring its checkpoint back into comparison.",
-      ],
-    };
-    workspaces.evaluation = [
-      "05",
-      "Quality evaluation",
-      "Measure gains and regressions.",
-      "Evaluate frozen labels, inspect detection errors and choose a reference model with evidence.",
-    ];
-    workspaces.experiments = [
-      "06",
-      "Experiments",
-      "Keep the evidence together.",
-      "Turn a completed evaluation into a clear experiment record, add your conclusions and share a self-contained report.",
-    ];
-    workspaces.benchmark = [
-      "07", "Preannotation benchmark", "Measure the work behind the labels.",
-      "Freeze an independent human reference, separate tuning from evaluation and measure corrections to candidate proposals.",
-    ];
-    const info = workspaces[name];
-    if (!info) return;
-    for (const workspace of Object.keys(workspaces)) {
-      $(`#${workspace}-workspace`).hidden = workspace !== name;
-      const button = $(`#workspace-${workspace}`);
-      button.classList.toggle("active", workspace === name);
-      button.setAttribute("aria-pressed", String(workspace === name));
-    }
-    $("#workspace-step").replaceChildren(
-      node("span", "step-marker", info[0]),
-      document.createTextNode(info[1]),
-    );
-    $("#workspace-title").textContent = info[2];
-    $("#workspace-description").textContent = info[3];
-    window.dispatchEvent(
-      new CustomEvent("iris:workspace", { detail: { name } }),
-    );
-  }
-
   function modelName(id) {
     return comparison.models.find((model) => model.id === id)?.name || id;
   }
@@ -813,25 +750,6 @@
     refreshHistory();
   }
 
-  $("#workspace-intake").addEventListener("click", () =>
-    setWorkspace("intake"),
-  );
-  $("#workspace-comparison").addEventListener("click", () =>
-    setWorkspace("comparison"),
-  );
-  $("#workspace-annotation").addEventListener("click", () =>
-    setWorkspace("annotation"),
-  );
-  $("#workspace-training").addEventListener("click", () =>
-    setWorkspace("training"),
-  );
-  $("#workspace-evaluation").addEventListener("click", () =>
-    setWorkspace("evaluation"),
-  );
-  $("#workspace-experiments").addEventListener("click", () =>
-    setWorkspace("experiments"),
-  );
-  $("#workspace-benchmark").addEventListener("click", () => setWorkspace("benchmark"));
   $("#refresh-models").addEventListener("click", refreshModels);
   $("#comparison-device").addEventListener("change", updateLaunch);
   $("#comparison-inference-mode").addEventListener("change", () => {
@@ -927,7 +845,7 @@
       comparison.chosenModels = new Set(event.detail.model_ids.slice(0, inferenceMode() === "paired" ? 1 : 2));
     }
     await refreshModels();
-    if (event.detail?.openComparison) setWorkspace("comparison");
+    if (event.detail?.openComparison) window.IRISNavigation.open("comparison");
   });
   refreshModels();
   sessionChanged();

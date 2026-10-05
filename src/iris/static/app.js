@@ -1566,6 +1566,7 @@ async function initialize() {
       sessions.find((session) => String(session.id) === recalled) ||
       sessions[0];
     if (active) await selectSession(active.id);
+    else if (window.IRISNavigation) window.IRISNavigation.syncSession();
     else $("#welcome").hidden = false;
     await refreshJobs();
   } catch (error) {
@@ -1573,7 +1574,8 @@ async function initialize() {
     $("#storage-path").textContent = "Local server unavailable";
     if (!state.sessions.length) {
       renderSessions();
-      $("#welcome").hidden = false;
+      if (window.IRISNavigation) window.IRISNavigation.syncSession();
+      else $("#welcome").hidden = false;
     }
   }
 }

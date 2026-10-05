@@ -125,6 +125,20 @@ is excluded from Git. `IRIS_DATA_DIR` also sets the data location. Original
 files are copied into this workspace; keep enough disk space for both originals
 and extracted PNGs. Use **Workspace backup** to create and restore verified archives.
 
+## Studio appearance and navigation
+
+Use **Appearance** in the header to choose **System**, **Light**, or **Dark**.
+System follows the operating system; an explicit choice is remembered in this
+browser across projects and reloads. If browser storage is unavailable, the
+choice still applies to the current page. All fonts and styles are served locally.
+
+The workspace navigation remains available above the current view. Data intake,
+comparison and annotation use the selected session; datasets/training,
+evaluation, experiments and benchmarks are available at project scope, including
+before the first session is created. On smaller screens, **Projects & sessions**
+opens the sidebar without discarding its forms. Existing unsaved-review guards
+still apply when switching workspaces.
+
 ## Projects
 
 Use the **Project** selector in the sidebar to switch projects, or **New project**
@@ -820,7 +834,8 @@ node --test tests/js/*.test.cjs
 
 The JavaScript tests use Node's built-in test runner; Node is only needed for
 development, not for running IRIS. They check viewport geometry, zoom anchoring,
-pixel scale, image bounds and local history branching.
+pixel scale, image bounds, local history branching, appearance preferences and
+guarded workspace navigation.
 
 Tests generate small synthetic images and videos in temporary directories.
 They exercise ingestion, provenance, extraction, selection, model availability,

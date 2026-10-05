@@ -1,0 +1,399 @@
+/* Shared Studio shell and controls. Workspace-specific layouts live alongside
+   their features; all surfaces draw from studio-tokens.css. */
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+button, input, select, textarea {
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+
+button, input, select, textarea, summary, a {
+  outline-offset: 3px;
+}
+
+:is(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+input[type="checkbox"], input[type="radio"], input[type="range"] {
+  accent-color: var(--accent);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select, textarea {
+  border-color: var(--control-line);
+  border-radius: var(--radius-sm);
+}
+
+textarea {
+  background: var(--surface);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+button:disabled, input:disabled, select:disabled, textarea:disabled {
+  cursor: not-allowed;
+}
+
+.button {
+  min-height: 38px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.button-secondary {
+  background: var(--surface);
+  border-color: var(--control-line);
+  color: var(--ink);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.text-button, .icon-button {
+  color: var(--accent);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: clamp(27px, 2.7vw, 36px);
+  letter-spacing: -.5px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+h2, h3, h4, strong, b {
+  font-weight: 500;
+}
+
+.eyebrow {
+  font: 400 11px/1.6 var(--font-mono);
+  letter-spacing: .09em;
+}
+
+code, pre, .version, .local-label, .step-marker, .phase-tag,
+.workspace-location p, .session-stats strong, .monospace {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar {
+  height: auto;
+  min-height: 76px;
+  padding: 16px 28px;
+  gap: 24px;
+  background: var(--page);
+  border-bottom: 0;
+}
+
+.brand {
+  font: 400 30px/1 var(--font-display);
+  letter-spacing: .075em;
+  flex-shrink: 0;
+}
+
+.brand-mark {
+  display: none;
+}
+
+.brand-description {
+  font: 400 12px/1.4 var(--font-sans);
+  letter-spacing: 0;
+  margin-left: 6px;
+  padding-left: 20px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 22px;
+  min-width: 0;
+}
+
+.appearance-control {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.appearance-control select {
+  min-height: 36px;
+  width: auto;
+  min-width: 94px;
+  font-size: 12px;
+  background: var(--page);
+}
+
+.sidebar-toggle {
+  display: none;
+}
+
+.workspace-state {
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.status-dot {
+  background: var(--success);
+  box-shadow: none;
+}
+
+.version {
+  background: var(--field);
+  border: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+#workspace-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0 24px;
+  padding: 0 28px;
+  margin: 0;
+  background: var(--page);
+  border-bottom: 1px solid var(--line);
+}
+
+#workspace-navigation .workspace-tab {
+  min-height: 48px;
+  padding: 12px 0;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+#workspace-navigation .workspace-tab span {
+  font: 400 11px var(--font-mono);
+  margin-right: 7px;
+  opacity: 1;
+}
+
+#workspace-navigation .workspace-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+#workspace-navigation .workspace-tab:hover:not(.active) {
+  color: var(--ink);
+}
+
+.shell {
+  grid-template-columns: 244px minmax(0, 1fr);
+  min-height: calc(100dvh - 125px);
+}
+
+.sidebar {
+  background: var(--surface);
+  padding: 28px 20px;
+  min-width: 0;
+}
+
+.sidebar-heading {
+  margin-bottom: 24px;
+}
+
+.sidebar .session-list {
+  margin-inline: 0;
+  gap: 4px;
+}
+
+.session-item {
+  border-left: 2px solid transparent;
+  padding: 11px 10px;
+}
+
+.session-item.active {
+  background: var(--field);
+  border-color: transparent;
+  border-left-color: var(--accent);
+}
+
+.project-picker {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+}
+
+.project-picker > label {
+  background: transparent;
+}
+
+.project-create summary {
+  color: var(--accent);
+}
+
+main {
+  padding: 32px 32px 0;
+}
+
+.page-heading {
+  margin-bottom: 26px;
+  align-items: flex-start;
+}
+
+.page-description {
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.phase-tag {
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  padding: 4px 0;
+  color: var(--muted);
+}
+
+.panel-heading h2 {
+  font-size: 16px;
+}
+
+.field-hint, .optional, .page-footer {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.panel, .modal, .annotation-record-dialog {
+  box-shadow: none;
+}
+
+.modal, .annotation-record-dialog {
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius);
+  border-color: var(--control-line);
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.empty-assets {
+  background: var(--surface-raised);
+}
+
+.source-dropzone {
+  background: var(--surface-raised);
+  border-color: var(--control-line);
+}
+
+.source-dropzone.dragging {
+  background: var(--accent-soft);
+}
+
+.extract-timeline-range {
+  border: 1px solid var(--accent);
+}
+
+.filter-button.active, .annotation-tools .active {
+  background: var(--field);
+  color: var(--ink);
+  border-color: var(--control-line);
+}
+
+.skip-link, .benchmark-editor-toolbar .active {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.annotation-status.validated, .review-queue-badge.validated {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.annotation-canvas-wrap, .prediction-visual, .dataset-import-image-wrap {
+  color: var(--canvas-ink);
+}
+
+.annotation-box rect, .annotation-proposal-box rect {
+  filter: drop-shadow(0 0 1px var(--annotation-edge));
+}
+
+@media (max-width: 1100px) {
+  .topbar, #workspace-navigation { padding-inline: 22px; }
+  .topbar-actions { gap: 16px; }
+  #workspace-navigation { gap: 0 18px; }
+  .shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .sidebar { padding: 24px 16px; }
+  main { padding: 26px 24px 0; }
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar-toggle { display: inline-flex; }
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 24px;
+  }
+  .brand-description { display: none; }
+  .sidebar-heading { display: flex; }
+  #workspace-navigation { gap: 0 18px; }
+}
+
+@media (max-width: 600px) {
+  .topbar { padding: 16px; gap: 12px; flex-wrap: wrap; }
+  .brand { font-size: 28px; }
+  .topbar-actions { gap: 10px; flex-wrap: wrap; flex: 1; }
+  .workspace-state { display: none; }
+  .appearance-control { gap: 6px; }
+  .appearance-control > span { display: none; }
+  .appearance-control select { min-width: 88px; }
+  .sidebar-toggle { padding: 8px 10px; font-size: 12px; }
+  #workspace-navigation {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0 12px;
+    gap: 0 10px;
+  }
+  #workspace-navigation .workspace-tab {
+    text-align: left;
+    white-space: normal;
+    line-height: 1.4;
+    padding: 9px 2px;
+    font-size: 12px;
+  }
+  #workspace-navigation .workspace-tab span { display: none; }
+  main { padding: 24px 16px 0; }
+  .page-heading { margin-bottom: 22px; }
+  .page-description { font-size: 12px; }
+  .sidebar { padding: 20px 16px; }
+  .session-form { display: block; }
+  .session-form label { margin-bottom: 7px; }
+  .session-form input { margin-bottom: 14px; }
+  .session-form .field-hint { font-size: 11px; margin: 0 0 14px; }
+  .session-form h3 { margin-bottom: 16px; }
+  .sidebar .session-list { grid-template-columns: minmax(0, 1fr); }
+  .workspace-location { display: block; padding-top: 24px; }
+  .modal { padding: 20px 16px; }
+  .panel-heading { flex-wrap: wrap; }
+}
+
+@media (pointer: coarse) {
+  .button, .text-button, .icon-button, .close-button,
+  #appearance-select, .filter-button { min-height: 44px; }
+  .icon-button, .close-button { min-width: 44px; }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    font-size: 16px;
+  }
+}
