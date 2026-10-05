@@ -1,14 +1,18 @@
-# Longer CPU training and explicit continuation
+# Longer CPU/CUDA training and explicit continuation
 
 IRIS supports 1 to 10,000 optimizer steps for Faster R-CNN MobileNetV3-Large
-320 FPN and its compatible trained descendants. Training uses CPU float32,
-batch size one, and the selected light, partial or full depth. The frozen
+320 FPN and its compatible trained descendants. Training uses CPU or one selected
+NVIDIA CUDA device, float32, batch size one, and the selected light, partial or
+full depth. The frozen
 training split supplies every example; validation and test images remain
-reserved for the separate evaluation workflow. This feature does not add GPU
-training, automatic hyperparameter search or automatic model selection.
+reserved for the separate evaluation workflow. Mixed precision, multi-GPU
+training, automatic hyperparameter search and automatic model selection are not
+provided. Training on a GPU does not restrict the completed model to GPU
+inference: see [compute targets and CUDA setup](compute-targets.md).
 
-The software checks use synthetic data and tiny PyTorch modules to exercise
-state persistence and continuation. **Real IRIS detector training, interruption,
+The software checks use synthetic data, tiny CPU PyTorch modules and mocked CUDA
+interfaces to exercise state persistence and continuation. **Real IRIS detector
+training, GPU execution, interruption,
 resume, training duration and resulting model quality have not been measured
 for this feature.** These trials remain part of the planned real-model testing
 phase. Passing a toy continuation test does not establish real-model performance
@@ -17,7 +21,11 @@ or reproducibility on every CPU.
 ## Prepare a run
 
 In **Dataset & training**, choose a frozen dataset and a compatible local parent,
-then set the training depth, step count, learning rate and seed. The default
+then choose CPU or an available NVIDIA GPU and set the training depth, step count,
+learning rate and seed. The device belongs to the IRIS server. CUDA requires a
+compatible, explicitly provisioned PyTorch/Torchvision runtime and NVIDIA driver;
+an unavailable device is reported instead of silently falling back to CPU.
+Changing the device requires another preview. The default
 step count remains 20. The interface enables recovery checkpoints with a default
 interval of 50 steps. Preview the plan before starting; changing any setting
 requires another preview.
@@ -31,7 +39,7 @@ also attempts to save the latest completed step. A process killed during a step
 can only recover from a state that was already published.
 
 The preview reports training image count, image visits, complete passes, scope
-and checkpoint policy. It does not predict wall-clock duration. CPU, image size,
+and checkpoint policy. It does not predict wall-clock duration. Hardware, image size,
 training depth, state validation and disk writes affect how long the run takes.
 No model weights, runtime packages or datasets are downloaded by this workflow.
 
@@ -42,12 +50,16 @@ momentum, exact optimizer parameter order and settings, CPU Torch RNG, image
 sampler state and remaining shuffled order. It also retains module training
 modes and the modules that have received nonzero gradients. Its binding records
 the frozen configuration, dataset and parent identities, completed step,
-history-prefix hash, recorded active time and runtime identity.
+history-prefix hash, recorded active time and runtime identity. CUDA states also
+preserve the selected GPU's Torch RNG. Model and optimizer tensors are serialized
+on CPU; restoration moves the optimizer state to its corresponding parameters'
+device. CPU state files retain the `iris-training-state-v1` protocol; CUDA states
+use `iris-training-state-cuda-v1`.
 
 Loading reconstructs the original trainer and verifies the state before applying
 it. The original parent-weight and buffer baselines remain available for final
 frozen-layer verification. Restoration keeps the optimizer state and restores
-the Torch RNG after model and optimizer loading. Starting another fine-tuning
+the CPU and, for CUDA, selected GPU RNG after model and optimizer loading. Starting another fine-tuning
 run from a completed model initializes a new optimizer; use explicit continuation
 when the intent is to preserve an interrupted run's optimization state.
 
@@ -82,11 +94,22 @@ an inherited source state remains available even if that attempt stopped before
 writing a newer checkpoint.
 
 The worker requires the saved runtime identity: full Python, Torch and
-Torchvision versions, CPU architecture, thread counts, CPU float32 and
-deterministic-algorithm setting. Runtime compatibility is checked before further
+Torchvision versions, host architecture, thread counts, execution device,
+float32 and deterministic-algorithm setting. CUDA continuation additionally binds
+the CUDA/cuDNN builds, selected GPU index, model and compute capability, UUID when
+available, cuDNN options, TF32 flags and cuBLAS workspace setting. Moving a recovery
+state from CPU to GPU, to another GPU index or to another runtime is not supported.
+Completed inference weights remain portable across supported CPU/CUDA targets.
+Runtime compatibility is checked before further
 optimizer work. Changed state bytes, dataset or parent identity, configuration,
 sampler or history prevent continuation. A preview does not run the model and
 cannot establish that its later execution will succeed.
+
+CPU training keeps deterministic algorithms enabled. CUDA training uses float32
+with TF32 and cuDNN benchmarking disabled, but leaves deterministic algorithms
+disabled because the detection pipeline includes operations without guaranteed
+deterministic CUDA implementations. Restoring RNG and optimizer state does not
+promise bit-for-bit equality with uninterrupted GPU training.
 
 ## History, timing and storage
 
@@ -123,10 +146,13 @@ split for the separate audit.
 settings and returns a `request_id` and `fingerprint`. Creating a durable run
 with `POST /api/trainings` requires that request ID and the fingerprint as
 `expected_fingerprint`, with the same inputs. This makes retries idempotent and
-rejects changed plans. Requests above 200 steps are durable automatically;
-omitting their interval selects 50.
+rejects changed plans. The optional `device` setting defaults to `cpu`; `cuda`
+selects `cuda:0`, and `cuda:<index>` selects a particular visible GPU. Requests above
+200 steps and every CUDA request are durable automatically; omitting their
+interval selects 50. `GET /api/training/devices` reports available server devices
+and the reason CUDA is unavailable when setup is incomplete.
 
-For existing integrations, a request of at most 200 steps that omits
+For existing integrations, a CPU request of at most 200 steps that omits
 `checkpoint_interval` keeps the legacy short-run behavior. It does not require
 the new preview fields and does not save optimizer recovery state. Existing
 short runs cannot acquire missing optimizer or RNG state retroactively. The

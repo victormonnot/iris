@@ -5,13 +5,25 @@ const { MAX_MEASUREMENT_BYTES, selectionValid, selectionKey, findExport, findMea
 test("export confirmation binds checkpoint, evaluation, image selection and name", () => {
   const options = { trained_model_id: "trained-a", evaluation_id: "eval-a", name: "Target machine", frame_ids: ["frame-a", "frame-b"] };
   assert.equal(selectionValid(options), true);
-  for (const change of [{ trained_model_id: "trained-b" }, { evaluation_id: "eval-b" }, { name: "Changed" }, { frame_ids: ["frame-b", "frame-a"] }, { frame_ids: ["frame-a"] }]) {
+  for (const change of [{ trained_model_id: "trained-b" }, { evaluation_id: "eval-b" }, { name: "Changed" }, { frame_ids: ["frame-b", "frame-a"] }, { frame_ids: ["frame-a"] }, { target_device: "cuda" }]) {
     assert.notEqual(selectionKey({ ...options, ...change }), selectionKey(options));
   }
-  for (const change of [{ trained_model_id: "" }, { evaluation_id: "" }, { name: " " }, { frame_ids: [] }, { frame_ids: ["frame-a", "frame-a"] }, { frame_ids: Array.from({ length: 9 }, (_, i) => `frame-${i}`) }, { frame_ids: [null] }]) {
+  for (const change of [{ trained_model_id: "" }, { evaluation_id: "" }, { name: " " }, { frame_ids: [] }, { frame_ids: ["frame-a", "frame-a"] }, { frame_ids: Array.from({ length: 9 }, (_, i) => `frame-${i}`) }, { frame_ids: [null] }, { target_device: "mps" }]) {
     assert.equal(selectionValid({ ...options, ...change }), false);
   }
   assert.equal(selectionValid({ ...options, frame_ids: Array.from({ length: 8 }, (_, i) => `frame-${i}`) }), true);
+});
+
+test("export targets remain independent of training and reference devices", () => {
+  const options = { trained_model_id: "trained", evaluation_id: "evaluation", name: "Target", frame_ids: ["frame"] };
+  for (const trainingDevice of ["cpu", "cuda:0"]) {
+    for (const referenceDevice of ["cpu", "cuda:0"]) {
+      for (const targetDevice of ["cpu", "cuda"]) {
+        assert.equal(selectionValid({ ...options, training_device: trainingDevice, reference_device: referenceDevice, target_device: targetDevice }), true);
+      }
+    }
+  }
+  assert.equal(selectionKey(options), selectionKey({ ...options, target_device: "cpu" }));
 });
 
 test("lost export acknowledgements only recover the exact request identity", () => {

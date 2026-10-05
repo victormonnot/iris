@@ -174,8 +174,9 @@ def test_preview_is_read_only_and_counts_warmups_and_complete_frozen_split(tiled
     assert all(item["tile_count"] == 3 for item in plan["tiles"])
     assert store.list("jobs") == store.list("evaluations") == store.list("evaluation_models") == []
     row = queue(tiled_workspace)
+    assert row["config"]["device"] == plan["device"]
     assert row["config"]["work"] == {
-        key: value for key, value in plan.items() if key not in {"lanes", "inference"}
+        key: value for key, value in plan.items() if key not in {"lanes", "inference", "device"}
     }
     assert row["lanes"] == [
         {"model_id": MODEL_IDS[0], "variant": variant, "evaluation_model_id": None}

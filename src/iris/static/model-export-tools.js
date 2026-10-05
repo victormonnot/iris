@@ -8,11 +8,12 @@
   const MAX_MEASUREMENT_BYTES = 8 * 1024 * 1024;
   function selectionValid(options) {
     return Boolean(options?.name?.trim() && options.trained_model_id && options.evaluation_id &&
+      ["cpu", "cuda"].includes(options.target_device || "cpu") &&
       Array.isArray(options.frame_ids) && options.frame_ids.length >= 1 && options.frame_ids.length <= 8 &&
       options.frame_ids.every((id) => typeof id === "string" && id) && new Set(options.frame_ids).size === options.frame_ids.length);
   }
   function selectionKey(options) {
-    return JSON.stringify([options.trained_model_id, options.evaluation_id, options.name, options.frame_ids]);
+    return JSON.stringify([options.trained_model_id, options.evaluation_id, options.name, options.frame_ids, options.target_device || "cpu"]);
   }
   function findExport(rows, requestId) {
     return requestId && Array.isArray(rows) ? rows.find((row) => (row.request_id || row.config?.request_id) === requestId) || null : null;

@@ -1,5 +1,7 @@
 """Project-scoped native model export and bounded measurement import endpoints."""
 
+from typing import Literal
+
 from fastapi import HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +16,7 @@ class ExportPreview(BaseModel):
     evaluation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     frame_ids: list[str] = Field(min_length=1, max_length=8)
     name: str = Field(min_length=1, max_length=160)
+    target_device: Literal["cpu", "cuda"] = "cpu"
 
 
 class ExportCreate(ExportPreview):

@@ -52,8 +52,10 @@ WARNINGS = [
     "It does not include human annotation boxes or reviewer notes.",
     "Packaging copies files only. Model loading, real parity and target performance "
     "are not validated by creating this export.",
-    "The first profile is native PyTorch CPU float32, batch one. It is not an ONNX "
-    "or GPU export. Exact parity is checked without widening tolerances.",
+    "The target is native PyTorch float32, batch one, independently of the training device. "
+    "Exact parity is checked without widening tolerances, including across CPU and CUDA.",
+    "CUDA requires compatible NVIDIA drivers and PyTorch/Torchvision builds. "
+    "ARM and Jetson support depends on the board's vendor runtime; this is not a TensorRT export.",
     "Imported measurements are declarations from their producer. Checksums and "
     "consistency checks do not independently prove execution or authenticity.",
 ]
@@ -64,24 +66,36 @@ This bundle runs independently of IRIS and its database. Extract it into a new
 directory. It contains a full trained state_dict, frozen classes and 1-8 selected
 parity images with saved IRIS native predictions (no human annotations).
 
-Use Python 3.12 or 3.13 and the versions in requirements.txt, with compatible CPU
-PyTorch wheels. Dependency installation is a separate, explicit action on the
+Use Python 3.12 or 3.13 and the versions in requirements.txt, with PyTorch and
+Torchvision wheels compatible with the target CPU or NVIDIA CUDA runtime.
+The frozen target is manifest.json profile.device; it is independent of the
+training device. Dependency installation is a separate, explicit action on the
 target machine. Nothing here automatically installs packages or downloads weights.
 
 From the extracted directory:
 
     python run.py inspect
+    python run.py check-runtime
     python run.py predict /path/to/image.png --output ../prediction.json
     python run.py measure --repeats 3 --output ../measurement.json
 
 Inspect checks integrity without importing ML libraries or deserializing weights.
-Predict loads this bundle's checkpoint on CPU using weights_only=True and strict
-state_dict matching. The profile and class mapping are frozen in manifest.json.
+Check-runtime explicitly imports the installed runtime and probes the selected
+device without constructing a model or loading weights; success does not prove
+that inference works. For CUDA targets, --device cuda:N chooses a visible GPU
+on check-runtime, predict or measure. The default uses the current CUDA device.
+The device family must match the export's frozen target.
+Predict loads weights on CPU using weights_only=True and strict state_dict
+matching, then transfers the model and inputs to the selected device.
+The profile and class mapping are frozen in manifest.json.
 Only use bundles from a trusted source; hashes check integrity, not authenticity.
 
 Measure performs one warmup on the first parity image, then measures every bundled
 image for each repetition. Exact box, score, label, dimension and order parity is
 compared to saved IRIS outputs. A failure remains a failure: no tolerance widening.
+CPU/CUDA numerical or detection-order differences may cause exact parity failure.
+CUDA timing synchronizes the selected device at stage boundaries and includes
+input transfer in preprocessing. TF32 and cuDNN benchmarking are disabled.
 An empty reference only checks empty output, not positive detection quality.
 Import measurement.json through IRIS Model exports to save consistency-checked,
 declared parity and timings. This is not an independently verified execution claim.
@@ -92,8 +106,10 @@ Those costs are recorded separately by measure. Saved IRIS evaluation total_ms
 includes decoding and must not be compared directly with this predict-only total.
 
 Packaging does not execute the model. Real execution, parity and target performance
-remain untested until you run the bundle. No accuracy/generalization, ONNX, GPU or
-universal portability guarantee is made by this CPU profile. Selected images may
+remain untested until you run the bundle. ARM and Jetson boards need vendor
+runtime versions compatible with this pinned profile; older boards may not
+support them. This is native PyTorch, not ONNX or TensorRT, and provides no
+universal hardware or accuracy/generalization guarantee. Selected images may
 contain private data: review the selection before sharing the bundle elsewhere.
 """
 
@@ -190,10 +206,10 @@ def _source(store, model_id, evaluation_id):
     if len(runs) != 1 or runs[0]["metrics"] is None:
         raise ValueError("Choose a completed full-image evaluation of this checkpoint")
     run, metadata = runs[0], runs[0]["metadata"]
+    reference_device = _runtime().device_family(metadata.get("device"))
     if (
         metadata.get("weight_sha256") != model["weight_sha256"]
         or metadata.get("architecture") != TRAINING_ARCHITECTURE
-        or metadata.get("device") != "cpu"
         or metadata.get("precision") != "float32"
         or class_contract(metadata) != contract
         or metadata.get("head_class_slots") != len(contract["class_mapping"]) + 1
@@ -203,8 +219,14 @@ def _source(store, model_id, evaluation_id):
         or metadata["torch_version"].split("+")[0] != "2.10.0"
         or not isinstance(metadata.get("torchvision_version"), str)
         or metadata["torchvision_version"].split("+")[0] != "0.25.0"
+        or (
+            reference_device == "cuda"
+            and any(
+                metadata[key].endswith("+cpu") for key in ("torch_version", "torchvision_version")
+            )
+        )
     ):
-        raise ValueError("Saved evaluation does not match this CPU float32 export profile")
+        raise ValueError("Saved evaluation does not match this native float32 export profile")
     return model, detail, run, load_manifest(store, detail["dataset_id"])
 
 
@@ -217,11 +239,12 @@ def candidates(store, project_id=DEFAULT_PROJECT_ID):
             if model["id"] not in evaluation["model_ids"]:
                 continue
             try:
-                _, detail, _, _ = _source(store, model["id"], evaluation["id"])
+                _, detail, run, _ = _source(store, model["id"], evaluation["id"])
                 choices.append(
                     {
                         "id": detail["id"],
                         "name": detail["name"],
+                        "device": run["metadata"]["device"],
                         "frames": [
                             {
                                 "frame_id": frame["frame_id"],
@@ -243,15 +266,29 @@ def candidates(store, project_id=DEFAULT_PROJECT_ID):
                 "evaluations": choices,
                 "reason": ""
                 if choices
-                else (
-                    failures[0] if failures else "A completed CPU full-image evaluation is required"
-                ),
+                else (failures[0] if failures else "A completed full-image evaluation is required"),
             }
         )
-    return {"models": models, "profile": deepcopy(_runtime().PROFILE)}
+    return {
+        "models": models,
+        "profile": deepcopy(_runtime().PROFILE),
+        "target_devices": ["cpu", "cuda"],
+    }
 
 
-def _plan(store, *, trained_model_id, evaluation_id, frame_ids, name, request_id, frozen=None):
+def _plan(
+    store,
+    *,
+    trained_model_id,
+    evaluation_id,
+    frame_ids,
+    name,
+    request_id,
+    target_device="cpu",
+    frozen=None,
+):
+    if target_device not in ("cpu", "cuda"):
+        raise ValueError("Choose a CPU or CUDA export target")
     if (
         not isinstance(name, str)
         or not 1 <= len(name.strip()) <= 160
@@ -264,6 +301,7 @@ def _plan(store, *, trained_model_id, evaluation_id, frame_ids, name, request_id
     ):
         raise ValueError("Choose a name and 1–8 distinct parity images")
     model, detail, run, dataset = _source(store, trained_model_id, evaluation_id)
+    modern = target_device == "cuda" or run["metadata"]["device"] != "cpu"
     available = {
         frame["frame_id"]: frame for frame in dataset["frames"] if frame["split"] == detail["split"]
     }
@@ -323,7 +361,7 @@ def _plan(store, *, trained_model_id, evaluation_id, frame_ids, name, request_id
             }
         )
     plan = {
-        "format": "iris-model-export-plan-v1",
+        "format": "iris-model-export-plan-v2" if modern else "iris-model-export-plan-v1",
         "request_id": request_id,
         "name": name.strip(),
         "trained_model_id": trained_model_id,
@@ -352,8 +390,13 @@ def _plan(store, *, trained_model_id, evaluation_id, frame_ids, name, request_id
             "weight_sha256": model["weight_sha256"],
             "frames": references,
         },
-        "profile": deepcopy(_runtime().PROFILE),
+        "profile": _runtime().native_profile(target_device)
+        if modern
+        else deepcopy(_runtime().PROFILE),
     }
+    if modern:
+        plan["target_device"] = target_device
+        plan["source"]["reference_device"] = run["metadata"]["device"]
     manifest = _manifest(plan, request_id, "2000-01-01T00:00:00+00:00")
     _runtime().validate_manifest(manifest)
     _runtime().validate_reference(manifest, plan["reference"])
@@ -375,7 +418,9 @@ def _manifest(plan, identifier, created_at):
             "size": frame["size"],
         }
     return {
-        "format": "iris-model-export-v1",
+        "format": "iris-model-export-v2"
+        if plan["format"] == "iris-model-export-plan-v2"
+        else "iris-model-export-v1",
         "id": identifier,
         "name": plan["name"],
         "created_at": created_at,
@@ -410,7 +455,13 @@ def create_export(store, *, request_id, expected_fingerprint, **options):
         if previous:
             row = previous[0]
             if _digest(row["config"]) != expected_fingerprint or any(
-                row["config"].get(key) != value for key, value in options.items()
+                (
+                    row["config"]["profile"]["device"]
+                    if key == "target_device"
+                    else row["config"].get(key)
+                )
+                != value
+                for key, value in options.items()
             ):
                 raise ValueError("This preview request was already used with different options")
         else:
@@ -472,8 +523,11 @@ def list_exports(store, project_id=DEFAULT_PROJECT_ID):
 
 def _options(plan):
     return {
-        key: plan[key]
-        for key in ("trained_model_id", "evaluation_id", "frame_ids", "name", "request_id")
+        "target_device": plan["profile"]["device"],
+        **{
+            key: plan[key]
+            for key in ("trained_model_id", "evaluation_id", "frame_ids", "name", "request_id")
+        },
     }
 
 

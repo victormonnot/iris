@@ -470,3 +470,198 @@ def test_wrong_or_invalid_checksum_prevents_deserialization(tiny, tmp_path, monk
         training_state.load_state(
             make(), path, binding=binding, sampler=sampler, expected_sha256=digest
         )
+
+
+@pytest.fixture
+def cuda_emulation(tiny, monkeypatch):
+    """Exercise CUDA protocol plumbing using CPU toy tensors and mocked CUDA RNG.
+
+    This fixture neither initializes CUDA nor runs a detector. Actual hardware
+    execution remains a separate opt-in acceptance check.
+    """
+    make, torch = tiny
+    identity = training_state.runtime_identity(make())
+    identity.update(device="cuda:1", cuda_version="synthetic-cuda", gpu_uuid="GPU-fixture")
+    monkeypatch.setattr(training_state, "runtime_identity", lambda _: deepcopy(identity))
+    generator = torch.Generator
+    rng = {
+        "cuda:0": generator(device="cpu").manual_seed(19).get_state(),
+        "cuda:1": generator(device="cpu").manual_seed(29).get_state(),
+    }
+    events = []
+
+    def get_rng(device):
+        events.append(("read_cuda_rng", str(device)))
+        return rng[str(device)].clone()
+
+    def set_rng(state, device):
+        events.append(("restore_cuda_rng", str(device)))
+        rng[str(device)] = state.clone()
+
+    def isolated_generator(device):
+        events.append(("validate_generator", str(device)))
+        return generator(device="cpu")
+
+    monkeypatch.setattr(torch.cuda, "get_rng_state", get_rng)
+    monkeypatch.setattr(torch.cuda, "set_rng_state", set_rng)
+    monkeypatch.setattr(torch, "Generator", isolated_generator)
+
+    def create():
+        trainer = make()
+        trainer.device = torch.device("cuda:1")
+        return trainer
+
+    return create, torch, rng, events, identity
+
+
+def cuda_inputs(trainer, count=2):
+    binding, sampler = inputs(trainer, count=count)
+    binding["protocol"] = training_state.CUDA_PROTOCOL
+    return binding, sampler
+
+
+def test_cuda_runtime_records_selected_device_build_hardware_and_precision_settings(
+    tiny, monkeypatch
+):
+    make, torch = tiny
+    trainer = make()
+    trainer.device = torch.device("cuda:1")
+    selected = SimpleNamespace(
+        device=trainer.device,
+        dtype=torch.float32,
+        is_floating_point=lambda: True,
+        is_complex=lambda: False,
+    )
+    trainer.model = SimpleNamespace(parameters=lambda: iter([selected]), buffers=lambda: iter([]))
+    calls = []
+
+    def properties(device):
+        calls.append(str(device))
+        return SimpleNamespace(name="Synthetic NVIDIA GPU", major=8, minor=6, uuid="GPU-fixture")
+
+    monkeypatch.setattr(torch.cuda, "get_device_properties", properties)
+    monkeypatch.setattr(torch.version, "cuda", "synthetic-cuda")
+    monkeypatch.setattr(torch.backends.cudnn, "version", lambda: 12345)
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    identity = training_state.runtime_identity(trainer)
+    assert calls == ["cuda:1"]
+    assert identity["device"] == "cuda:1"
+    assert identity["device_index"] == 1
+    assert identity["cuda_version"] == "synthetic-cuda"
+    assert identity["cudnn_version"] == 12345
+    assert identity["gpu_name"] == "Synthetic NVIDIA GPU"
+    assert identity["gpu_capability"] == [8, 6]
+    assert identity["gpu_uuid"] == "GPU-fixture"
+    assert identity["cudnn_benchmark"] == torch.backends.cudnn.benchmark
+    assert identity["cudnn_deterministic"] == torch.backends.cudnn.deterministic
+    assert identity["cudnn_allow_tf32"] == torch.backends.cudnn.allow_tf32
+    assert identity["matmul_allow_tf32"] == torch.backends.cuda.matmul.allow_tf32
+    assert identity["cublas_workspace_config"] == ":4096:8"
+
+
+def test_cuda_state_uses_cpu_tensors_and_restores_both_rngs_after_weights_and_optimizer(
+    cuda_emulation, tmp_path, monkeypatch
+):
+    make, torch, rng, events, _ = cuda_emulation
+    trainer = make()
+    step(trainer, 1)
+    step(trainer, 2)
+    binding, sampler = cuda_inputs(trainer)
+    path = tmp_path / "cuda-state.pth"
+    training_state.write_state(trainer, path, binding=binding, sampler=sampler)
+    payload = torch.load(path, weights_only=True, map_location="cpu")
+    assert payload["protocol"] == training_state.CUDA_PROTOCOL
+    assert all(value.device.type == "cpu" for value in payload["model_state"].values())
+    assert all(
+        value["momentum_buffer"].device.type == "cpu"
+        for value in payload["optimizer_state"]["state"].values()
+    )
+    assert torch.equal(payload["cuda_rng_state"], rng["cuda:1"])
+    untouched = rng["cuda:0"].clone()
+    rng["cuda:1"] = rng["cuda:0"].clone()
+    target = make()
+    load_model, load_optimizer = target.model.load_state_dict, target.optimizer.load_state_dict
+    restore_cpu_rng = torch.set_rng_state
+
+    def model_load(*args, **kwargs):
+        events.append(("model", None))
+        torch.rand(7)
+        return load_model(*args, **kwargs)
+
+    def optimizer_load(*args, **kwargs):
+        events.append(("optimizer", None))
+        torch.rand(11)
+        return load_optimizer(*args, **kwargs)
+
+    def cpu_restore(state):
+        events.append(("restore_cpu_rng", None))
+        restore_cpu_rng(state)
+
+    monkeypatch.setattr(target.model, "load_state_dict", model_load)
+    monkeypatch.setattr(target.optimizer, "load_state_dict", optimizer_load)
+    monkeypatch.setattr(torch, "set_rng_state", cpu_restore)
+    training_state.load_state(target, path, binding=binding, sampler=sampler)
+    assert events[-4:] == [
+        ("model", None),
+        ("optimizer", None),
+        ("restore_cpu_rng", None),
+        ("restore_cuda_rng", "cuda:1"),
+    ]
+    assert not any(device == "cuda:0" for _, device in events)
+    assert torch.equal(torch.get_rng_state(), payload["torch_rng_state"])
+    assert torch.equal(rng["cuda:1"], payload["cuda_rng_state"])
+    assert torch.equal(rng["cuda:0"], untouched)
+    assert_tree_equal(torch, target.model.state_dict(), trainer.model.state_dict())
+    assert_tree_equal(torch, target.optimizer.state_dict(), trainer.optimizer.state_dict())
+
+
+@pytest.mark.parametrize(
+    "corruption", ["missing_rng", "rng_shape", "rng_dtype", "rng_invalid", "protocol", "runtime"]
+)
+def test_invalid_cuda_state_is_rejected_before_model_optimizer_or_rng_mutation(
+    cuda_emulation, tmp_path, corruption
+):
+    make, torch, rng, events, identity = cuda_emulation
+    trainer = make()
+    step(trainer, 1)
+    binding, sampler = cuda_inputs(trainer, count=1)
+    path = tmp_path / "cuda-state.pth"
+    training_state.write_state(trainer, path, binding=binding, sampler=sampler)
+    payload = torch.load(path, weights_only=True)
+    if corruption == "missing_rng":
+        del payload["cuda_rng_state"]
+    elif corruption == "rng_shape":
+        payload["cuda_rng_state"] = torch.zeros(1, dtype=torch.uint8)
+    elif corruption == "rng_dtype":
+        payload["cuda_rng_state"] = payload["cuda_rng_state"].float()
+    elif corruption == "rng_invalid":
+        payload["cuda_rng_state"].fill_(255)
+    elif corruption == "protocol":
+        payload["protocol"] = training_state.PROTOCOL
+    else:
+        identity["gpu_uuid"] = "GPU-other"
+    torch.save(payload, path)
+    target = make()
+    before = deepcopy((target.model.state_dict(), target.optimizer.state_dict(), rng))
+    before_cpu_rng = torch.get_rng_state().clone()
+    with pytest.raises(ValueError, match="Training|Unsupported"):
+        training_state.load_state(target, path, binding=binding, sampler=sampler)
+    assert_tree_equal(torch, target.model.state_dict(), before[0])
+    assert_tree_equal(torch, target.optimizer.state_dict(), before[1])
+    assert_tree_equal(torch, rng, before[2])
+    assert torch.equal(torch.get_rng_state(), before_cpu_rng)
+    assert not any(event.startswith("restore_") for event, _ in events)
+
+
+@pytest.mark.parametrize("device, protocol", [("cpu", "cuda"), ("cuda:1", "cpu")])
+def test_checkpoint_protocol_cannot_cross_training_devices(tiny, tmp_path, device, protocol):
+    make, torch = tiny
+    trainer = make()
+    binding, sampler = inputs(trainer)
+    trainer.device = torch.device(device)
+    if protocol == "cuda":
+        binding["protocol"] = training_state.CUDA_PROTOCOL
+    with pytest.raises(ValueError, match="protocol.*selected device"):
+        training_state.write_state(
+            trainer, tmp_path / "wrong.pth", binding=binding, sampler=sampler
+        )

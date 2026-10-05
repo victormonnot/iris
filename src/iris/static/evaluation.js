@@ -17,6 +17,11 @@
     auditBusy: false,
     referenceBusy: false,
     catalogRequest: 0,
+    devicesRequest: 0,
+    devicesLoading: false,
+    cudaAvailable: false,
+    cudaReason: "CUDA availability has not been checked.",
+    devicesError: null,
     historyRequest: 0,
     detailRequest: 0,
     analysisRequest: 0,
@@ -113,6 +118,8 @@
         method: "POST", body: JSON.stringify(payload),
       });
       if (request !== view.auditPreviewRequest || view.detail?.id !== payload.validation_evaluation_id) return;
+      if (result.device !== payload.device)
+        throw new Error("The audit preview changed the saved evaluation device. Refresh before continuing.");
       view.auditPreview = result;
     } catch (failure) {
       if (request !== view.auditPreviewRequest || view.detail?.id !== payload.validation_evaluation_id) return;
@@ -133,7 +140,7 @@
       model_ids: [...view.chosen],
       confidence_threshold: Number($("#evaluation-confidence").value),
       iou_threshold: Number($("#evaluation-iou").value),
-      device: "cpu",
+      device: $("#evaluation-device").value,
       validation_evaluation_id: null,
       inference_mode: mode,
       tile_size: mode === "full" ? 640 : Number($("#evaluation-tile-size").value),
@@ -151,6 +158,8 @@
         method: "POST", body: JSON.stringify(payload),
       });
       if (request !== view.previewRequest) return;
+      if (preview.device !== payload.device)
+        throw new Error("The evaluation preview does not match the selected device. Refresh before continuing.");
       view.preview = preview;
     } catch (failure) {
       if (request !== view.previewRequest) return;
@@ -197,7 +206,13 @@
       const model = view.models.find((item) => item.id === id);
       return model?.status === "ready" && datasetTools.modelCompatibility(dataset, model).compatible;
     });
-    const valid = datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    const deviceAvailable = !view.devicesLoading && (payload.device === "cpu" || view.cudaAvailable);
+    const valid = deviceAvailable && datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    $("#evaluation-device").disabled = view.busy || view.devicesLoading;
+    $("#evaluation-device option[value='cuda']").disabled = !view.cudaAvailable;
+    $("#evaluation-device-status").textContent = view.devicesLoading
+      ? "Checking local device availability…"
+      : [view.devicesError, view.cudaAvailable ? "NVIDIA CUDA is available for local evaluation." : view.cudaReason].filter(Boolean).join(" ");
     $("#evaluation-tiling-fields").hidden = !tiled;
     $("#evaluation-tile-size").disabled = !tiled;
     $("#evaluation-tile-overlap").disabled = !tiled;
@@ -210,7 +225,7 @@
       ? `${size} validation frames · ${dataset.summary.split_counts.test || 0} reserved test frames · ${datasetTools.taxonomyOf(dataset).classes.map((item) => item.name).join(", ")}`
       : "Freeze a release with validation data in Dataset & training first.";
     $("#evaluation-selection").textContent =
-      `${size} validation frames · ${view.chosen.size} models · ${mode === "paired" ? "Full image vs tiled" : modeName(mode)} · CPU`;
+      `${size} validation frames · ${view.chosen.size} models · ${mode === "paired" ? "Full image vs tiled" : modeName(mode)} · ${payload.device === "cpu" ? "CPU" : "NVIDIA CUDA GPU"}`;
     if (valid) {
       const key = JSON.stringify(payload);
       if (key !== view.previewKey) requestPreview(payload, key);
@@ -339,6 +354,30 @@
       renderModels();
       updateLaunch();
       error("#evaluation-error", failure);
+    }
+  }
+  async function refreshDevices() {
+    const request = ++view.devicesRequest;
+    view.devicesLoading = true;
+    view.devicesError = null;
+    updateLaunch();
+    if (view.detail) renderActions(false);
+    try {
+      const report = await api("/api/training/devices");
+      if (request !== view.devicesRequest) return;
+      const device = report.devices?.find((item) => item.id === "cuda:0" || item.id === "cuda");
+      view.cudaAvailable = device?.available === true;
+      view.cudaReason = device?.reason || "The default CUDA device is not available in this environment.";
+    } catch (failure) {
+      if (request !== view.devicesRequest) return;
+      view.cudaAvailable = false;
+      view.devicesError = `Device availability could not be checked: ${failure.message}`;
+    } finally {
+      if (request === view.devicesRequest) {
+        view.devicesLoading = false;
+        updateLaunch();
+        if (view.detail) renderActions(false);
+      }
     }
   }
   async function refreshHistory() {
@@ -1002,8 +1041,9 @@
       (item) => item.id === view.detail.dataset_id,
     );
     const auditAvailable = finished && split() === "val" && dataset?.summary?.split_counts?.test > 0;
+    const auditDeviceAvailable = !view.devicesLoading && ((config().device || "cpu") === "cpu" || view.cudaAvailable);
     $("#evaluation-test-audit").hidden = !auditAvailable;
-    if (auditAvailable) {
+    if (auditAvailable && auditDeviceAvailable) {
       const payload = auditPayload(view.detail);
       const key = JSON.stringify(payload);
       if (key !== view.auditPreviewKey) requestAuditPreview(payload, key);
@@ -1016,11 +1056,13 @@
     }
     const plan = $("#evaluation-audit-plan");
     plan.classList.toggle("inline-error", Boolean(view.auditPreviewError));
-    plan.textContent = view.auditPreviewPending ? "Checking model passes on the reserved test split…"
+    plan.textContent = auditAvailable && !auditDeviceAvailable
+      ? `The saved ${config().device || "cpu"} device must be available to audit with the same settings. ${view.devicesLoading ? "Checking availability…" : view.cudaReason}`
+      : view.auditPreviewPending ? "Checking model passes on the reserved test split…"
       : view.auditPreviewError ? view.auditPreviewError.message
-        : view.auditPreview ? `${view.auditPreview.frames_total} reserved test frames · ${view.auditPreview.forward_passes} model passes + ${view.auditPreview.warmup_passes} warm-up passes · ${pipelineDescription(config().inference)}. The saved settings will be copied unchanged.` : "";
+        : view.auditPreview ? `${view.auditPreview.frames_total} reserved test frames · ${view.auditPreview.forward_passes} model passes + ${view.auditPreview.warmup_passes} warm-up passes · ${pipelineDescription(config().inference)} · ${(config().device || "cpu").toUpperCase()}. The saved settings will be copied unchanged.` : "";
     $("#evaluation-audit-start").disabled =
-      view.auditBusy || !$("#evaluation-audit-confirm").checked || view.auditPreviewPending || !view.auditPreview || Boolean(view.auditPreviewError);
+      view.auditBusy || !auditDeviceAvailable || !$("#evaluation-audit-confirm").checked || view.auditPreviewPending || !view.auditPreview || Boolean(view.auditPreviewError);
   }
   function renderDetail(changed) {
     const detail = view.detail,
@@ -1151,7 +1193,7 @@
     view.auditPreview = null;
     view.auditPreviewPending = false;
     view.auditPreviewError = null;
-    await refreshCatalogs();
+    await Promise.all([refreshCatalogs(), refreshDevices()]);
     await Promise.all([refreshHistory(), refreshReferences()]);
     $("#evaluation-refresh").disabled = false;
   }
@@ -1252,6 +1294,7 @@
     selectCompatibleModels();
   });
   $("#evaluation-inference-mode").addEventListener("change", updateLaunch);
+  $("#evaluation-device").addEventListener("change", updateLaunch);
   for (const selector of ["tile-size", "tile-overlap", "confidence", "iou"])
     $(`#evaluation-${selector}`).addEventListener("input", updateLaunch);
   $("#evaluation-save-experiment").addEventListener("click", () => {

@@ -241,6 +241,7 @@ class TrainingInput(BaseModel):
     checkpoint_interval: int | None = Field(default=None, ge=1, le=1000)
     learning_rate: float = Field(default=0.001, gt=0, le=0.1)
     seed: int = Field(default=0, ge=0, le=2147483647)
+    device: str = Field(default="cpu", pattern=r"^(?:cpu|cuda(?::(?:0|[1-9][0-9]{0,2}))?)$")
 
 
 class TrainingCreateInput(TrainingInput):
@@ -920,6 +921,12 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
             return FileResponse(store.artifact_path(frame["image_path"]), media_type="image/png")
         except (OSError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/training/devices")
+    def training_devices():
+        from iris.training_device import available_devices
+
+        return available_devices()
 
     @app.get("/api/trainings")
     def trainings():

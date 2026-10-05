@@ -40,6 +40,11 @@
     trainingModelsRequest: 0,
     trainingModelsLoading: false,
     trainingModelsError: null,
+    trainingDevices: recoveryTools.deviceChoices(null),
+    trainingDevicesRequest: 0,
+    trainingDevicesLoading: false,
+    trainingDevicesError: null,
+    trainingDeviceNotes: [],
     resumePreview: null,
     resumeRequest: 0,
     resumeBusy: false,
@@ -55,21 +60,21 @@
       description:
         "Update the final classification and box prediction layer. Keep visual features frozen for a small baseline run.",
       cost:
-        "The light scope updates the fewest parameters. The detector still processes each training image on CPU.",
+        "The light scope updates the fewest parameters. The detector still processes each training image on the selected device.",
     },
     partial_backbone: {
       label: "Partial · late features and detection heads",
       description:
         "Update late visual features and the detection heads. This is an option when adapting to a different camera or image appearance, including analog footage.",
       cost:
-        "Updating features and detection heads requires more CPU work and memory than the light scope. No duration estimate is available.",
+        "Updating features and detection heads requires more computation and memory than the light scope. No duration estimate is available.",
     },
     full_model: {
       label: "Full · all trainable layers",
       description:
         "Update all trainable layers for the broadest adaptation. This can overfit a small dataset; use held-out evaluation to check the result.",
       cost:
-        "Updating all trainable layers requires more CPU work and memory than the light scope. No duration estimate is available.",
+        "Updating all trainable layers requires more computation and memory than the light scope. No duration estimate is available.",
     },
   };
   const scopeLabel = (scope) =>
@@ -664,6 +669,7 @@
       seed: Number($("#training-seed").value),
       scope: $("#training-scope").value,
       checkpoint_interval: Number($("#training-checkpoint-interval").value),
+      device: $("#training-device").value,
     };
   }
 
@@ -684,15 +690,25 @@
       (item) => item.id === $("#training-parent").value,
     );
     const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
+    const device = workspace.trainingDevices.find((item) => item.id === $("#training-device").value);
     const unavailable =
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
+      workspace.trainingDevicesLoading ||
+      !device?.available ||
       !datasetTools.mlSupported(dataset) ||
       !compatibility.compatible ||
       model?.status !== "ready" ||
       !model.training;
     for (const field of $("#training-form").querySelectorAll("input, select"))
       field.disabled = workspace.trainingBusy;
+    $("#training-device").disabled = workspace.trainingBusy || workspace.trainingDevicesLoading;
+    $("#training-devices-refresh").disabled = workspace.trainingBusy || workspace.trainingDevicesLoading;
+    $("#training-device-status").textContent = workspace.trainingDevicesLoading
+      ? "Checking the local PyTorch runtime and visible devices…"
+      : [workspace.trainingDevicesError, device?.reason,
+        ...workspace.trainingDeviceNotes].filter(Boolean).join(" ") ||
+        `${device?.label || recoveryTools.deviceLabel($("#training-device").value)} selected. The device for deployment is chosen separately when exporting a model.`;
     $("#training-dataset").disabled =
       workspace.trainingBusy || !workspace.datasets.some(datasetTools.mlSupported);
     $("#training-parent").disabled =
@@ -706,7 +722,7 @@
     if (!workspace.trainingModelsLoading)
       $("#training-model-status").textContent = workspace.trainingModelsError || (model?.status === "ready"
         ? compatibility.reason
-        : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional CPU runtime are required. Check Model comparison for setup instructions.");
+        : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
     $("#training-preview").disabled = unavailable;
     $("#training-preview").textContent =
       workspace.trainingOperation === "preview"
@@ -719,7 +735,7 @@
     $("#training-start").textContent =
       workspace.trainingOperation === "start"
         ? "Queuing training…"
-        : "Start CPU training →";
+        : `Start ${recoveryTools.deviceLabel($("#training-device").value)} training →`;
     const selected = trainingScopes[$("#training-scope").value];
     $("#training-scope-description").textContent =
       selected?.description || "Choose a training depth.";
@@ -761,7 +777,7 @@
       counts.append(item);
     }
     $("#training-preview-workload").textContent = [
-      `CPU · batch size ${preview.workload.batch_size} · ${preview.workload.steps} optimizer steps maximum`,
+      `${recoveryTools.deviceLabel(preview.workload.device)} · batch size ${preview.workload.batch_size} · ${preview.workload.steps} optimizer steps maximum`,
       `${preview.workload.full_passes} complete pass(es) through the training images + ${preview.workload.remainder_images} additional image visits.`,
       `${preview.dataset.positive_train_images} training images contain target boxes; ${preview.dataset.annotation_count} training annotations.`,
     ].join(" · ");
@@ -770,7 +786,7 @@
     $("#training-preview-recovery").textContent =
       `Save recovery state every ${payload.checkpoint_interval} steps; retain the latest two states. ` +
       "Continuation uses the same frozen dataset, settings, optimizer and random state. No duration estimate is available before observing this run.";
-    warnings("#training-preview-notes", preview.notes);
+    warnings("#training-preview-notes", [...(preview.notes || []), ...(preview.device_notes || [])]);
     updateTrainingLaunch();
   }
 
@@ -857,6 +873,38 @@
     }
   }
 
+  async function refreshTrainingDevices() {
+    const request = ++workspace.trainingDevicesRequest;
+    const select = $("#training-device");
+    const previous = select.value || "cpu";
+    workspace.trainingDevicesLoading = true;
+    workspace.trainingDevicesError = null;
+    invalidateTrainingPreview();
+    let report;
+    try {
+      report = await api("/api/training/devices");
+    } catch (error) {
+      if (request !== workspace.trainingDevicesRequest) return;
+      workspace.trainingDevicesError = `Device availability could not be checked: ${error.message}`;
+    }
+    if (request !== workspace.trainingDevicesRequest) return;
+    workspace.trainingDevices = recoveryTools.deviceChoices(report, previous);
+    workspace.trainingDeviceNotes = [...new Set([
+      ...(report?.notes || []),
+      ...workspace.trainingDevices.filter((device) => !device.available && device.id !== previous).map((device) => device.reason).filter(Boolean),
+    ])];
+    select.replaceChildren();
+    for (const device of workspace.trainingDevices) {
+      const option = new Option(`${device.label || recoveryTools.deviceLabel(device.id)}${device.available ? "" : " · unavailable"}`, device.id);
+      option.disabled = !device.available;
+      option.title = device.reason || "";
+      select.append(option);
+    }
+    select.value = previous;
+    workspace.trainingDevicesLoading = false;
+    updateTrainingLaunch();
+  }
+
   function renderTrainingHistory() {
     const select = $("#training-history");
     select.replaceChildren();
@@ -872,7 +920,7 @@
     for (const run of workspace.trainings)
       select.append(
         new Option(
-          `${run.name} · ${scopeLabel(run.config?.scope)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
+          `${run.name} · ${scopeLabel(run.config?.scope)} · ${recoveryTools.deviceLabel(run.config?.device)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
           run.id,
         ),
       );
@@ -994,7 +1042,7 @@
     $("#training-resume-preview").disabled = workspace.resumeBusy || !recovery.can_resume || Boolean(existing);
     $("#training-resume-preview").textContent = workspace.resumeOperation === "preview" ? "Checking saved progress…" : "Preview continuation";
     $("#training-resume-start").disabled = workspace.resumeBusy || !recoveryTools.resumeMatches(workspace.resumePreview, detail);
-    $("#training-resume-start").textContent = workspace.resumeOperation === "start" ? "Queuing continuation…" : "Continue CPU training →";
+    $("#training-resume-start").textContent = workspace.resumeOperation === "start" ? "Queuing continuation…" : `Continue ${recoveryTools.deviceLabel(detail.config.device)} training →`;
   }
 
   async function previewResume() {
@@ -1018,7 +1066,7 @@
         `Continue from saved step ${preview.checkpoint_step} to the original target of ${preview.target_steps} steps (${preview.remaining_steps} remaining). ` +
         (preview.remaining_steps === 0 ? "Optimization is complete; this attempt will finish publishing the model checkpoint. " : "") +
         `${preview.recorded_steps} steps were recorded in the earlier attempt; ${preview.recomputed_steps} recorded step(s) after this state will be repeated. ` +
-        "The dataset, training depth, learning rate and seed stay fixed. This creates a new attempt and preserves the earlier one.";
+        `The dataset, training depth, learning rate, seed and ${recoveryTools.deviceLabel(detail.config.device)} device stay fixed. This creates a new attempt and preserves the earlier one.`;
       warnings("#training-resume-warnings", preview.warnings);
     } catch (error) {
       if (request === workspace.resumeRequest && workspace.trainingId === detail.id && workspace.visible)
@@ -1084,7 +1132,7 @@
         (item) => item.id === detail.dataset_id,
       );
       $("#training-detail-context").textContent =
-        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · CPU · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · ${recoveryTools.deviceLabel(detail.config.device)} · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
       const trained = detail.metadata?.trainable_parameters;
       const total = detail.metadata?.total_parameters;
       const modules =
@@ -1272,7 +1320,7 @@
       await refreshTrainings();
       await refreshJobs();
       notify(
-        `Training “${detail.name}” queued for ${payload.steps} CPU steps. Follow progress or cancel in Processing jobs.`,
+        `Training “${detail.name}” queued for ${payload.steps} ${recoveryTools.deviceLabel(payload.device)} steps. Follow progress or cancel in Processing jobs.`,
       );
     } catch (error) {
       if (request === workspace.trainingPreviewRequest && workspace.visible) {
@@ -1306,6 +1354,7 @@
       refreshCandidates();
       refreshDatasets();
       refreshTrainingModels();
+      refreshTrainingDevices();
       refreshTrainings();
     } else {
       invalidatePartitionPlan();
@@ -1314,6 +1363,7 @@
       invalidateResumePreview();
     }
   });
+  $("#training-devices-refresh").addEventListener("click", refreshTrainingDevices);
   window.addEventListener("iris:taxonomy", (event) => {
     const taxonomy = event.detail.taxonomy;
     if (!workspace.candidates || workspace.taxonomies.some((item) => item.id === taxonomy.id)) return;

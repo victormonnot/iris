@@ -19,6 +19,7 @@ import re
 import statistics
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
@@ -92,6 +93,35 @@ PROFILE = {
         ),
     },
 }
+
+
+def device_family(device):
+    if device == "cpu":
+        return "cpu"
+    if isinstance(device, str) and re.fullmatch(r"cuda(?::(?:0|[1-9][0-9]{0,3}))?", device):
+        return "cuda"
+    raise ValueError("Choose cpu or cuda[:N]")
+
+
+def native_profile(target_device):
+    """A new frozen profile leaves all historical CPU v1 evidence unchanged."""
+    if target_device not in ("cpu", "cuda"):
+        raise ValueError("Choose a CPU or CUDA export target")
+    profile = deepcopy(PROFILE)
+    profile.update(id="iris-torchvision-trained-native-v2", device=target_device)
+    profile["cuda"] = {"tf32_matmul": False, "tf32_cudnn": False, "cudnn_benchmark": False}
+    profile["timing"]["cuda_synchronization"] = "Before timing and after every timed stage"
+    profile["timing"]["preprocess_ms"] += "; includes transfer to the selected device"
+    return profile
+
+
+def _selected_device(manifest, device=None):
+    selected = manifest["profile"]["device"] if device is None else device
+    if device_family(selected) != manifest["profile"]["device"]:
+        raise ValueError("Selected device differs from the frozen export target")
+    return selected
+
+
 _BUILTIN_ID = "iris-objects-v1"
 _BUILTIN_TAXONOMY = {
     "id": _BUILTIN_ID,
@@ -287,12 +317,17 @@ def validate_manifest(manifest):
         {"format", "id", "name", "created_at", "model", "source", "profile", "files", "validation"},
         "manifest",
     )
-    if manifest["format"] != "iris-model-export-v1":
+    if manifest["format"] not in ("iris-model-export-v1", "iris-model-export-v2"):
         raise ValueError("Unsupported model export format")
     _identifier(manifest["id"], "export ID")
     _text(manifest["name"], "export name", 200)
     _timestamp(manifest["created_at"])
-    if canonical_bytes(manifest["profile"]) != canonical_bytes(PROFILE):
+    modern = manifest["format"] == "iris-model-export-v2"
+    profile = manifest["profile"]
+    expected_profile = (
+        native_profile(profile.get("device")) if modern and isinstance(profile, dict) else PROFILE
+    )
+    if canonical_bytes(profile) != canonical_bytes(expected_profile):
         raise ValueError("Unsupported runtime profile")
     if manifest["validation"] != {
         "real_execution": "not_run",
@@ -311,12 +346,15 @@ def validate_manifest(manifest):
     source = manifest["source"]
     _object(
         source,
-        {"evaluation_id", "evaluation_model_id", "dataset_id", "dataset_manifest_sha256"},
+        {"evaluation_id", "evaluation_model_id", "dataset_id", "dataset_manifest_sha256"}
+        | ({"reference_device"} if modern else set()),
         "source",
     )
     for key in ("evaluation_id", "evaluation_model_id", "dataset_id"):
         _identifier(source[key], key)
     _hash(source["dataset_manifest_sha256"])
+    if modern:
+        device_family(source["reference_device"])
     files = manifest["files"]
     if (
         not isinstance(files, dict)
@@ -417,7 +455,7 @@ def validate_reference(manifest, reference):
     return reference
 
 
-def _environment(value):
+def _environment(value, profile=PROFILE):
     keys = {
         "python",
         "torch",
@@ -433,6 +471,8 @@ def _environment(value):
         "precision",
         "batch_size",
     }
+    if profile["device"] == "cuda":
+        keys |= {"cuda"}
     _object(value, keys, "measurement environment")
     for key in ("python", "torch", "torchvision", "pillow", "platform", "machine", "processor"):
         _text(value[key], f"environment {key}", 512)
@@ -448,13 +488,49 @@ def _environment(value):
     for key in ("cpu_count", "threads", "interop_threads"):
         _integer(value[key], key, 1, 65536)
     if (
-        value["device"] != "cpu"
+        device_family(value["device"]) != profile["device"]
         or value["precision"] != "float32"
         or type(value["batch_size"]) is not int
         or value["batch_size"] != 1
         or value["threads"] != min(4, value["cpu_count"])
     ):
-        raise ValueError("Environment differs from the CPU float32 batch-one profile")
+        raise ValueError("Environment differs from the selected float32 batch-one profile")
+    if profile["device"] == "cuda":
+        if any(value[key].endswith("+cpu") for key in ("torch", "torchvision")):
+            raise ValueError("CUDA evidence cannot claim CPU-only runtime builds")
+        cuda = value["cuda"]
+        _object(
+            cuda,
+            {
+                "runtime",
+                "cudnn",
+                "index",
+                "name",
+                "capability",
+                "total_memory",
+                "tf32_matmul",
+                "tf32_cudnn",
+                "cudnn_benchmark",
+            },
+            "CUDA environment",
+        )
+        _text(cuda["runtime"], "CUDA runtime", 64)
+        if not re.fullmatch(r"[0-9]+\.[0-9]+", cuda["runtime"]):
+            raise ValueError("Invalid CUDA runtime version")
+        if cuda["cudnn"] is not None:
+            _integer(cuda["cudnn"], "cuDNN version", 1, 1_000_000)
+        _integer(cuda["index"], "CUDA device index", 0, 9999)
+        if value["device"] != f"cuda:{cuda['index']}":
+            raise ValueError("CUDA environment must identify the selected device index")
+        _text(cuda["name"], "CUDA device name", 256)
+        _integer(cuda["total_memory"], "CUDA memory", 1, 2**60)
+        if not isinstance(cuda["capability"], list) or len(cuda["capability"]) != 2:
+            raise ValueError("Invalid CUDA compute capability")
+        for number in cuda["capability"]:
+            _integer(number, "CUDA compute capability", 0, 100)
+        for key in ("tf32_matmul", "tf32_cudnn", "cudnn_benchmark"):
+            if cuda[key] is not False:
+                raise ValueError("CUDA profile disables TF32 and cuDNN benchmarking")
 
 
 def _timing(value):
@@ -494,7 +570,7 @@ def validate_measurement(manifest, reference, payload):
         "external_execution",
     }:
         raise ValueError("Unknown execution declaration")
-    _environment(payload["environment"])
+    _environment(payload["environment"], manifest["profile"])
     _integer(payload["repeats"], "repeats", 1, 10)
     _number(payload["load_ms"], "load duration")
     _object(payload["warmup"], {"frame_id", "duration_ms"}, "warmup")
@@ -614,21 +690,97 @@ def _restore_frozen_batchnorm(module, torch, torchvision):
             _restore_frozen_batchnorm(child, torch, torchvision)
 
 
+def _runtime_modules(manifest, device=None):
+    validate_manifest(manifest)
+    selected = _selected_device(manifest, device)
+    for package in ("torch", "torchvision", "pillow"):
+        installed = importlib.metadata.version(package)
+        if installed.split("+", 1)[0] != PROFILE["runtime"][package]:
+            raise RuntimeError(
+                f"Expected {package} {PROFILE['runtime'][package]}; found {installed}"
+            )
+    if sys.version_info[:2] not in ((3, 12), (3, 13)):
+        raise RuntimeError("This profile requires Python 3.12 or 3.13")
+    import torch
+    import torchvision
+
+    if device_family(selected) == "cuda":
+        if not getattr(torch.version, "cuda", None):
+            raise RuntimeError("This target requires an NVIDIA CUDA build of PyTorch")
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA is unavailable; install a compatible NVIDIA runtime separately"
+            )
+        index = int(selected.split(":")[1]) if ":" in selected else torch.cuda.current_device()
+        if index >= torch.cuda.device_count():
+            raise RuntimeError("Selected CUDA device does not exist")
+        if not torchvision.extension._has_ops() or any(
+            not torch._C._dispatch_has_kernel_for_dispatch_key(name, "CUDA")
+            for name in ("torchvision::nms", "torchvision::roi_align")
+        ):
+            raise RuntimeError(
+                "Torchvision CUDA detection operators are missing; install matching builds"
+            )
+        major, minor = torch.cuda.get_device_capability(index)
+        capability = major * 10 + minor
+        supported = any(
+            (item.startswith("compute_") and int(item[8:]) <= capability)
+            or (
+                item.startswith("sm_")
+                and int(item[3:]) // 10 == major
+                and int(item[3:]) <= capability
+            )
+            for item in torch.cuda.get_arch_list()
+            if re.fullmatch(r"(?:sm|compute)_[0-9]+", item)
+        )
+        if not supported:
+            raise RuntimeError("This PyTorch build does not support the selected GPU architecture")
+        selected = f"cuda:{index}"
+    return torch, torchvision, selected
+
+
+def _cuda_environment(torch, device):
+    index = int(device.split(":")[1])
+    properties = torch.cuda.get_device_properties(index)
+    return {
+        "runtime": torch.version.cuda,
+        "cudnn": torch.backends.cudnn.version(),
+        "index": index,
+        "name": properties.name,
+        "capability": list(torch.cuda.get_device_capability(index)),
+        "total_memory": properties.total_memory,
+        "tf32_matmul": torch.backends.cuda.matmul.allow_tf32,
+        "tf32_cudnn": torch.backends.cudnn.allow_tf32,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+    }
+
+
+def check_runtime(manifest, device=None):
+    """Explicit dependency/device probe: no model construction, weights or inference."""
+    torch, torchvision, selected = _runtime_modules(manifest, device)
+    return {
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "torchvision": torchvision.__version__,
+        "pillow": importlib.metadata.version("pillow"),
+        "machine": platform.machine(),
+        "device": selected,
+        "cuda": _cuda_environment(torch, selected) if device_family(selected) == "cuda" else None,
+        "dependencies_available": True,
+        "model_loaded": False,
+        "inference_verified": False,
+    }
+
+
 class Detector:
     """Same bounded construction and image contract as IRIS; no installation or download."""
 
-    def __init__(self, directory, manifest):
-        validate_manifest(manifest)
-        for package in ("torch", "torchvision", "pillow"):
-            installed = importlib.metadata.version(package)
-            if installed.split("+", 1)[0] != PROFILE["runtime"][package]:
-                raise RuntimeError(
-                    f"Expected {package} {PROFILE['runtime'][package]}; found {installed}"
-                )
-        if sys.version_info[:2] not in ((3, 12), (3, 13)):
-            raise RuntimeError("This profile requires Python 3.12 or 3.13")
-        import torch
-        import torchvision
+    def __init__(self, directory, manifest, device=None):
+        torch, torchvision, self.device = _runtime_modules(manifest, device)
+        if device_family(self.device) == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
+            torch.backends.cudnn.benchmark = False
 
         self.torch, self.torchvision = torch, torchvision
         self.contract = manifest["model"]["class_contract"]
@@ -645,10 +797,15 @@ class Detector:
             source.seek(0)
             weights = torch.load(source, map_location="cpu", weights_only=True)
         self.model.load_state_dict(weights, strict=True)
-        self.model = self.model.eval().to("cpu")
+        self.model = self.model.eval().to(self.device)
+        self.synchronize()
+
+    def synchronize(self):
+        if device_family(self.device) == "cuda":
+            self.torch.cuda.synchronize(self.device)
 
     def environment(self):
-        return {
+        result = {
             "python": platform.python_version(),
             "torch": self.torch.__version__,
             "torchvision": self.torchvision.__version__,
@@ -659,26 +816,32 @@ class Detector:
             "cpu_count": os.cpu_count() or 1,
             "threads": self.torch.get_num_threads(),
             "interop_threads": self.torch.get_num_interop_threads(),
-            "device": "cpu",
+            "device": self.device,
             "precision": "float32",
             "batch_size": 1,
         }
+        if device_family(self.device) == "cuda":
+            result["cuda"] = _cuda_environment(self.torch, self.device)
+        return result
 
     def predict(self, image):
         from PIL import ImageOps
 
+        self.synchronize()
         started = time.perf_counter()
         oriented = ImageOps.exif_transpose(image).convert("RGB")
         _input_size(list(oriented.size))
         tensor = (
             self.torchvision.transforms.functional.pil_to_tensor(oriented).to(
-                device="cpu", dtype=self.torch.float32
+                device=self.device, dtype=self.torch.float32
             )
             / 255.0
         )
+        self.synchronize()
         preprocessed = time.perf_counter()
         with self.torch.inference_mode():
             output = self.model([tensor])[0]
+        self.synchronize()
         inferred = time.perf_counter()
         boxes, labels, scores = [
             output[key].detach().cpu().tolist() for key in ("boxes", "labels", "scores")
@@ -702,6 +865,7 @@ class Detector:
                 detection["taxonomy_id"] = self.contract["taxonomy_id"]
             detections.append(detection)
         _detections(detections, list(oriented.size), self.contract)
+        self.synchronize()
         finished = time.perf_counter()
         return {
             "input_size": list(oriented.size),
@@ -729,11 +893,11 @@ def _image(path, expected_hash=None):
         return source.copy()
 
 
-def measure(directory, manifest, reference, repeats):
+def measure(directory, manifest, reference, repeats, device=None):
     validate_reference(manifest, reference)
     _integer(repeats, "repeats", 1, 10)
     started = time.perf_counter()
-    detector = Detector(directory, manifest)
+    detector = Detector(directory, manifest, device)
     load_ms = (time.perf_counter() - started) * 1000
     first = reference["frames"][0]
     with _image(_safe_file(Path(directory), first["path"]), first["sha256"]) as image:
@@ -792,18 +956,24 @@ def main(argv=None):
     commands.add_parser(
         "inspect", help="Check inventory and hashes without loading ML dependencies"
     )
-    predict = commands.add_parser("predict", help="Run one local image on CPU")
+    check = commands.add_parser(
+        "check-runtime", help="Check dependencies and device without loading a model"
+    )
+    check.add_argument("--device", help="cpu or cuda[:N], matching the frozen target")
+    predict = commands.add_parser("predict", help="Run one local image on the selected target")
+    predict.add_argument("--device", help="cpu or cuda[:N], matching the frozen target")
     predict.add_argument("image", type=Path)
     predict.add_argument("--output", required=True, type=Path)
     measurement = commands.add_parser(
-        "measure", help="Compare saved references and measure CPU inference"
+        "measure", help="Compare saved references and measure inference on the selected target"
     )
     measurement.add_argument("--repeats", type=int, default=3)
     measurement.add_argument("--output", required=True, type=Path)
+    measurement.add_argument("--device", help="cpu or cuda[:N], matching the frozen target")
     args = parser.parse_args(argv)
     try:
         manifest, reference = validate_bundle(args.bundle)
-        if args.command != "inspect":
+        if args.command in ("predict", "measure"):
             _output_path(args.output, args.bundle)
         if args.command == "inspect":
             result = {
@@ -816,8 +986,10 @@ def main(argv=None):
                 "real_execution": "not_run",
                 "runtime_loaded": False,
             }
+        elif args.command == "check-runtime":
+            result = check_runtime(manifest, args.device)
         elif args.command == "predict":
-            detector = Detector(args.bundle, manifest)
+            detector = Detector(args.bundle, manifest, args.device)
             with _image(args.image) as image:
                 result = {
                     "manifest_sha256": digest_bytes(canonical_bytes(manifest)),
@@ -827,7 +999,7 @@ def main(argv=None):
             _write_new_json(args.output, result, args.bundle)
             result = {"output": str(args.output.resolve()), "detections": len(result["detections"])}
         else:
-            payload = measure(args.bundle, manifest, reference, args.repeats)
+            payload = measure(args.bundle, manifest, reference, args.repeats, args.device)
             _write_new_json(args.output, payload, args.bundle)
             result = {
                 "output": str(args.output.resolve()),

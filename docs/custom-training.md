@@ -24,15 +24,17 @@ Initialization and class mappings are recorded with the training settings.
 Only the frozen training split is read by the optimizer. At least one training
 image must contain a positive annotation; validated negatives are also supported.
 Inherited training groups and image hashes cannot appear in held-out evaluation
-data. Use the plan preview before starting a bounded CPU run. A successful run
+data. Use the plan preview before starting a bounded CPU or NVIDIA CUDA run. A successful run
 records a checkpoint hash and full class definitions and returns the checkpoint
 to the model catalog. Loss is not a quality measurement.
 
-Runs support 1 to 10,000 CPU optimizer steps. The interface saves recovery state
+Runs support 1 to 10,000 optimizer steps on CPU or one selected NVIDIA GPU, using
+float32 and batch size one. Training depth has the same meaning on either device.
+The interface saves recovery state
 every 50 steps by default, with the interval reviewed in the plan. A stopped
 attempt with a saved state can be continued explicitly in a new attempt with
 the same data, settings and runtime. Continuation preserves SGD momentum and
-RNG state; starting another fine-tuning run from a completed checkpoint uses a
+CPU RNG and, for CUDA, selected GPU RNG state; starting another fine-tuning run from a completed checkpoint uses a
 new optimizer. See [longer training and continuation](long-training.md) for
 the interval limits, storage policy, timing scope and legacy API behavior.
 
@@ -74,14 +76,24 @@ Reload reconstructs the architecture and exact head before strict state loading.
 This checks that custom heads can be saved and reloaded without relying on current
 project definitions. The [standalone model export workflow](model-export.md)
 packages a completed trained checkpoint, its frozen classes and inference recipe,
-a CPU PyTorch runner, and saved evaluation examples for external parity checks.
+an independent PyTorch CPU or CUDA runner, and saved evaluation examples for external parity checks.
 Real exported-model execution and target performance remain to be tested. No
-ONNX, TensorRT or embedded-runtime export is provided. Internal optimizer
+ONNX or TensorRT conversion is provided. Use the PyTorch runner on an embedded
+target only when that target satisfies its runtime and operator requirements.
+Internal optimizer
 recovery states cannot be used as inference exports.
 
-The existing CPU scopes and step limits apply to custom classes. Multimodal
+Completed checkpoint tensors are saved on CPU and can be loaded for inference on
+CPU or CUDA independently of the training device. Choose the export target for
+the destination machine, then check the target runtime and measure parity there.
+An interrupted optimizer state requires its original training device and runtime;
+it cannot be used to transfer an in-progress run between CPU and GPU. See
+[compute targets](compute-targets.md) for setup and platform compatibility.
+
+The existing scopes and step limits apply to custom classes. Multimodal
 candidate review retains its original Person / Car scope. Direct detector
 preannotation and disagreement review support compatible frozen custom classes.
 Synthetic fixtures verify the software path, including state continuation, not
-detector quality on real images. Real detector training and resume trials remain
+detector quality on real images. CUDA protocol tests use mocked interfaces;
+real detector training, GPU execution and resume trials remain
 deferred. No model weights or datasets are downloaded automatically.

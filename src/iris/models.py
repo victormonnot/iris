@@ -504,6 +504,31 @@ def _cpu_name() -> str:
     return platform.processor() or platform.machine()
 
 
+def _configure_cuda(torch, device):
+    """Use the same explicit float32 policy as standalone CUDA exports."""
+    if not torch.version.cuda or not torch.cuda.is_available():
+        raise RuntimeError("NVIDIA CUDA is unavailable; install a compatible runtime.")
+    if device.index is not None and device.index >= torch.cuda.device_count():
+        raise RuntimeError("Selected CUDA device does not exist.")
+    torch.cuda.set_device(device)
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cudnn.benchmark = False
+    properties = torch.cuda.get_device_properties(device)
+    return {
+        "runtime": torch.version.cuda,
+        "cudnn": torch.backends.cudnn.version(),
+        "index": device.index,
+        "name": properties.name,
+        "capability": [properties.major, properties.minor],
+        "total_memory": properties.total_memory,
+        "uuid": str(properties.uuid) if getattr(properties, "uuid", None) else None,
+        "tf32_matmul": torch.backends.cuda.matmul.allow_tf32,
+        "tf32_cudnn": torch.backends.cudnn.allow_tf32,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+    }
+
+
 class TorchvisionDetector:
     """Load a verified official or trained checkpoint, without implicit downloads."""
 
@@ -530,6 +555,7 @@ class TorchvisionDetector:
         self.torch = torch
         self.functional = torchvision.transforms.functional
         self.device = torch.device(device)
+        cuda_metadata = None
         if self.device.type == "cuda":
             if not torch.cuda.is_available():
                 raise RuntimeError(
@@ -537,6 +563,7 @@ class TorchvisionDetector:
                 )
             if self.device.index is None:
                 self.device = torch.device("cuda", torch.cuda.current_device())
+            cuda_metadata = _configure_cuda(torch, self.device)
         torch.set_num_threads(min(4, os.cpu_count() or 1))
         architecture = self.spec["architecture"]
         builder = getattr(torchvision.models.detection, architecture)
@@ -600,6 +627,8 @@ class TorchvisionDetector:
             "timing_protocol": deepcopy(TIMING_PROTOCOL),
             "coordinates": "xyxy pixels, original oriented image, exclusive right/bottom edge",
         }
+        if cuda_metadata is not None:
+            self.metadata["cuda"] = cuda_metadata
         if self.class_contract:
             self.metadata.update(
                 **self.class_contract,

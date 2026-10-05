@@ -1,16 +1,18 @@
 # Portable trained-model export
 
 IRIS exports a trained **Faster R-CNN MobileNetV3-Large 320 FPN** checkpoint with
-a standalone CPU runner. The package contains the original PyTorch `state_dict`,
+a standalone CPU or NVIDIA CUDA runner. The package contains the original PyTorch `state_dict`,
 its frozen classes, the complete inference recipe, dependencies, saved reference
 predictions, and the small set of reference images needed to check parity outside
 IRIS. This is model export; dataset COCO export is a separate operation.
 
-This first profile supports the builtin person/car head and custom heads trained
+The native profiles support the builtin person/car head and custom heads trained
 in IRIS, for all supported training scopes. It supports one full image per
 forward pass. Tiled evaluation, official unmodified detectors, SAM, multimodal
-providers, ONNX, GPU execution, quantization, and other architectures are outside
-this profile.
+providers, ONNX, TensorRT, quantization, and other architectures are outside
+these profiles. Choose the export target independently of the training device:
+CPU-to-CPU, CPU-to-CUDA, CUDA-to-CPU, and CUDA-to-CUDA use the same full checkpoint.
+The saved reference evaluation may also have run on either CPU or CUDA.
 
 ## What is verified
 
@@ -40,13 +42,21 @@ parity/reference.json
 parity/images/<frame_id>.png
 ```
 
-The manifest uses `iris-model-export-v1`, freezes the `PROFILE` in
+Existing CPU-reference/CPU-target exports use `iris-model-export-v1`, freezing the
+`iris-torchvision-trained-cpu-v1` profile in
 `src/iris/export_runner.py`, and contains the evaluation, evaluation-model row,
 dataset, dataset-manifest hash, and checkpoint identities. Its inventory excludes
 `manifest.json` itself. The manifest hash is computed over sorted, compact UTF-8
 JSON with no trailing newline. The reference file uses the same canonical
 encoding. Image hashes cover the encoded PNG bytes, rather than IRIS's separate
 RGB pixel hash.
+
+A CUDA target or CUDA reference uses `iris-model-export-v2` and the
+`iris-torchvision-trained-native-v2` profile. Its `profile.device` freezes the
+target family (`cpu` or `cuda`), and `source.reference_device` records the saved
+evaluation device. Version 1 manifests and measurements remain unchanged and
+readable. Existing package files are validated against their own frozen inventory,
+without requiring that their runner match the current IRIS source code.
 
 Reference sets contain one to eight images, in a frozen order, and their complete
 native predictions. The runner accepts checkpoint files up to 1 GiB, individual
@@ -58,15 +68,35 @@ detect changes; they do not authenticate an external publisher.
 
 The profile requires Python 3.12 or 3.13, PyTorch 2.10.0, Torchvision 0.25.0, and
 Pillow 12.3.0. Provision these dependencies on the target machine using the
-appropriate PyTorch CPU distributions. The runner never installs dependencies,
+appropriate CPU or CUDA PyTorch and Torchvision distributions. The runner never installs dependencies,
 downloads weights, contacts an API, or requires access to an IRIS workspace.
 Inspection uses only Python's standard library:
 
 ```sh
 python /path/to/export/run.py inspect
+python /path/to/export/run.py check-runtime
 python /path/to/export/run.py predict /path/to/image.png --output /path/to/prediction.json
 python /path/to/export/run.py measure --repeats 3 --output /path/to/measurement.json
 ```
+
+For a CUDA target, add `--device cuda:0` (or another visible index) to
+`check-runtime`, `predict`, or `measure`. Omitting the option uses the current CUDA
+device. The selected family must match the frozen target; there is no automatic
+fallback to CPU. Create another export to measure the same model on a different
+device family. `check-runtime` explicitly imports the installed packages and
+queries the selected device, without constructing a detector or loading weights.
+For CUDA it also requires registered Torchvision CUDA detection operators and a
+GPU architecture supported by the installed PyTorch build.
+Success only confirms the dependency/device probe; real inference still needs to
+be tested.
+
+An ARM or embedded GPU is a separate deployment environment. Jetson installations
+need a compatible board, JetPack release, and vendor PyTorch/Torchvision builds;
+the versions pinned by this profile may be unavailable on older boards. CUDA
+support does not imply that every Jetson or GPU can run this package. Consult
+[NVIDIA's Jetson installation guidance](https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform/index.html)
+when provisioning the target. IRIS does not create TensorRT engines or change the
+target's dependencies automatically.
 
 The default bundle directory is the runner's own directory. To select another
 directory, place `--bundle /path/to/export` before the command. Output files must
@@ -81,8 +111,11 @@ The runner builds `fasterrcnn_mobilenet_v3_large_320_fpn` with `weights=None` an
 `weights_backbone=None`. It uses the frozen class count plus the background slot,
 replaces backbone `BatchNorm2d` modules with `FrozenBatchNorm2d(eps=1e-5)`, and
 loads the local checkpoint with `weights_only=True`, `map_location="cpu"`, and
-`load_state_dict(strict=True)`. It then uses evaluation mode and float32 CPU
-inference. Threads are capped at `min(4, os.cpu_count() or 1)`.
+`load_state_dict(strict=True)`. It then transfers the model to the selected CPU or
+CUDA device and uses evaluation mode and float32 inference. Threads are capped at
+`min(4, os.cpu_count() or 1)`. CUDA execution disables TF32 for matrix multiplication
+and cuDNN and disables cuDNN benchmarking. The same checkpoint can therefore be
+packaged for either device independently of its training origin.
 
 Images receive EXIF orientation correction, RGB conversion, and CHW float32
 conversion divided by 255. Normalization, resizing, proposal filtering, NMS,
@@ -123,6 +156,8 @@ dimensions, complete predictions, and durations.
 Parity requires identical dimensions, detection count and order, class identities,
 boxes, and scores. Absolute and relative tolerances are zero. A legitimate numeric
 or count mismatch produces a failed parity result; malformed evidence is rejected.
+Different CPU/CUDA kernels may produce numerical or ordering differences; these
+remain explicit parity failures rather than receiving looser tolerances.
 The checker never silently widens the tolerance, changes ordering, or filters
 small scores to produce a passing result. Parity against saved predictions checks
 reproduction, not annotation accuracy or generalization to new images.
@@ -132,7 +167,7 @@ Timing scopes are explicit:
 - `load_ms`: runtime setup, model construction, checkpoint integrity check and loading.
 - `warmup.duration_ms`: one full detector call; excluded from measured samples.
 - `decode_ms`: file read, image hash verification and image decoding.
-- `preprocess_ms`: orientation, RGB conversion and tensor creation.
+- `preprocess_ms`: orientation, RGB conversion, tensor creation and device transfer.
 - `inference_ms`: full Torchvision forward, including resize, proposals and NMS.
 - `postprocess_ms`: CPU result conversion and output validation.
 - `total_ms`: the three detector stages; excludes decode, load, warmup and JSON writing.
@@ -142,6 +177,11 @@ minimum, median and maximum for each stage. Measurements include raw samples so
 different hardware, versions, class sets, image sizes and negative examples can
 be assessed without hiding variability. The `total_ms` used by IRIS evaluation
 includes decode; compare matching timing scopes rather than those totals directly.
+CUDA timing synchronizes the selected device before prediction and after each
+timed stage. Its measurement environment records the CUDA runtime, cuDNN version,
+visible device index, GPU name, compute capability, total memory and precision
+flags. These timing boundaries follow
+[PyTorch's asynchronous CUDA execution guidance](https://docs.pytorch.org/docs/2.10/notes/cuda.html#asynchronous-execution).
 
 Imported reports are retained as **declared external evidence**. IRIS recomputes
 parity and summaries from the samples and checks the frozen protocol. It cannot

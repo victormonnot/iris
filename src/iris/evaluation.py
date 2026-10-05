@@ -409,7 +409,12 @@ def _prepare_evaluation(
 def preview_evaluation(store: Store, **settings) -> dict:
     """Plan the complete frozen split without loading a detector or creating a job."""
     _, config = _prepare_evaluation(store, **settings)
-    return {"inference": config["inference"], "lanes": config["lanes"], **config["work"]}
+    return {
+        "device": config["device"],
+        "inference": config["inference"],
+        "lanes": config["lanes"],
+        **config["work"],
+    }
 
 
 def create_evaluation(

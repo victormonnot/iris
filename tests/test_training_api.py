@@ -129,7 +129,7 @@ def test_dataset_candidates_exclude_draft_and_report_reserved_groups(client):
         {"seed": -1},
         {"learning_rate": 0},
         {"learning_rate": 1},
-        {"device": "cuda"},
+        {"device": "metal"},
         {"scope": "unknown"},
         {"scope": "full"},
         {"scope": True},

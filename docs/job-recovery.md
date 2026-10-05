@@ -74,7 +74,9 @@ the saved job receipt; it does not send the provider request again.
 
 Training runs with durable checkpoints offer **Preview continuation** in their
 training details. Confirmation creates one linked attempt with the same frozen
-inputs, restoring the optimizer, CPU random state and image order. Work after the
+inputs, restoring the optimizer, CPU random state, selected CUDA random state
+when applicable, and image order. Continuation retains the original training
+device and runtime; a completed model can independently use CPU or CUDA. Work after the
 latest saved state is recomputed; the old attempt stays unchanged. Starting from
 a completed model instead initializes a new optimizer. Older runs without saved
 optimizer state require a new run. See [training continuation](long-training.md).

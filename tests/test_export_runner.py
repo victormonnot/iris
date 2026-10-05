@@ -409,7 +409,7 @@ def fake_runtime(monkeypatch):
             return self
 
         def to(self, device):
-            assert device == "cpu"
+            assert device == calls.get("device", "cpu")
             return self
 
         def __call__(self, tensors):
@@ -434,7 +434,7 @@ def fake_runtime(monkeypatch):
 
     class InputTensor:
         def to(self, **kwargs):
-            assert kwargs == {"device": "cpu", "dtype": "float32"}
+            assert kwargs == {"device": calls.get("device", "cpu"), "dtype": "float32"}
             return self
 
         def __truediv__(self, divisor):

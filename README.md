@@ -16,17 +16,20 @@ comparator and can be measured against their parents. See
 ## Standalone model export
 
 In **Dataset & Training → Model exports**, choose a trained Faster R-CNN checkpoint,
-a completed CPU full-image evaluation, and 1–8 saved images for parity checking.
+a completed CPU or CUDA full-image evaluation, a CPU or CUDA target, and 1–8 saved
+images for parity checking.
 Preview and create a ZIP containing the unchanged weights, frozen classes,
 preprocessing/output contract and an independent Python runner. Packaging only
 copies and verifies local files; it does not load the model or execute inference.
 
-The first profile targets PyTorch CPU float32 with pinned dependencies. On the
-target computer, inspect the bundle, predict on a local image, or measure exact
+Profiles target PyTorch CPU or NVIDIA CUDA float32 with pinned dependencies,
+independently of the training device. On the
+target computer, inspect the bundle, check its runtime, predict on a local image, or measure exact
 parity and inference time. Preview and import the generated measurement JSON back
 into IRIS. Failed parity remains visible, timings retain their scopes, and imported
 execution remains declared evidence. Real model/parity/performance validation is
-deferred; software tests use synthetic data and mocked execution.
+deferred; software tests use synthetic data and mocked execution. A different
+device can produce different numerical results; parity mismatches remain visible.
 See [the export format, runner commands and limitations](docs/model-export.md).
 
 ## Annotation benchmark
@@ -249,6 +252,13 @@ uv run --extra ml iris models list
 uv run --extra ml iris models download --all --data-dir /path/to/private/iris-data
 uv run --extra ml iris --data-dir /path/to/private/iris-data
 ```
+
+For NVIDIA CUDA training or inference, provision a separate environment with a
+compatible NVIDIA driver and matching CUDA builds of PyTorch/Torchvision. Keep
+using that environment's `iris` executable: the `ml` extra above intentionally
+selects CPU packages. See [CPU, CUDA and embedded compute targets](docs/compute-targets.md)
+for explicit setup commands and platform requirements. No packages or weights
+are installed automatically when choosing a device in IRIS.
 
 1. Select 1–100 frames in **Data intake**, then open **Model comparison**.
 2. Choose one or both ready models and an inference mode, inspect the estimated
@@ -529,11 +539,11 @@ API keys are read only by the server/worker and are never returned to the UI.
 4. Choose the frozen dataset and a ready
    **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
    either the official checkpoint or an IRIS checkpoint with the exact same class version. Choose a training
-   depth and preview the plan before starting a CPU run: 20 optimizer steps by
+   depth and a CPU or available NVIDIA CUDA device, then preview the plan: 20 optimizer steps by
    default, configurable from 1 to 10,000, batch size one, with an explicit learning
    rate and seed. The interface saves optimizer recovery state every 50 steps by
    default. The preview shows the train image count, visits, complete passes and
-   checkpoint policy. Editing a setting requires a new preview. Runtime depends on the CPU,
+   checkpoint policy. Editing a setting requires a new preview. Runtime depends on the hardware,
    images and depth; these limits bound steps, not wall-clock time. No weights
    are downloaded. Custom classes use the same workflow; see
    [custom training and compatibility](docs/custom-training.md) and
@@ -581,7 +591,8 @@ available. Cancellation or failure preserves saved step history and logs without
 publishing an incomplete inference model. Restart marks unfinished jobs interrupted.
 For a run with durable recovery state, preview and explicitly start a successor
 attempt from its latest saved step. The successor keeps the same frozen data,
-settings and runtime identity, restores SGD momentum, CPU RNG and sampler state,
+settings and runtime identity, restores SGD momentum, CPU RNG, the selected
+CUDA GPU RNG when applicable, and sampler state,
 and recomputes any work after that saved step. The source history remains intact;
 training never restarts automatically.
 
@@ -589,10 +600,19 @@ Recovery states are saved every configured interval and at the final step. The
 interval is 1–1,000 steps and at least `ceil(total_steps / 200)`, limiting the plan
 to 200 periodic saves. IRIS retains the latest two states per attempt, each up to
 512 MiB; allow space for a state being written and states retained by earlier
-attempts. They are separate from completed inference checkpoints. Legacy API runs
+attempts. They are separate from completed inference checkpoints. Every CUDA run
+saves durable state; legacy CPU API runs
 of at most 200 steps without a checkpoint interval retain their previous behavior
 and cannot be resumed. Real detector training and resume measurements remain
 deferred; software tests use synthetic fixtures and tiny modules.
+
+Training uses float32 and one device at a time, without mixed precision or
+multi-GPU execution. A completed model trained on CPU or GPU can be used for
+inference and exported for either supported target. A recovery state instead
+requires the original device index and runtime; GPU continuation does not promise
+bit-for-bit equality with an uninterrupted run. See
+[longer training and continuation](docs/long-training.md) and
+[compute targets](docs/compute-targets.md).
 
 ### Export a reviewed release
 

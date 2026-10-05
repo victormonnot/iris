@@ -1,4 +1,4 @@
-"""Bounded, offline CPU fine-tuning with an explicit per-run training depth.
+"""Bounded, offline CPU/CUDA fine-tuning with an explicit per-run training depth.
 
 Only frozen training images are opened. Validation and test examples remain
 reserved for a separate quality evaluation; training loss is not an accuracy metric.
@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -28,6 +29,7 @@ from iris.models import (
     catalog,
 )
 from iris.store import Store, new_id, now
+from iris.training_device import CUDA_PROTOCOL, device_label, normalize_device, resolve_device
 
 MAX_STEPS = 10000
 CLASS_MAPPING = {"person": 1, "car": 2}
@@ -130,8 +132,10 @@ def _prepare_training(
     seed: int = 0,
     scope: str = "prediction_head_only",
     checkpoint_interval: int | None = None,
+    device: str = "cpu",
 ) -> tuple:
     selected_scope = training_scope(scope)
+    device = normalize_device(device)
     if not isinstance(name, str):
         raise ValueError("Training name must contain between 1 and 160 characters")
     name = name.strip()
@@ -160,11 +164,12 @@ def _prepare_training(
     parent = _ready_parent(store, parent_model_id)
     compatible_parent(parent, contract)
     _check_holdouts(manifest, parent)
+    device, device_identity = resolve_device(device)
     config = {
         "steps": steps,
         "learning_rate": float(learning_rate),
         "seed": seed,
-        "device": "cpu",
+        "device": device,
         "scope": selected_scope["id"],
         "scope_version": SCOPE_VERSION,
         "trainable_modules": selected_scope["trainable_modules"],
@@ -177,11 +182,17 @@ def _prepare_training(
         **contract,
         "quality_metrics": "Not computed; training loss does not measure detection quality",
     }
-    if checkpoint_interval is not None or steps > 200:
+    if device != "cpu":
+        config.update(
+            device_identity=device_identity,
+            precision="float32",
+            deterministic_algorithms=False,
+        )
+    if checkpoint_interval is not None or steps > 200 or device != "cpu":
         from iris.training_recovery import PROTOCOL, validate_config
 
         config.update(
-            checkpoint_protocol=PROTOCOL,
+            checkpoint_protocol=PROTOCOL if device == "cpu" else CUDA_PROTOCOL,
             checkpoint_interval=50 if checkpoint_interval is None else checkpoint_interval,
             history_interval=10,
         )
@@ -200,6 +211,7 @@ def preview_training(
     seed: int = 0,
     scope: str = "prediction_head_only",
     checkpoint_interval: int | None = None,
+    device: str = "cpu",
 ) -> dict:
     """Validate a run and describe its bounded work without loading model parameters."""
     _, config, dataset, parent, frames = _prepare_training(
@@ -212,6 +224,7 @@ def preview_training(
         seed=seed,
         scope=scope,
         checkpoint_interval=checkpoint_interval,
+        device=device,
     )
     from iris.training_recovery import digest, durable
 
@@ -245,7 +258,7 @@ def preview_training(
             "unique_images_min": min(steps, len(frames)),
             "full_passes": steps // len(frames),
             "remainder_images": steps % len(frames),
-            "device": "cpu",
+            "device": config["device"],
         },
         "parent": {key: parent[key] for key in ("id", "name", "weight_sha256")},
         "notes": [
@@ -262,7 +275,7 @@ def preview_training(
                     "states stay with resumed attempts.",
                     "After an interruption, explicitly preview a new attempt from the "
                     "latest durable state. "
-                    "Recorded work after that state is recomputed. CPU float32 only; "
+                    "Recorded work after that state is recomputed. Float32, batch one; "
                     "real resume tests are deferred.",
                 ]
                 if durable(config)
@@ -273,10 +286,24 @@ def preview_training(
             ),
             *(
                 [
-                    "Deeper adaptation needs more CPU memory and computation; "
+                    "Deeper adaptation needs more memory and computation on the selected device; "
                     "use a small learning rate and a short first run."
                 ]
                 if scope != "prediction_head_only"
+                else []
+            ),
+        ],
+        "device_notes": [
+            "The training device does not restrict where the completed model can run. "
+            "Choose CPU or CUDA independently for comparison, evaluation and export.",
+            *(
+                [
+                    "CUDA training saves CPU and selected-GPU random state, but CUDA "
+                    "operations may be nondeterministic. Exact repeatability is not promised.",
+                    "GPU memory exhaustion stops this attempt and preserves published states. "
+                    "There is no automatic CPU fallback or change of training settings.",
+                ]
+                if config["device"] != "cpu"
                 else []
             ),
         ],
@@ -297,6 +324,7 @@ def create_training(
     checkpoint_interval: int | None = None,
     request_id: str | None = None,
     expected_fingerprint: str | None = None,
+    device: str = "cpu",
 ) -> dict:
     name, config, _, _, _ = _prepare_training(
         store,
@@ -308,6 +336,7 @@ def create_training(
         seed=seed,
         scope=scope,
         checkpoint_interval=checkpoint_interval,
+        device=device,
     )
     from iris.training_recovery import _ID, digest, durable
 
@@ -355,7 +384,7 @@ def create_training(
                 "train",
                 "queued",
                 json.dumps({"training_id": training_id}),
-                "Waiting for local CPU fine-tuning",
+                f"Waiting for local {device_label(config['device'])} fine-tuning",
                 created_at,
             ),
         )
@@ -431,9 +460,18 @@ class _HeadTrainer:
         self.scope = _scope_from_config(config)
         self.contract = class_contract(config)
         self.class_mapping = self.contract["class_mapping"]
+        self.device = torch.device(normalize_device(config.get("device", "cpu")))
+        if self.device.type == "cuda":
+            if not torch.cuda.is_available():
+                raise RuntimeError("CUDA is unavailable; this GPU attempt cannot fall back to CPU.")
+            torch.cuda.set_device(self.device)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = False
+            torch.backends.cudnn.allow_tf32 = False
+            torch.backends.cuda.matmul.allow_tf32 = False
         torch.manual_seed(config["seed"])
-        torch.use_deterministic_algorithms(True)
-        self.detector = TorchvisionDetector(root, parent_id, device="cpu")
+        torch.use_deterministic_algorithms(self.device.type == "cpu")
+        self.detector = TorchvisionDetector(root, parent_id, device=str(self.device))
         if self.detector.metadata["weight_sha256"] != config["parent_weight_sha256"]:
             raise ValueError("Parent checkpoint changed since training was queued")
         compatible_parent(self.detector.spec, self.contract)
@@ -449,7 +487,7 @@ class _HeadTrainer:
             previous = self.model.roi_heads.box_predictor
             predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
                 previous.cls_score.in_features, len(self.class_mapping) + 1
-            )
+            ).to(self.device)
             # Keep seeded initialization for unmapped classes. Only an explicit
             # native COCO mapping authorizes copying an official category's rows.
             source_rows = {
@@ -508,13 +546,14 @@ class _HeadTrainer:
         if any(not torch.isfinite(parameter).all().item() for parameter in self.parameters):
             raise ValueError("Parent checkpoint contains nonfinite trainable weights")
         self.initial = {
-            name: parameter.detach().clone() for name, parameter in self.selected_parameters.items()
+            name: parameter.detach().cpu().clone()
+            for name, parameter in self.selected_parameters.items()
         }
         self.frozen_initial = {
             name: _tensor_digest(parameter) for name, parameter in self.frozen_parameters.items()
         }
         self.initial_buffers = {
-            name: value.detach().clone() for name, value in self.model.named_buffers()
+            name: value.detach().cpu().clone() for name, value in self.model.named_buffers()
         }
         self.frozen_batchnorm_modules = [
             name
@@ -555,7 +594,10 @@ class _HeadTrainer:
                 "post_nms_top_n": self.model.rpn.post_nms_top_n(),
                 "reason": "Retain background proposals for negative training images",
             },
-            "deterministic_algorithms": True,
+            "deterministic_algorithms": self.device.type == "cpu",
+            "training_device": str(self.device),
+            "checkpoint_storage_device": "cpu",
+            "inference_devices": ["cpu", "cuda"],
             "head_initialization": (
                 "Preserved the trained parent's compatible prediction head"
                 if self.detector.spec.get("origin") == "trained"
@@ -592,13 +634,30 @@ class _HeadTrainer:
         load_state(self, path, binding=binding, sampler=sampler, expected_sha256=expected_sha256)
 
     def step(self, image: Image.Image, boxes: list[dict]) -> dict:
+        try:
+            return self._step(image, boxes)
+        except self.torch.cuda.OutOfMemoryError as exc:
+            raise RuntimeError(
+                "GPU memory exhausted. Published recovery states remain available. "
+                "Free GPU memory before continuing, or prepare a separate run with "
+                "a smaller training scope. No CPU fallback was performed."
+            ) from exc
+
+    def _step(self, image: Image.Image, boxes: list[dict]) -> dict:
         torch = self.torch
-        tensor = self.detector.functional.pil_to_tensor(image).to(dtype=torch.float32) / 255
-        coordinates = torch.tensor([box["box"] for box in boxes], dtype=torch.float32).reshape(
-            -1, 4
+        tensor = (
+            self.detector.functional.pil_to_tensor(image).to(
+                device=self.device, dtype=torch.float32
+            )
+            / 255
         )
+        coordinates = torch.tensor(
+            [box["box"] for box in boxes], dtype=torch.float32, device=self.device
+        ).reshape(-1, 4)
         labels = torch.tensor(
-            [self.class_mapping[box["label"]] for box in boxes], dtype=torch.int64
+            [self.class_mapping[box["label"]] for box in boxes],
+            dtype=torch.int64,
+            device=self.device,
         )
         self.optimizer.zero_grad(set_to_none=True)
         losses = self.model([tensor], [{"boxes": coordinates, "labels": labels}])
@@ -620,6 +679,8 @@ class _HeadTrainer:
         self.optimizer.step()
         if any(not torch.isfinite(parameter).all().item() for parameter in self.parameters):
             raise ValueError("Nonfinite trainable weights; no checkpoint was published")
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
         return {
             "loss": float(loss.detach()),
             "losses": {name: float(value.detach()) for name, value in losses.items()},
@@ -629,7 +690,7 @@ class _HeadTrainer:
         if any(not self.torch.isfinite(parameter).all().item() for parameter in self.parameters):
             raise ValueError("Nonfinite trainable weights; no checkpoint was published")
         changes = {
-            name: not self.torch.equal(self.initial[name], parameter.detach())
+            name: not self.torch.equal(self.initial[name].cpu(), parameter.detach().cpu())
             for name, parameter in self.selected_parameters.items()
         }
         if not any(changes.values()):
@@ -641,7 +702,7 @@ class _HeadTrainer:
             raise ValueError("Frozen model weights changed; no checkpoint was published")
         current_buffers = dict(self.model.named_buffers())
         if current_buffers.keys() != self.initial_buffers.keys() or any(
-            not self.torch.equal(before, current_buffers[name])
+            not self.torch.equal(before.cpu(), current_buffers[name].detach().cpu())
             for name, before in self.initial_buffers.items()
         ):
             raise ValueError("Frozen model buffers changed; no checkpoint was published")
@@ -651,7 +712,10 @@ class _HeadTrainer:
             )
             for prefix in self.scope["trainable_modules"]
         }
-        self.torch.save(self.model.eval().state_dict(), path)
+        self.torch.save(
+            {name: value.detach().cpu() for name, value in self.model.eval().state_dict().items()},
+            path,
+        )
         return {
             "head_weights_changed": any(
                 changed and _matches_module(name, "roi_heads.box_predictor")
@@ -676,6 +740,27 @@ def run_training(
     cancelled: Callable[[], bool],
     trainer_factory=None,
 ) -> dict:
+    try:
+        return _run_training(store, training_id, progress, cancelled, trainer_factory)
+    except RuntimeError as exc:
+        torch = sys.modules.get("torch")
+        row = store.get("training_runs", training_id)
+        if (
+            torch is not None
+            and isinstance(exc, torch.cuda.OutOfMemoryError)
+            and row
+            and row["config"].get("device", "cpu") != "cpu"
+        ):
+            raise RuntimeError(
+                "GPU memory exhausted while loading, training or restoring state. "
+                "Any published recovery states remain available. Free GPU memory before "
+                "continuing, or prepare a separate run with a smaller training scope. "
+                "No CPU fallback was performed."
+            ) from exc
+        raise
+
+
+def _run_training(store, training_id, progress, cancelled, trainer_factory):
     training = store.get("training_runs", training_id)
     if training is None:
         raise ValueError("Training run not found")
@@ -695,6 +780,9 @@ def run_training(
     if cancelled():
         return {**result, "cancelled": True}
     config = training["config"]
+    device = normalize_device(config.get("device", "cpu"))
+    if device != "cpu":
+        resolve_device(device, expected=config.get("device_identity"))
     if resumable:
         recovery.validate_config(config)
     selected_scope = _scope_from_config(config)
@@ -748,9 +836,7 @@ def run_training(
             if recovery.canonical(checkpoint["metadata"]) != recovery.canonical(
                 {"binding": expected, "sampler": sampler}
             ):
-                raise ValueError(
-                    "Training state or CPU runtime changed; cannot resume this attempt"
-                )
+                raise ValueError("Training state or runtime changed; cannot resume this attempt")
             trainer.load_resume_state(
                 store.artifact_path(checkpoint["path"]),
                 binding=expected,
@@ -811,7 +897,8 @@ def run_training(
         result["steps_completed"] = step
         progress(
             step / config["steps"],
-            f"CPU fine-tuning ({selected_scope['label']}): step {step}/{config['steps']}, "
+            f"{device_label(device)} fine-tuning ({selected_scope['label']}): "
+            f"step {step}/{config['steps']}, "
             f"training loss {measurement['loss']:.4f}",
         )
     if cancelled():
@@ -874,7 +961,8 @@ def run_training(
                 (
                     json.dumps(result),
                     now(),
-                    "CPU fine-tuning complete; checkpoint available for comparison",
+                    f"{device_label(device)} fine-tuning complete; "
+                    "checkpoint available for comparison",
                     training["job_id"],
                 ),
             )

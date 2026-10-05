@@ -90,7 +90,7 @@ from the lightweight workspace dependencies:
 | [SSDLite320 MobileNetV3-Large, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.ssdlite320_mobilenet_v3_large.html) | Inference baseline | 13.4 MB |
 | [Faster R-CNN MobileNetV3-Large 320 FPN, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn.html) | Inference and fine-tuning | 74.2 MB |
 
-They share one optional CPU runtime and label vocabulary. These are starting
+They share an optional PyTorch runtime with CPU or NVIDIA CUDA execution. These are starting
 points for a small experiment, not validated aerial detectors. Small distant
 objects may require higher resolution or different models after measurement.
 Torchvision supports a [standard detection fine-tuning workflow](https://docs.pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
@@ -276,7 +276,7 @@ Training uses a zero RPN score threshold so negative images still supply
 background proposals; the inference preset's threshold can discard every
 proposal on such images. Training proposal filtering is recorded separately
 from inference filtering, which remains unchanged when loading a checkpoint.
-CPU SGD runs for up to 10,000 steps with batch size one and a recorded seed; only
+CPU or single-GPU CUDA SGD runs for up to 10,000 steps with batch size one and a recorded seed; only
 train images are read. Durable runs persist loss components and visited frame IDs
 every ten steps or when saving a checkpoint. Completed state dictionaries are
 published atomically with the model registry entry and loaded with `weights_only`.
@@ -302,6 +302,22 @@ state can retry model publication without another optimizer step. Legacy short
 runs without recovery state remain readable. Archives preserve schema 12–17
 databases and validate schema 18 lineage and state hashes without deserializing
 Torch files. See [longer training and continuation](long-training.md).
+
+Training-device previews pin the selected CUDA index, observed GPU identity and
+runtime; a bounded subprocess inspects hardware and registered detection kernels
+without loading weights. Workers recheck that identity, place model parameters,
+replacement heads and targets on the same device, and synchronize recorded CUDA
+step completion. CUDA recovery uses a separate protocol containing the selected
+GPU RNG alongside CPU RNG. It preserves optimization state on that same device;
+nondeterministic CUDA operations preclude a bitwise-repeatability promise.
+CPU continuation records retain their original protocol and runtime identity.
+
+Completed model and recovery tensor files are normalized to CPU storage. A
+completed model can independently use CPU or CUDA for subsequent training,
+comparison, evaluation or export. Hardware selection never changes the class,
+dataset or frozen-layer contract. CUDA exhaustion preserves published recovery
+states and fails visibly without an automatic CPU fallback. See
+[compute targets and environment setup](compute-targets.md).
 
 Experiment reports capture one successfully completed evaluation and its dataset,
 checkpoint and available training lineage in a versioned, checksummed snapshot.
@@ -515,7 +531,7 @@ the trained model's training dataset; the source evaluation must be in the same
 project. Versions 12–16 retain their original table layouts and database bytes
 when restored, migrating only on opening.
 
-`model_exports.py` verifies a completed CPU full-image evaluation against the
+`model_exports.py` verifies a completed CPU or CUDA full-image evaluation against the
 trained checkpoint's frozen class, runtime and inference contracts. Preview binds
 the chosen image bytes, saved native predictions, checkpoint and runner source to
 a canonical digest. Creation compares that digest in one SQLite transaction and
@@ -525,7 +541,10 @@ incomplete copies out of the published inventory; retries require a new preview.
 
 `export_runner.py` is copied verbatim into the bundle and imports no IRIS module.
 Inspection and measurement validation use the standard library; explicit predict
-and measure commands load the pinned CPU runtime and full state_dict. Class order,
+and measure commands load the pinned runtime and full state_dict onto the selected
+CPU or CUDA target. Version-1 CPU bundles retain their original contract; version-2
+bundles record a separate reference device and target. CUDA measurements synchronize
+the selected device and preserve hardware/runtime evidence. Class order,
 legacy native-to-output IDs, EXIF orientation, Torchvision transforms, native NMS
 and prediction order remain frozen. Exact parity does not silently widen numeric
 tolerances. Real inference and target timing validation remain deferred.
@@ -536,6 +555,11 @@ immutable and idempotent per payload hash; declared execution is not independent
 verified. Archives validate nested file inventories and hashes, saved predictions,
 source ownership and imported summaries without deserializing checkpoints.
 See [the export contract](model-export.md).
+
+An explicit standalone `check-runtime` command checks dependencies and CUDA
+availability without model loading or inference. It does not certify an embedded
+board: ARM and JetPack installations must satisfy the pinned Python and framework
+requirements and still need real target parity, memory and timing measurements.
 
 ## Saved benchmark comparisons
 

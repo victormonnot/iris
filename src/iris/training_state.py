@@ -1,4 +1,4 @@
-"""Validated CPU SGD continuation state; never used to load an inference model."""
+"""Validated CPU/CUDA SGD continuation state, separate from inference weights."""
 
 import hashlib
 import importlib.metadata
@@ -14,6 +14,7 @@ from copy import deepcopy
 from pathlib import Path
 
 PROTOCOL = "iris-training-state-v1"
+CUDA_PROTOCOL = "iris-training-state-cuda-v1"
 MAX_STATE_BYTES = 512 * 1024 * 1024
 _FIELDS = {
     "protocol",
@@ -28,27 +29,82 @@ _FIELDS = {
 }
 
 
-def runtime_identity(trainer) -> dict:
-    """Record the concrete runtime required for an exact CPU continuation."""
+def _device(trainer):
     torch = trainer.torch
-    if any(
-        value.device.type != "cpu"
+    device = getattr(trainer, "device", None)
+    if device is None:
+        device = next(trainer.model.parameters()).device
+    device = torch.device(device)
+    if device.type == "cuda" and device.index is None:
+        device = torch.device("cuda", torch.cuda.current_device())
+    return device
+
+
+def runtime_identity(trainer) -> dict:
+    """Bind continuation to one concrete runtime and selected execution device.
+
+    CUDA RNG restoration preserves continuation state, but does not promise
+    bitwise equivalence for nondeterministic detection operators.
+    """
+    torch = trainer.torch
+    device = _device(trainer)
+    if device.type not in {"cpu", "cuda"} or any(
+        value.device != device
         or (value.is_floating_point() and value.dtype != torch.float32)
         or value.is_complex()
         for value in (*trainer.model.parameters(), *trainer.model.buffers())
     ):
-        raise ValueError("Training continuation requires a CPU float32 model")
-    return {
+        raise ValueError("Training continuation requires a CPU float32 or CUDA float32 model")
+    identity = {
         "python_version": platform.python_version(),
         "torch_version": str(torch.__version__),
         "torchvision_version": importlib.metadata.version("torchvision"),
         "machine": platform.machine(),
-        "device": "cpu",
+        "device": str(device),
         "precision": "float32",
         "threads": torch.get_num_threads(),
         "interop_threads": torch.get_num_interop_threads(),
         "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
     }
+    if device.type == "cuda":
+        properties = torch.cuda.get_device_properties(device)
+        uuid = getattr(properties, "uuid", None)
+        identity.update(
+            cuda_version=torch.version.cuda,
+            cudnn_version=torch.backends.cudnn.version(),
+            gpu_name=properties.name,
+            gpu_capability=[properties.major, properties.minor],
+            gpu_uuid=str(uuid) if uuid is not None else None,
+            device_index=device.index,
+            cudnn_benchmark=torch.backends.cudnn.benchmark,
+            cudnn_deterministic=torch.backends.cudnn.deterministic,
+            cudnn_allow_tf32=torch.backends.cudnn.allow_tf32,
+            matmul_allow_tf32=torch.backends.cuda.matmul.allow_tf32,
+            cublas_workspace_config=os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
+        )
+    return identity
+
+
+def _protocol(trainer, binding: dict) -> str:
+    protocol = binding.get("protocol", PROTOCOL) if type(binding) is dict else None
+    device = _device(trainer)
+    expected = CUDA_PROTOCOL if device.type == "cuda" else PROTOCOL
+    if device.type not in {"cpu", "cuda"} or protocol != expected:
+        raise ValueError("Unsupported training state protocol for the selected device")
+    return protocol
+
+
+def _cpu_state(torch, value):
+    """Keep the durable archive independent of accelerator tensor locations."""
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _cpu_state(torch, item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_cpu_state(torch, item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_cpu_state(torch, item) for item in value)
+    return value
 
 
 def _json_identity(value) -> str:
@@ -166,7 +222,9 @@ def _validate_optimizer(trainer, saved: dict, contract: list[dict], *, completed
 
 
 def _validate_payload(trainer, payload: dict, binding: dict, sampler: dict) -> None:
-    if type(payload) is not dict or set(payload) != _FIELDS or payload["protocol"] != PROTOCOL:
+    protocol = _protocol(trainer, binding)
+    fields = _FIELDS | {"cuda_rng_state"} if protocol == CUDA_PROTOCOL else _FIELDS
+    if type(payload) is not dict or set(payload) != fields or payload["protocol"] != protocol:
         raise ValueError("Unsupported training state protocol")
     if type(binding) is not dict or _json_identity(payload["binding"]) != _json_identity(binding):
         raise ValueError("Training state does not match its frozen run binding")
@@ -189,7 +247,7 @@ def _validate_payload(trainer, payload: dict, binding: dict, sampler: dict) -> N
         if digest != expected:
             raise ValueError("Training state changed frozen model weights")
     for name, expected in trainer.initial_buffers.items():
-        if name not in saved or not trainer.torch.equal(saved[name], expected):
+        if name not in saved or not trainer.torch.equal(saved[name], expected.detach().cpu()):
             raise ValueError("Training state changed frozen model buffers")
     _validate_optimizer(
         trainer,
@@ -218,6 +276,20 @@ def _validate_payload(trainer, payload: dict, binding: dict, sampler: dict) -> N
         trainer.torch.Generator(device="cpu").set_state(payload["torch_rng_state"])
     except RuntimeError as exc:
         raise ValueError("Training state CPU RNG is invalid") from exc
+    if protocol == CUDA_PROTOCOL:
+        device = _device(trainer)
+        _tensor(
+            trainer,
+            payload["cuda_rng_state"],
+            trainer.torch.cuda.get_rng_state(device),
+            "CUDA RNG",
+        )
+        try:
+            # An independent generator checks the state without replacing the
+            # selected device's process RNG before the whole payload is valid.
+            trainer.torch.Generator(device=device).set_state(payload["cuda_rng_state"])
+        except RuntimeError as exc:
+            raise ValueError("Training state CUDA RNG is invalid") from exc
 
 
 def write_state(trainer, path: Path, *, binding: dict, sampler: dict) -> None:
@@ -225,17 +297,20 @@ def write_state(trainer, path: Path, *, binding: dict, sampler: dict) -> None:
 
     The caller owns staging, fsync, content hashing and atomic publication.
     """
+    protocol = _protocol(trainer, binding)
     payload = {
-        "protocol": PROTOCOL,
+        "protocol": protocol,
         "binding": deepcopy(binding),
         "sampler": deepcopy(sampler),
-        "model_state": dict(trainer.model.state_dict()),
-        "optimizer_state": trainer.optimizer.state_dict(),
+        "model_state": _cpu_state(trainer.torch, dict(trainer.model.state_dict())),
+        "optimizer_state": _cpu_state(trainer.torch, trainer.optimizer.state_dict()),
         "optimizer_contract": _optimizer_contract(trainer),
         "module_modes": {name: module.training for name, module in trainer.model.named_modules()},
         "gradient_modules": sorted(trainer.gradient_modules),
         "torch_rng_state": trainer.torch.get_rng_state(),
     }
+    if protocol == CUDA_PROTOCOL:
+        payload["cuda_rng_state"] = trainer.torch.cuda.get_rng_state(_device(trainer))
     _validate_payload(trainer, payload, binding, sampler)
     trainer.torch.save(payload, path)
     if path.stat().st_size > MAX_STATE_BYTES:
@@ -251,7 +326,7 @@ def load_state(
     sampler: dict,
     expected_sha256: str | None = None,
 ) -> None:
-    """Validate a state against a reconstructed trainer, then restore CPU RNG last."""
+    """Validate against a reconstructed trainer, then restore CPU/CUDA RNG last."""
     if expected_sha256 is not None and (
         type(expected_sha256) is not str
         or len(expected_sha256) != 64
@@ -285,8 +360,15 @@ def load_state(
         raise ValueError("Training state cannot be read safely") from exc
     _validate_payload(trainer, payload, binding, sampler)
     trainer.model.load_state_dict(payload["model_state"], strict=True)
+    # PyTorch restores optimizer tensors onto their corresponding parameter's
+    # device. Verify that contract so a resumed CUDA step cannot mix devices.
     trainer.optimizer.load_state_dict(payload["optimizer_state"])
+    for parameter, state in trainer.optimizer.state.items():
+        if any(value.device != parameter.device for value in state.values()):
+            raise ValueError("Training optimizer state did not restore to the model device")
     for name, module in trainer.model.named_modules():
         module.training = payload["module_modes"][name]
     trainer.gradient_modules = set(payload["gradient_modules"])
     trainer.torch.set_rng_state(payload["torch_rng_state"])
+    if payload["protocol"] == CUDA_PROTOCOL:
+        trainer.torch.cuda.set_rng_state(payload["cuda_rng_state"], device=_device(trainer))

@@ -11,7 +11,8 @@
     jobStatuses: new Map() };
   const options = () => ({ trained_model_id: field("model").value, evaluation_id: field("evaluation").value,
     frame_ids: selectedEvaluation()?.frames.filter((frame) => view.frames.has(frame.frame_id)).map((frame) => frame.frame_id) || [],
-    name: field("name").value.trim() });
+    name: field("name").value.trim(), target_device: field("target-device").value });
+  const deviceLabel = (device) => device === "cpu" || !device ? "CPU" : `NVIDIA GPU (${device})`;
   const selectedModel = () => view.models.find((item) => item.id === field("model").value);
   const selectedEvaluation = () => selectedModel()?.evaluations?.find((item) => item.id === field("evaluation").value);
   const path = (id = view.selected) => `/api/model-exports/${safe(id)}`;
@@ -35,6 +36,7 @@
     field("model").disabled = blocked || !view.models.length;
     field("evaluation").disabled = blocked || !selectedModel()?.eligible || !selectedModel()?.evaluations?.length;
     field("name").disabled = blocked;
+    field("target-device").disabled = blocked;
     for (const input of field("frames").querySelectorAll("input")) input.disabled = blocked || (!input.checked && view.frames.size >= 8);
     field("frame-count").textContent = `${view.frames.size} image${view.frames.size === 1 ? "" : "s"} selected · maximum 8`;
     field("preview").disabled = blocked || !selectedModel()?.eligible || !tools.selectionValid(options());
@@ -69,16 +71,16 @@
       }
       label.append(node("span", "", title)); field("frames").append(label);
     }
-    if (!frames.length) field("frames").append(node("p", "field-hint", "Choose an eligible checkpoint and a completed CPU full-image evaluation to select parity images."));
+    if (!frames.length) field("frames").append(node("p", "field-hint", "Choose an eligible checkpoint and a completed full-image evaluation to select parity images."));
     update();
   }
   function renderEvaluations(previous = null) {
     const model = selectedModel(), evaluations = model?.evaluations || [];
     field("evaluation").replaceChildren();
     if (!evaluations.length) field("evaluation").append(new Option("No eligible saved evaluation", ""));
-    for (const item of evaluations) field("evaluation").append(new Option(`${item.name || item.id} · ${item.frames?.length || 0} images`, item.id));
+    for (const item of evaluations) field("evaluation").append(new Option(`${item.name || item.id} · ${deviceLabel(item.device)} · ${item.frames?.length || 0} images`, item.id));
     if (evaluations.some((item) => item.id === previous)) field("evaluation").value = previous;
-    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled or non-CPU evaluations are not eligible for this profile." : "Only the supported trained Faster R-CNN architecture can use this export profile.");
+    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled evaluations are not eligible. Training, reference evaluation and destination devices are independent." : "Only the supported trained Faster R-CNN architecture can use this export profile.");
     renderFrames();
   }
   async function refreshCandidates() {
@@ -86,7 +88,7 @@
     const request = ++view.candidateRequest;
     const modelId = field("model").value, evaluationId = field("evaluation").value;
     view.loading = true; invalidatePreview(); error("error", null);
-    field("candidates-status").textContent = "Reading trained checkpoints and saved CPU evaluations…";
+    field("candidates-status").textContent = "Reading trained checkpoints and saved CPU / CUDA evaluations…";
     try {
       const result = await api("/api/model-exports/candidates");
       if (request !== view.candidateRequest) return;
@@ -97,7 +99,7 @@
       else if (view.models.some((item) => item.eligible)) field("model").value = view.models.find((item) => item.eligible).id;
       field("candidates-status").textContent = view.models.length
         ? `${view.models.filter((item) => item.eligible).length} of ${view.models.length} trained checkpoints ready for export preparation.`
-        : "No trained checkpoint in this project yet. Complete training and a CPU full-image evaluation before exporting. Existing model downloads alone are not export candidates.";
+        : "No trained checkpoint in this project yet. Complete training and a full-image evaluation before exporting. Existing model downloads alone are not export candidates.";
       renderEvaluations(evaluationId);
     } catch (failure) {
       if (request === view.candidateRequest) { error("error", failure); field("candidates-status").textContent = "Export candidates could not be read. Refresh to try again."; }
@@ -154,6 +156,8 @@
   function renderDetail(detail) {
     field("detail").hidden = false;
     field("detail-name").textContent = detail.name;
+    const contract = detail.manifest || detail.config;
+    field("detail-devices").textContent = `Destination: ${deviceLabel(contract?.profile?.device)} · saved reference: ${deviceLabel(contract?.source?.reference_device)}. Training hardware does not restrict this destination.`;
     field("detail-status").textContent = detail.ready ? "Package ready" : (detail.job?.status || "Not ready").replaceAll("_", " ");
     field("detail-status").className = `job-status ${detail.ready ? "succeeded" : detail.job?.status || ""}`;
     field("detail-message").textContent = detail.job?.message || "";
@@ -204,12 +208,14 @@
     try {
       const result = await api("/api/model-exports/preview", { method: "POST", body: JSON.stringify(payload) });
       if (generation !== view.generation || key !== tools.selectionKey(options())) return;
+      if (result.plan?.profile?.device !== payload.target_device)
+        throw new Error("The export preview does not match the selected target device. Preview the package again.");
       view.preview = { ...result, key, options: payload };
-      field("preview-summary").textContent = `${payload.name} · ${selectedModel()?.name || payload.trained_model_id} · ${payload.frame_ids.length} explicitly selected parity images. Full checkpoint weights and saved native predictions are copied with the standalone CPU runner. No model execution is started.`;
+      field("preview-summary").textContent = `${payload.name} · ${selectedModel()?.name || payload.trained_model_id} · ${payload.frame_ids.length} explicitly selected parity images. Full checkpoint weights and saved native predictions are copied with the standalone ${deviceLabel(payload.target_device)} runner. Reference evaluation: ${deviceLabel(result.plan?.source?.reference_device || selectedEvaluation()?.device)}. No model execution is started.`;
       field("preview-warnings").replaceChildren(...(result.warnings || []).map((text) => node("p", "field-hint", text)));
       const model = result.plan?.model, runtime = result.plan?.profile?.runtime;
       if (model?.class_contract?.class_mapping) field("preview-warnings").prepend(node("p", "field-hint", `Frozen class mapping: ${JSON.stringify(model.class_contract.class_mapping)}.`));
-      if (runtime) field("preview-warnings").prepend(node("p", "field-hint", `Runtime: PyTorch ${runtime.torch}, Torchvision ${runtime.torchvision}, Pillow ${runtime.pillow} · CPU float32.`));
+      if (runtime) field("preview-warnings").prepend(node("p", "field-hint", `Runtime: PyTorch ${runtime.torch}, Torchvision ${runtime.torchvision}, Pillow ${runtime.pillow} · ${deviceLabel(result.plan?.profile?.device)} float32.`));
       if (model?.sha256) field("preview-warnings").append(node("p", "field-hint", `Checkpoint SHA-256: ${model.sha256}`));
       field("preview-contract").textContent = JSON.stringify(result.plan, null, 2); field("preview-result").hidden = false;
     } catch (failure) { if (generation === view.generation) error("error", failure); }
@@ -267,6 +273,7 @@
   field("form").addEventListener("submit", preview);
   field("create").addEventListener("click", createExport);
   field("name").addEventListener("input", invalidatePreview);
+  field("target-device").addEventListener("change", invalidatePreview);
   field("model").addEventListener("change", () => { view.frames.clear(); invalidatePreview(); renderEvaluations(); });
   field("evaluation").addEventListener("change", () => { view.frames.clear(); invalidatePreview(); renderFrames(); });
   field("history").addEventListener("change", () => {

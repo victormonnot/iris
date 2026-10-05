@@ -1,4 +1,4 @@
-"""Durable CPU training checkpoints and explicit, immutable successor attempts."""
+"""Durable CPU/CUDA training states and explicit, immutable successor attempts."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from iris.store import _decode, new_id, now
+from iris.training_device import CUDA_PROTOCOL, device_label, normalize_device, resolve_device
 
 PROTOCOL = "iris-training-state-v1"
 MAX_STATE_BYTES = 512 * 1024**2
@@ -35,12 +36,25 @@ def base_config(config):
 
 
 def durable(config):
-    return config.get("checkpoint_protocol") == PROTOCOL
+    return config.get("checkpoint_protocol") in {PROTOCOL, CUDA_PROTOCOL}
 
 
 def validate_config(config):
     if not durable(config):
         raise ValueError("This training predates durable optimizer checkpoints")
+    device = normalize_device(config.get("device"))
+    if config["checkpoint_protocol"] != (PROTOCOL if device == "cpu" else CUDA_PROTOCOL):
+        raise ValueError("Training device differs from its recovery state protocol")
+    if device != "cpu":
+        identity = config.get("device_identity")
+        if (
+            config["device"] != device
+            or not isinstance(identity, dict)
+            or identity.get("device") != device
+            or config.get("precision") != "float32"
+            or config.get("deterministic_algorithms") is not False
+        ):
+            raise ValueError("Unsupported CUDA training configuration or device identity")
     steps, interval = config.get("steps"), config.get("checkpoint_interval")
     if (
         type(steps) is not int
@@ -49,11 +63,10 @@ def validate_config(config):
         or not math.ceil(steps / 200) <= interval <= 1000
         or type(config.get("history_interval")) is not int
         or config.get("history_interval") != 10
-        or config.get("device") != "cpu"
         or type(config.get("batch_size")) is not int
         or config.get("batch_size") != 1
     ):
-        raise ValueError("Unsupported durable CPU training configuration")
+        raise ValueError("Unsupported durable training configuration")
 
 
 def sampling(seed, frames, count):
@@ -145,7 +158,7 @@ def _validate_history(history, frames, config, step):
 def binding(training, history, runtime):
     config = training["config"]
     return {
-        "protocol": PROTOCOL,
+        "protocol": config["checkpoint_protocol"],
         "config_sha256": digest(base_config(config)),
         "dataset_id": training["dataset_id"],
         "dataset_manifest_sha256": config["dataset_manifest_sha256"],
@@ -323,6 +336,8 @@ def preview_resume(store, training_id):
         raise ValueError(summary["reason"])
     validate_config(training["config"])
     checkpoint = _checkpoint(store, training)
+    if training["config"]["device"] != "cpu":
+        resolve_device(training["config"]["device"], expected=training["config"]["device_identity"])
     with store.connect() as connection:
         validate_training_recoveries(connection, store.root)
         validate_training_checkpoint(checkpoint, connection=connection, root=store.root)
@@ -359,8 +374,16 @@ def preview_resume(store, training_id):
             "Resume creates a new attempt with unchanged data, classes and settings.",
             "Work recorded after the durable checkpoint will be recomputed; the old "
             "history stays intact.",
-            "Optimizer, CPU RNG and sampler state are restored. Runtime compatibility is "
-            "checked before training continues.",
+            "Optimizer, random generators and sampler state are restored on the original "
+            "training device. Runtime compatibility is checked before training continues.",
+            *(
+                [
+                    "CUDA operations may be nondeterministic; "
+                    "exact repeated results are not guaranteed."
+                ]
+                if training["config"]["device"] != "cpu"
+                else []
+            ),
             "No real resume or model-quality claim is established by a preview.",
         ],
     }
@@ -395,7 +418,7 @@ def resume_training(store, jobs, training_id, *, expected_fingerprint):
                     "train",
                     "queued",
                     json.dumps({"training_id": identifier, "recovery_of": source["job_id"]}),
-                    "Waiting to resume the saved CPU optimizer state",
+                    f"Waiting to resume the saved {device_label(config['device'])} optimizer state",
                     created_at,
                 ),
             )

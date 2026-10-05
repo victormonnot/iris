@@ -7,6 +7,22 @@
 })(typeof window === "undefined" ? globalThis : window, () => {
   const LOSS_PAGE_SIZE = 100;
 
+  function deviceLabel(device = "cpu") {
+    if (device === "cpu") return "CPU";
+    if (/^cuda(?::\d+)?$/.test(device)) return `NVIDIA GPU (${device})`;
+    return device;
+  }
+
+  function deviceChoices(report, selected = "cpu") {
+    const choices = (report?.devices || []).filter((item) => item?.id && item.id !== "cpu").map((item) => ({ ...item }));
+    choices.unshift({ id: "cpu", label: "CPU", available: true, reason: "" });
+    if (!choices.some((item) => /^cuda(?::\d+)?$/.test(item.id)))
+      choices.push({ id: "cuda", label: "NVIDIA CUDA GPU", available: false, reason: "No compatible CUDA device is available in this environment." });
+    if (selected && !choices.some((item) => item.id === selected))
+      choices.push({ id: selected, label: deviceLabel(selected), available: false, reason: "The previously selected device is no longer available. Choose a device explicitly." });
+    return choices;
+  }
+
   function checkpointMinimum(steps) {
     return Number.isSafeInteger(steps) && steps > 0 ? Math.max(1, Math.ceil(steps / 200)) : 1;
   }
@@ -15,7 +31,8 @@
     return Boolean(preview?.fingerprint && preview.request_id &&
       preview.config?.scope === payload.scope && preview.scope?.id === payload.scope &&
       preview.dataset?.id === payload.dataset_id && preview.parent?.id === payload.parent_model_id &&
-      preview.workload?.steps === payload.steps && preview.workload?.device === "cpu" &&
+      preview.workload?.steps === payload.steps && preview.workload?.device === (payload.device || "cpu") &&
+      (preview.config?.device || "cpu") === (payload.device || "cpu") &&
       preview.config?.checkpoint_interval === payload.checkpoint_interval &&
       preview.config?.learning_rate === payload.learning_rate && preview.config?.seed === payload.seed);
   }
@@ -35,13 +52,14 @@
       preview.checkpoint_id === recovery.checkpoint_id &&
       preview.checkpoint_step === recovery.checkpoint_step &&
       preview.target_steps === detail.config?.steps &&
+      (preview.config?.device || "cpu") === (detail.config?.device || "cpu") &&
       preview.remaining_steps === preview.target_steps - preview.checkpoint_step &&
       preview.remaining_steps >= 0 && preview.recorded_steps === recovery.recorded_steps &&
       preview.recomputed_steps === recovery.recomputed_steps);
   }
 
   function recoveryKey(detail) {
-    return JSON.stringify([detail?.id, detail?.job?.status, detail?.config?.steps, detail?.recovery]);
+    return JSON.stringify([detail?.id, detail?.job?.status, detail?.config?.steps, detail?.config?.device || "cpu", detail?.recovery]);
   }
 
   function lossPage(history, page = 0) {
@@ -80,6 +98,6 @@
     return `${(seconds / 3600).toFixed(1)} h`;
   }
 
-  return { LOSS_PAGE_SIZE, checkpointMinimum, previewMatches, findRequest, findResume,
+  return { LOSS_PAGE_SIZE, deviceLabel, deviceChoices, checkpointMinimum, previewMatches, findRequest, findResume,
     resumeMatches, recoveryKey, lossPage, observedDuration, durationText };
 });
