@@ -17,6 +17,8 @@
     auditBusy: false,
     referenceBusy: false,
     catalogRequest: 0,
+    catalogLoading: false,
+    referenceRequest: 0,
     devicesRequest: 0,
     devicesLoading: false,
     cudaAvailable: false,
@@ -39,6 +41,46 @@
     auditPreviewError: null,
     jobStatuses: new Map(),
   };
+  const panes = ["plan", "results", "reference"];
+  function openPane(name, { focus = false } = {}) {
+    if (!panes.includes(name)) return false;
+    const tab = $(`#evaluation-tab-${name}`);
+    const moveFocus = focus || panes.some((item) => item !== name &&
+      $(`#evaluation-pane-${item}`).contains(document.activeElement));
+    for (const item of panes) {
+      const selected = item === name;
+      $(`#evaluation-pane-${item}`).hidden = !selected;
+      const button = $(`#evaluation-tab-${item}`);
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    if (moveFocus) { tab.focus(); tab.scrollIntoView({ block: "nearest" }); }
+    return true;
+  }
+  panes.forEach((name, index) => {
+    const tab = $(`#evaluation-tab-${name}`);
+    tab.addEventListener("click", () => openPane(name));
+    tab.addEventListener("keydown", (event) => {
+      const next = event.key === "ArrowRight" ? (index + 1) % panes.length
+        : event.key === "ArrowLeft" ? (index + panes.length - 1) % panes.length
+          : event.key === "Home" ? 0 : event.key === "End" ? panes.length - 1 : null;
+      if (next === null || event.altKey || event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      openPane(panes[next], { focus: true });
+    });
+  });
+  $("#evaluation-workspace").addEventListener("click", (event) => {
+    const tabLink = event.target.closest("[data-evaluation-open]");
+    if (tabLink) openPane(tabLink.dataset.evaluationOpen, { focus: true });
+    const sectionLink = event.target.closest("[data-evaluation-section]");
+    if (sectionLink) {
+      const section = window.document.getElementById(sectionLink.dataset.evaluationSection);
+      section.tabIndex = -1;
+      section.focus();
+      section.scrollIntoView({ block: "start" });
+    }
+  });
+  window.IRISEvaluationNavigation = Object.freeze({ open: openPane });
   const percent = (value) =>
     Number.isFinite(value) ? `${(100 * value).toFixed(1)}%` : "N/A";
   const count = (value) => (Number.isFinite(value) ? String(value) : "N/A");
@@ -207,7 +249,13 @@
       return model?.status === "ready" && datasetTools.modelCompatibility(dataset, model).compatible;
     });
     const deviceAvailable = !view.devicesLoading && (payload.device === "cpu" || view.cudaAvailable);
-    const valid = deviceAvailable && datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    const valid = !view.catalogLoading && deviceAvailable && datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
+    $("#evaluation-readiness").textContent = view.busy ? "Queuing this validation evaluation…"
+      : view.catalogLoading || view.devicesLoading ? "Checking saved releases, models and local devices…"
+        : !datasetTools.mlSupported(dataset) || !size ? "Choose a frozen release with validation frames."
+          : !deviceAvailable ? "The selected device is unavailable. Choose an available device or refresh."
+            : !view.chosen.size || !compatibleSelection ? "Choose compatible, ready local models for this release."
+              : "Review the models and saved settings below. Only starting the run executes inference.";
     $("#evaluation-device").disabled = view.busy || view.devicesLoading;
     $("#evaluation-device option[value='cuda']").disabled = !view.cudaAvailable;
     $("#evaluation-device-status").textContent = view.devicesLoading
@@ -313,6 +361,7 @@
   }
   async function refreshCatalogs() {
     const request = ++view.catalogRequest;
+    view.catalogLoading = true;
     ++view.previewRequest;
     view.previewKey = null;
     view.previewPending = false;
@@ -354,6 +403,11 @@
       renderModels();
       updateLaunch();
       error("#evaluation-error", failure);
+    } finally {
+      if (request === view.catalogRequest) {
+        view.catalogLoading = false;
+        updateLaunch();
+      }
     }
   }
   async function refreshDevices() {
@@ -382,6 +436,9 @@
   }
   async function refreshHistory() {
     const request = ++view.historyRequest;
+    $("#evaluation-history-refresh").disabled = true;
+    $("#evaluation-history-refresh").textContent = "Refreshing…";
+    $("#evaluation-history").setAttribute("aria-busy", "true");
     try {
       const history = await api("/api/evaluations");
       if (request !== view.historyRequest) return;
@@ -414,6 +471,12 @@
     } catch (failure) {
       if (request === view.historyRequest)
         error("#evaluation-history-error", failure);
+    } finally {
+      if (request === view.historyRequest) {
+        $("#evaluation-history-refresh").disabled = false;
+        $("#evaluation-history-refresh").textContent = "Refresh runs";
+        $("#evaluation-history").setAttribute("aria-busy", "false");
+      }
     }
   }
   async function loadDetail(id) {
@@ -489,10 +552,26 @@
       classes = $("#evaluation-class-metrics");
     summary.replaceChildren();
     classes.replaceChildren();
+    const cards = $("#evaluation-summary-cards");
+    cards.replaceChildren();
+    $("#evaluation-metric-details").hidden = !complete();
+    $("#evaluation-class-details").hidden = !complete();
     $("#evaluation-delta").textContent = "";
     if (!complete()) return;
     const runLanes = lanes();
     const models = runLanes.map(modelFor);
+    for (const [index, model] of models.entries()) {
+      const card = node("article", "evaluation-quality-card");
+      card.append(node("p", "eyebrow", `Pipeline ${index + 1}`), node("h4", "", laneName(runLanes[index])));
+      const values = node("dl", "evaluation-quality-values");
+      for (const [label, key] of [["mAP .50–.95", "map"], ["Precision", "precision"], ["Recall", "recall"]]) {
+        const metric = node("div");
+        metric.append(node("dt", "", label), node("dd", "", percent(model.metrics.summary[key])));
+        values.append(metric);
+      }
+      card.append(values, node("p", "field-hint", `${count(model.metrics.summary.tp)} matched · ${count(model.metrics.summary.fp)} false positives · ${count(model.metrics.summary.fn)} missed labels`));
+      cards.append(card);
+    }
     summary.append(
       table(
         "Detection quality by model and inference mode",
@@ -1041,6 +1120,8 @@
       (item) => item.id === view.detail.dataset_id,
     );
     const auditAvailable = finished && split() === "val" && dataset?.summary?.split_counts?.test > 0;
+    $("#evaluation-decisions-open").hidden = !finished || split() !== "val";
+    $("#evaluation-decisions").hidden = !finished || split() !== "val";
     const auditDeviceAvailable = !view.devicesLoading && ((config().device || "cpu") === "cpu" || view.cudaAvailable);
     $("#evaluation-test-audit").hidden = !auditAvailable;
     if (auditAvailable && auditDeviceAvailable) {
@@ -1055,6 +1136,8 @@
       view.auditPreviewError = null;
     }
     const plan = $("#evaluation-audit-plan");
+    $("#evaluation-audit-refresh").hidden = !view.auditPreviewError && auditDeviceAvailable;
+    $("#evaluation-audit-refresh").disabled = view.auditBusy || view.auditPreviewPending || view.devicesLoading;
     plan.classList.toggle("inline-error", Boolean(view.auditPreviewError));
     plan.textContent = auditAvailable && !auditDeviceAvailable
       ? `The saved ${config().device || "cpu"} device must be available to audit with the same settings. ${view.devicesLoading ? "Checking availability…" : view.cudaReason}`
@@ -1076,6 +1159,7 @@
     $("#evaluation-detail-status").className =
       `job-status ${job?.status || ""}`;
     $("#evaluation-detail-message").textContent = job?.message || "";
+    $("#evaluation-detail-job").hidden = !job?.id;
     error("#evaluation-detail-error", job?.error ? new Error(job.error) : null);
     $("#evaluation-completeness").textContent = complete()
       ? split() === "test"
@@ -1146,6 +1230,7 @@
     const button = node("button", "text-button", "Open validation evidence →");
     button.type = "button";
     button.addEventListener("click", async () => {
+      openPane("results", { focus: true });
       view.activeId = reference.evaluation_id;
       view.detail = null;
       $("#evaluation-detail").hidden = true;
@@ -1159,8 +1244,11 @@
     return entry;
   }
   async function refreshReferences() {
+    const request = ++view.referenceRequest;
+    $("#evaluation-reference-refresh").disabled = true;
     try {
       const references = await api("/api/model-references");
+      if (request !== view.referenceRequest) return;
       view.references = references;
       const current = $("#evaluation-reference-current");
       current.replaceChildren();
@@ -1181,8 +1269,11 @@
         history.append(node("p", "field-hint", "No recorded decisions yet."));
       error("#evaluation-reference-history-error", null);
     } catch (failure) {
+      if (request !== view.referenceRequest) return;
       view.references = null;
       error("#evaluation-reference-history-error", failure);
+    } finally {
+      if (request === view.referenceRequest) $("#evaluation-reference-refresh").disabled = false;
     }
     if (view.detail) renderActions(false);
   }
@@ -1205,6 +1296,7 @@
     view.activeId = detail.id;
     await refreshHistory();
     await refreshJobs();
+    openPane("results", { focus: true });
     notify(
       `Evaluation “${detail.name}” queued. Follow progress or cancel in Processing jobs.`,
     );
@@ -1279,6 +1371,7 @@
       });
       await refreshReferences();
       $("#evaluation-reference-notes").value = "";
+      openPane("reference", { focus: true });
       notify("Reference model decision saved with its validation evidence.");
     } catch (failure) {
       error("#evaluation-reference-error", failure);
@@ -1289,6 +1382,23 @@
     }
   });
   $("#evaluation-refresh").addEventListener("click", refresh);
+  $("#evaluation-history-refresh").addEventListener("click", refreshHistory);
+  $("#evaluation-audit-refresh").addEventListener("click", async () => {
+    if ($("#evaluation-audit-refresh").disabled) return;
+    ++view.auditPreviewRequest;
+    view.auditPreviewKey = null;
+    view.auditPreview = null;
+    view.auditPreviewPending = false;
+    view.auditPreviewError = null;
+    await refreshDevices();
+  });
+  $("#evaluation-reference-refresh").addEventListener("click", refreshReferences);
+  $("#evaluation-detail-job").addEventListener("click", () => {
+    if (view.detail?.job?.id) window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: view.detail.job.id } }));
+  });
+  $("#evaluation-open-datasets").addEventListener("click", () => {
+    if (window.IRISNavigation.open("training")) window.IRISTrainingNavigation.open("datasets", { focus: true });
+  });
   $("#evaluation-dataset").addEventListener("change", () => {
     view.touched = false;
     selectCompatibleModels();

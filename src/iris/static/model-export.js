@@ -32,6 +32,9 @@
   }
   function update() {
     const blocked = Boolean(view.busy || view.loading);
+    field("form").setAttribute("aria-busy", String(blocked));
+    field("detail").setAttribute("aria-busy", String(view.loadingDetail));
+    field("history").setAttribute("aria-busy", String(view.loadingHistory));
     field("refresh").disabled = blocked || view.loadingHistory;
     field("model").disabled = blocked || !view.models.length;
     field("evaluation").disabled = blocked || !selectedModel()?.eligible || !selectedModel()?.evaluations?.length;
@@ -43,7 +46,21 @@
     field("preview").textContent = view.busy === "preview" ? "Checking saved export inputs…" : "Preview export package";
     field("create").disabled = blocked || view.loadingHistory || !view.preview || view.preview.key !== tools.selectionKey(options());
     field("create").textContent = view.busy === "create" ? "Queuing export…" : "Create export package";
+    const readiness = view.loading ? "Reading available checkpoints and saved evaluations…" :
+      view.busy === "preview" ? "Checking the selected saved files and destination contract…" :
+      view.busy === "create" ? "Recording this package request…" :
+      !selectedModel()?.eligible ? "Complete training and a full-image evaluation to prepare an export." :
+      !selectedEvaluation() ? "Choose a completed full-image evaluation from this checkpoint." :
+      !field("name").value.trim() ? "Name this package, then select 1–8 reference images." :
+      !view.frames.size ? "Select at least one reference image to check output parity on the destination." :
+      view.preview ? "Package inputs checked. Review the contents below, then create the package." :
+      "Selection ready for preview. Review the package before creating it.";
+    field("readiness").textContent = readiness;
     field("history").disabled = Boolean(view.busy || view.loadingHistory || !view.rows.length);
+    field("history-status").textContent = view.loadingHistory ? "Reading saved packages…" :
+      view.loadingDetail ? "Reading the selected package…" :
+      !field("history-error").hidden ? "Saved packages could not be refreshed." :
+      `${view.rows.length} saved package${view.rows.length === 1 ? "" : "s"}`;
     const importBlocked = Boolean(view.busy || view.loadingHistory || view.loadingDetail || !view.detail?.ready);
     field("measurement-file").disabled = importBlocked;
     field("measurement-preview").disabled = importBlocked || Boolean(tools.fileProblem(field("measurement-file").files?.[0]));
@@ -131,7 +148,9 @@
   }
   function renderMeasurementSummary(container, summary) {
     const presentation = tools.measurementPresentation(summary);
-    container.replaceChildren(node("p", "field-hint", presentation.parity), node("p", "field-hint", presentation.evidence));
+    const parity = node("p", "model-export-parity", presentation.parity);
+    parity.dataset.status = summary?.parity_passed === true ? "passed" : summary?.parity_passed === false ? "failed" : "unknown";
+    container.replaceChildren(parity, node("p", "field-hint", presentation.evidence));
     if (Number.isInteger(summary?.sample_count)) container.append(node("p", "field-hint", `${summary.frames} images · ${summary.repeats} repeats · ${summary.sample_count} measured predictions`));
     if (summary?.parity_passed === false) container.append(node("p", "field-hint", "One or more outputs differ from the frozen IRIS outputs. Inspect mismatches before using the model in another application."));
     const milliseconds = (value) => typeof value === "number" && Number.isFinite(value) ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "Unavailable";

@@ -1,0 +1,100 @@
+/* Portable package preparation and the evidence returned from its destination. */
+.studio-exports > .panel-heading { padding: 24px; align-items: flex-start; }
+.studio-exports > .panel-heading h2 { font-size: 21px; font-weight: 400; }
+.studio-exports > .panel-heading p { max-width: 600px; line-height: 1.6; }
+.studio-exports .model-export-body { padding: 0; }
+.studio-exports .field-hint { line-height: 1.7; overflow-wrap: anywhere; }
+.studio-exports summary { padding-block: 10px; color: var(--accent); font-size: 12px; line-height: 1.6; cursor: pointer; }
+.model-export-plan { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: stretch; }
+.model-export-fields,
+.model-export-step { min-width: 0; }
+.model-export-step { padding: 26px; }
+.model-export-step + .model-export-step { border-top: 1px solid var(--line); }
+.model-export-step .training-step-heading { margin-bottom: 20px; }
+.model-export-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+.model-export-inputs > div { min-width: 0; }
+.model-export-inputs label { margin-bottom: 9px; }
+.model-export-inputs :is(select, input) { min-width: 0; width: 100%; }
+.model-export-step > .field-hint { margin-top: 12px; }
+.model-export-compatibility { margin-top: 8px; }
+.studio-exports .model-export-frame-fieldset { padding: 0; border: 0; margin: 0; }
+.studio-exports .model-export-frame-fieldset legend { padding: 0 0 10px; color: var(--ink); font-size: 12px; font-weight: 500; }
+.studio-exports .model-export-frames { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 8px; margin: 16px 0; padding: 2px; }
+.studio-exports .model-export-frame { padding: 10px; min-height: 70px; border: 1px solid var(--line); background: var(--surface-raised); cursor: pointer; }
+.studio-exports .model-export-frame:has(:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.studio-exports .model-export-frame:hover { border-color: var(--control-line); }
+.studio-exports .model-export-frame img { background: var(--canvas); width: 60px; height: 46px; }
+.studio-exports .model-export-frame span { line-height: 1.6; }
+.model-export-review { min-width: 0; padding: 26px 22px; border-left: 1px solid var(--line); background: var(--surface-raised); }
+.model-export-review > .eyebrow { margin: 0 0 12px; }
+.model-export-review > h3 { font-size: 18px; font-weight: 400; margin: 0 0 16px; }
+.model-export-review > .field-hint { margin-top: 14px; }
+.model-export-review > .button,
+.model-export-review #model-export-create { width: 100%; white-space: normal; margin-top: 20px; }
+.model-export-review .training-preview { margin-top: 22px; padding: 22px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+.model-export-review .training-preview h3 { font-size: 15px; line-height: 1.6; margin: 0 0 12px; }
+#model-export-preview-warnings .field-hint { margin-top: 12px; }
+.model-export-review .inline-error { margin-top: 20px; overflow-wrap: anywhere; }
+.studio-exports .model-export-history { margin: 0; padding: 26px; }
+.model-export-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.model-export-history-heading .eyebrow { margin: 0 0 8px; }
+.model-export-history-heading h3 { margin: 0; font-size: 20px; font-weight: 400; }
+.studio-exports #model-export-history { margin-top: 9px; }
+.studio-exports #model-export-history-empty,
+.studio-exports #model-export-history-error { margin-top: 16px; }
+.studio-exports #model-export-detail { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.studio-exports #model-export-detail .comparison-run-heading { gap: 16px; }
+.studio-exports #model-export-detail-name { font-size: 18px; font-weight: 500; }
+.studio-exports #model-export-validation-status { padding: 14px 16px; background: var(--field); border-left: 2px solid var(--accent); }
+.model-export-runner { margin-top: 16px; }
+.model-export-runner .model-export-commands { margin-block: 14px; }
+.model-export-measurement-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-top: 24px; border-top: 1px solid var(--line); }
+.studio-exports .model-export-measurement-import { min-width: 0; border: 0; margin: 0; padding: 24px 24px 0 0; }
+.model-export-measurement-history { min-width: 0; border-left: 1px solid var(--line); padding: 24px 0 0 24px; }
+.studio-exports .model-export-measurement-heading { margin: 0; }
+.studio-exports .model-export-measurement-layout h4 { margin: 0 0 16px; font-size: 14px; line-height: 1.6; font-weight: 500; }
+.studio-exports .model-export-measurement-layout .training-preview h4 { margin-bottom: 12px; }
+.studio-exports .model-export-measurement { padding: 16px; background: var(--surface-raised); }
+.studio-exports .model-export-measurement h5 { margin: 0 0 12px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.7; }
+.model-export-parity { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--control-line); font-size: 13px; line-height: 1.6; font-weight: 500; }
+.model-export-parity[data-status="passed"] { color: var(--success); border-color: var(--success); }
+.model-export-parity[data-status="failed"] { color: var(--danger); border-color: var(--danger); }
+.studio-exports .model-export-measurement .text-button { font-size: 12px; min-height: 36px; margin-top: 8px; }
+.studio-exports .dataset-class-table-wrap { margin-top: 16px; }
+.studio-exports .dataset-class-table :is(th, td) { padding: 8px; font-size: 11px; }
+.studio-exports .dataset-class-table th[scope="row"] { min-width: 80px; }
+.studio-exports .dataset-class-table caption { margin-bottom: 8px; line-height: 1.7; }
+.studio-exports .inline-error { overflow-wrap: anywhere; }
+
+@media (max-width: 1280px) {
+  .model-export-plan { grid-template-columns: minmax(0, 1fr) 270px; }
+  .model-export-inputs { grid-template-columns: minmax(0, 1fr); }
+  .model-export-step { padding: 22px; }
+  .model-export-measurement-layout { grid-template-columns: minmax(0, 1fr); }
+  .studio-exports .model-export-measurement-import { padding-right: 0; }
+  .model-export-measurement-history { margin-top: 24px; padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 1000px) {
+  .model-export-plan { grid-template-columns: minmax(0, 1fr); }
+  .model-export-review { border-left: 0; border-top: 1px solid var(--line); }
+  .model-export-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .model-export-review > .button,
+  .model-export-review #model-export-create { width: auto; min-width: 220px; }
+}
+@media (max-width: 600px) {
+  .studio-exports > .panel-heading { flex-wrap: wrap; padding: 20px 16px; gap: 16px; }
+  .model-export-step,
+  .model-export-review,
+  .studio-exports .model-export-history { padding: 20px 16px; }
+  .model-export-inputs { grid-template-columns: minmax(0, 1fr); }
+  .model-export-history-heading { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .model-export-review > .button,
+  .model-export-review #model-export-create { width: 100%; min-width: 0; }
+  .studio-exports .model-export-actions > .button { width: 100%; white-space: normal; text-align: center; }
+  .studio-exports .model-export-measurement-import > .button,
+  .studio-exports #model-export-measurement-save { width: 100%; white-space: normal; }
+  .studio-exports .model-export-measurement { padding: 12px; }
+}
+@media (pointer: coarse) {
+  .studio-exports :is(summary, .text-button) { min-height: 44px; }
+}

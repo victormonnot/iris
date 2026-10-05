@@ -115,7 +115,16 @@
       busy || !compose.preview || compose.selected.size > 6 || compose.measurements.size > 4;
     field("create").textContent = compose.busy
       ? "Saving report…"
-      : "Save experiment →";
+      : "Save report →";
+    field("compose-summary").textContent = compose.busy
+      ? "Saving the selected evidence and notes…"
+      : compose.loading
+        ? "Checking saved evaluation evidence…"
+        : compose.preview
+          ? `${compose.selected.size} example image${compose.selected.size === 1 ? "" : "s"} · ${compose.measurements.size} target measurement${compose.measurements.size === 1 ? "" : "s"}. Evidence is frozen when you save.`
+          : field("compose-fields").hidden
+            ? "Choose a completed evaluation to prepare your report."
+            : "Refresh the evidence before saving. Your draft is preserved.";
     field("more-examples").disabled = busy;
     field("preview-refresh").disabled = busy;
     field("suggest-examples").disabled = busy || compose.selected.size >= 6 ||
@@ -188,6 +197,7 @@
   async function refreshList(preferredId = library.activeId) {
     const request = ++library.listRequest;
     library.listLoading = true;
+    field("list").setAttribute("aria-busy", "true");
     field("refresh").disabled = true;
     field("status").textContent = "Loading saved experiments…";
     error("error", null);
@@ -215,6 +225,7 @@
     } finally {
       if (request === library.listRequest) {
         library.listLoading = false;
+        field("list").setAttribute("aria-busy", "false");
         field("refresh").disabled = false;
         renderList();
       }
@@ -995,6 +1006,8 @@
     compose.autoTitle = "";
     compose.loading = true;
     field("compose-form").reset();
+    field("measurements-disclosure").open = false;
+    field("examples-disclosure").open = false;
     field("compose-fields").hidden = true;
     field("preview-refresh").hidden = true;
     field("evaluation").replaceChildren(

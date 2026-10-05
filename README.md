@@ -167,6 +167,20 @@ In **Model comparison**, the model library distinguishes official weights from
 trained checkpoints and shows local availability. Expand a model's details to
 inspect its architecture, output classes and saved provenance before selecting it.
 
+**Quality evaluation** separates **New evaluation**, **Results & errors** and
+**Reference model**. Saved quality summaries lead to detailed metrics, per-class
+support and image-level error inspection. Reference decisions remain explicit;
+the final test audit copies the validation run's settings unchanged. Job details
+and cancellation are accessible beside the results.
+
+**Experiments** provides section links through each saved report and a three-step
+composer with explicit image and target-measurement selection. Standalone HTML
+reports use the Studio palette, follow the system's light/dark preference and print
+in a light layout. They remain self-contained and work without scripts or network
+access. **Model exports** separates package preparation from the saved package
+library and imported target measurements; package readiness and output parity
+remain distinct states.
+
 ## Projects
 
 Use the **Project** selector in the sidebar to switch projects, or **New project**

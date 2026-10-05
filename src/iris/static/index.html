@@ -23,6 +23,9 @@
     <link rel="stylesheet" href="/static/studio-models.css" />
     <link rel="stylesheet" href="/static/studio-training.css" />
     <link rel="stylesheet" href="/static/studio-training-history.css" />
+    <link rel="stylesheet" href="/static/studio-evaluation.css" />
+    <link rel="stylesheet" href="/static/studio-reports.css" />
+    <link rel="stylesheet" href="/static/studio-exports.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -1946,46 +1949,61 @@ ollama pull qwen3-vl:4b-instruct</pre
                 </div>
               </div>
             </section>
-            <section id="training-pane-exports" role="tabpanel" aria-labelledby="training-tab-exports" hidden class="panel dataset-panel">
+            <section id="training-pane-exports" role="tabpanel" aria-labelledby="training-tab-exports" hidden class="panel dataset-panel studio-exports">
               <div class="panel-heading">
                 <div>
-                  <h2 id="model-export-title">Use a trained model elsewhere</h2>
+                  <h2 id="model-export-title">Prepare for another machine</h2>
                   <p>Package a trained detector and compare its outputs on another machine.</p>
                 </div>
                 <button id="model-export-refresh" class="button button-secondary" type="button">Refresh exports</button>
               </div>
-              <div class="dataset-panel-body">
-                <p class="field-hint">Export an IRIS-trained Faster R-CNN MobileNetV3-Large 320 FPN or SSDLite320 MobileNetV3-Large for PyTorch on CPU or NVIDIA CUDA, independently of the training device. Includes full weights, frozen class definitions, a standalone Python runner and the parity images you select below.</p>
-                <p id="model-export-candidates-status" class="field-hint" role="status">Open Dataset &amp; Training to read available checkpoints.</p>
-                <form id="model-export-form">
-                  <div class="training-form-grid">
-                    <div><label for="model-export-model">Trained checkpoint</label><select id="model-export-model" required disabled><option value="">No trained checkpoint available</option></select></div>
-                    <div><label for="model-export-evaluation">Saved reference evaluation</label><select id="model-export-evaluation" required disabled><option value="">Choose a trained checkpoint</option></select></div>
-                    <div><label for="model-export-target-device">Target device</label><select id="model-export-target-device" required aria-describedby="model-export-target-hint"><option value="cpu">CPU · native PyTorch</option><option value="cuda">NVIDIA CUDA GPU · native PyTorch</option></select></div>
+              <div class="dataset-panel-body model-export-body">
+                <form id="model-export-form" class="model-export-plan">
+                  <div class="model-export-fields">
+                    <section class="model-export-step" aria-labelledby="model-export-source-title">
+                      <div class="training-step-heading"><span aria-hidden="true">01</span><div><h3 id="model-export-source-title">Checkpoint &amp; destination</h3><p>Training, reference evaluation and destination devices are independent.</p></div></div>
+                      <p id="model-export-candidates-status" class="field-hint" role="status">Open Dataset &amp; Training to read available checkpoints.</p>
+                      <div class="model-export-inputs">
+                        <div><label for="model-export-model">Trained checkpoint</label><select id="model-export-model" required disabled><option value="">No trained checkpoint available</option></select></div>
+                        <div><label for="model-export-evaluation">Saved reference evaluation</label><select id="model-export-evaluation" required disabled><option value="">Choose a trained checkpoint</option></select></div>
+                      </div>
+                      <p id="model-export-model-reason" class="field-hint"></p>
+                      <div class="model-export-inputs">
+                        <div><label for="model-export-target-device">Destination device</label><select id="model-export-target-device" required aria-describedby="model-export-target-hint"><option value="cpu">CPU · native PyTorch</option><option value="cuda">NVIDIA CUDA GPU · native PyTorch</option></select></div>
+                        <div><label for="model-export-name">Package name</label><input id="model-export-name" required maxlength="160" placeholder="e.g. Workshop detector" autocomplete="off" /></div>
+                      </div>
+                      <p id="model-export-target-hint" class="field-hint">Choose the device on the destination machine. This computer does not need the selected hardware to prepare a package.</p>
+                      <details class="model-export-compatibility"><summary>Supported models &amp; destination runtime</summary><p class="field-hint">Export an IRIS-trained Faster R-CNN MobileNetV3-Large 320 FPN or SSDLite320 MobileNetV3-Large with full weights, frozen class definitions and a standalone Python runner. The destination needs compatible PyTorch and Torchvision builds. Creating a package does not validate an embedded board. ONNX and TensorRT formats are not included.</p></details>
+                    </section>
+                    <section class="model-export-step" aria-labelledby="model-export-images-title">
+                      <div class="training-step-heading"><span aria-hidden="true">02</span><div><h3 id="model-export-images-title">Reference images</h3><p>Choose the frozen images used to check output parity on the destination.</p></div></div>
+                      <fieldset class="model-export-frame-fieldset">
+                        <legend>Parity images to include in the package</legend>
+                        <p class="field-hint">Select 1–8 frozen evaluation images. Their saved detector outputs are included for exact comparison. Human annotations and reviewer notes are excluded.</p>
+                        <div id="model-export-frames" class="model-export-frames"></div>
+                        <p id="model-export-frame-count" class="field-hint" role="status">0 images selected</p>
+                      </fieldset>
+                    </section>
                   </div>
-                  <p id="model-export-target-hint" class="field-hint">Choose the device on the destination machine, including a workstation, server or embedded system. This machine does not need the selected hardware to prepare a package. The destination needs compatible PyTorch and Torchvision builds; an embedded board is not validated by creating an export. ONNX and TensorRT formats are not included.</p>
-                  <p id="model-export-model-reason" class="field-hint"></p>
-                  <label for="model-export-name">Package name</label>
-                  <input id="model-export-name" required maxlength="160" placeholder="e.g. Workshop detector · target machine check" autocomplete="off" />
-                  <fieldset class="model-export-frame-fieldset">
-                    <legend>Parity images to include in the package</legend>
-                    <p class="field-hint">Select 1–8 frozen evaluation images. Their saved detector outputs are included for exact comparison. Human annotations and reviewer notes are excluded.</p>
-                    <div id="model-export-frames" class="model-export-frames"></div>
-                    <p id="model-export-frame-count" class="field-hint" role="status">0 images selected</p>
-                  </fieldset>
-                  <button id="model-export-preview" class="button button-secondary" type="submit" disabled>Preview export package</button>
-                  <p class="field-hint">Preparing and creating a package copies saved files. It does not run a model or measure performance.</p>
-                  <div id="model-export-preview-result" class="training-preview" hidden>
-                    <h3>Review package contents</h3>
-                    <p id="model-export-preview-summary" class="field-hint"></p>
-                    <div id="model-export-preview-warnings"></div>
-                    <details class="dataset-provenance"><summary>Frozen weights, classes and runtime contract</summary><pre id="model-export-preview-contract"></pre></details>
-                    <button id="model-export-create" class="button button-primary" type="button" disabled>Create export package</button>
-                  </div>
+                  <aside class="model-export-review" aria-labelledby="model-export-review-title">
+                    <p class="eyebrow">Package review</p>
+                    <h3 id="model-export-review-title">Check before creating</h3>
+                    <p id="model-export-readiness" class="field-hint" role="status">Choose a checkpoint and reference evaluation to begin.</p>
+                    <button id="model-export-preview" class="button button-secondary" type="submit" disabled>Preview export package</button>
+                    <p class="field-hint">Preparing and creating a package copies saved files. It does not run a model or measure performance.</p>
+                    <div id="model-export-preview-result" class="training-preview" hidden>
+                      <h3>Review package contents</h3>
+                      <p id="model-export-preview-summary" class="field-hint"></p>
+                      <div id="model-export-preview-warnings"></div>
+                      <details class="dataset-provenance"><summary>Frozen weights, classes and runtime contract</summary><pre id="model-export-preview-contract"></pre></details>
+                      <button id="model-export-create" class="button button-primary" type="button" disabled>Create export package</button>
+                    </div>
+                    <p id="model-export-error" class="inline-error" role="alert" hidden></p>
+                  </aside>
                 </form>
-                <p id="model-export-error" class="inline-error" role="alert" hidden></p>
-                <div class="model-export-history">
-                  <label for="model-export-history">Export history</label>
+                <section class="model-export-history" aria-labelledby="model-export-history-title">
+                  <div class="model-export-history-heading"><div><p class="eyebrow">Package library</p><h3 id="model-export-history-title">Saved packages</h3></div><p id="model-export-history-status" class="field-hint" role="status"></p></div>
+                  <label for="model-export-history">Choose a package</label>
                   <select id="model-export-history" disabled><option value="">No export packages yet</option></select>
                   <p id="model-export-history-error" class="inline-error" role="alert" hidden></p>
                   <p id="model-export-history-empty" class="field-hint">Train a checkpoint, then complete a full-image evaluation in Quality evaluation to prepare a portable package.</p>
@@ -1993,37 +2011,44 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <div class="comparison-run-heading"><h3 id="model-export-detail-name"></h3><span id="model-export-detail-status" class="job-status"></span></div>
                     <p id="model-export-detail-devices" class="field-hint"></p>
                     <p id="model-export-detail-message" class="field-hint" role="status"></p>
-                    <p id="model-export-detail-error" class="inline-error" hidden></p>
+                    <p id="model-export-detail-error" class="inline-error" role="alert" hidden></p>
                     <div class="model-export-actions">
                       <button id="model-export-job" class="button button-secondary" type="button" hidden>Open processing job</button>
                       <a id="model-export-download" class="button button-secondary" hidden>Download model package ZIP</a>
                     </div>
                     <p id="model-export-validation-status" class="field-hint"></p>
                     <div id="model-export-ready" hidden>
-                      <p class="field-hint">Unzip on the target machine and follow README.md to install the pinned runtime. From the package directory:</p>
+                      <details class="model-export-runner"><summary>Run &amp; measure on the destination</summary>
+                        <p class="field-hint">Unzip on the target machine and follow README.md to install the pinned runtime. From the package directory:</p>
                       <pre class="model-export-commands">python run.py inspect
 python run.py predict image.png --output ../prediction.json
 python run.py measure --output ../measurement.json --repeats 3</pre>
-                      <p class="field-hint">Measure runs the detector on the bundled images. One warm-up is excluded. Recorded prediction time excludes image decoding, model loading and package verification; inspect the report for separate timings. Exact output parity is distinct from detection quality and speed.</p>
+                        <p class="field-hint">Measure runs the detector on the bundled images. One warm-up is excluded. Recorded prediction time excludes image decoding, model loading and package verification; inspect the report for separate timings. Exact output parity is distinct from detection quality and speed.</p>
+                      </details>
                       <details class="dataset-provenance"><summary>Immutable package identity and contract</summary><pre id="model-export-manifest"></pre></details>
-                      <div class="model-export-measurement-import">
-                        <h4>Import target-machine measurements</h4>
-                        <label for="model-export-measurement-file">Runner measurement JSON · at most 8 MiB</label>
-                        <input id="model-export-measurement-file" type="file" accept=".json,application/json" />
-                        <button id="model-export-measurement-preview" class="button button-secondary" type="button" disabled>Check measurement file</button>
-                        <p id="model-export-measurement-error" class="inline-error" role="alert" hidden></p>
-                        <div id="model-export-measurement-review" class="training-preview" hidden>
-                          <h4>Review checked measurements</h4>
-                          <div id="model-export-measurement-summary"></div>
-                          <details class="dataset-provenance"><summary>Checked parity, timings and declared environment</summary><pre id="model-export-measurement-record"></pre></details>
-                          <button id="model-export-measurement-save" class="button button-primary" type="button" disabled>Save measurements in IRIS</button>
+                      <div class="model-export-measurement-layout">
+                        <div class="model-export-measurement-import">
+                          <h4>Import target-machine measurements</h4>
+                          <p class="field-hint">Check the runner report, review parity and timings, then save it explicitly.</p>
+                          <label for="model-export-measurement-file">Runner measurement JSON · at most 8 MiB</label>
+                          <input id="model-export-measurement-file" type="file" accept=".json,application/json" />
+                          <button id="model-export-measurement-preview" class="button button-secondary" type="button" disabled>Check measurement file</button>
+                          <p id="model-export-measurement-error" class="inline-error" role="alert" hidden></p>
+                          <div id="model-export-measurement-review" class="training-preview" hidden>
+                            <h4>Review checked measurements</h4>
+                            <div id="model-export-measurement-summary"></div>
+                            <details class="dataset-provenance"><summary>Checked parity, timings and declared environment</summary><pre id="model-export-measurement-record"></pre></details>
+                            <button id="model-export-measurement-save" class="button button-primary" type="button" disabled>Save measurements in IRIS</button>
+                          </div>
                         </div>
+                        <section class="model-export-measurement-history" aria-labelledby="model-export-measurements-title">
+                          <h4 id="model-export-measurements-title" class="model-export-measurement-heading">Saved target-machine measurements</h4>
+                          <div id="model-export-measurements"></div>
+                        </section>
                       </div>
-                      <h4 class="model-export-measurement-heading">Saved target-machine measurements</h4>
-                      <div id="model-export-measurements"></div>
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
             </section>
           </section>
@@ -2032,6 +2057,12 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             hidden
             aria-label="Quality evaluation"
           >
+            <div class="evaluation-section-nav" role="tablist" aria-label="Quality evaluation views">
+              <button id="evaluation-tab-plan" type="button" role="tab" aria-selected="true" aria-controls="evaluation-pane-plan">New evaluation</button>
+              <button id="evaluation-tab-results" type="button" role="tab" aria-selected="false" aria-controls="evaluation-pane-results" tabindex="-1">Results &amp; errors</button>
+              <button id="evaluation-tab-reference" type="button" role="tab" aria-selected="false" aria-controls="evaluation-pane-reference" tabindex="-1">Reference model</button>
+            </div>
+            <div id="evaluation-pane-plan" role="tabpanel" aria-labelledby="evaluation-tab-plan">
             <p class="dataset-scope">
               Evaluate frozen validation frames across the current project.
               Human-validated boxes are the reference; the active session
@@ -2059,7 +2090,10 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   Refresh
                 </button>
               </div>
-              <form id="evaluation-form" class="dataset-panel-body">
+              <form id="evaluation-form" class="dataset-panel-body evaluation-plan-layout">
+                <div class="evaluation-plan-fields">
+                <section class="evaluation-plan-step" aria-labelledby="evaluation-inputs-title">
+                  <div class="evaluation-step-heading"><span aria-hidden="true">01</span><div><h3 id="evaluation-inputs-title">Choose the evidence and models</h3><p>Use the same frozen validation frames for every model and inference mode.</p></div></div>
                 <div class="training-form-grid">
                   <div>
                     <label for="evaluation-name">Evaluation name</label
@@ -2081,10 +2115,15 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 </div>
                 <p id="evaluation-dataset-context" class="field-hint"></p>
                 <p id="evaluation-dataset-limitation" class="field-hint"></p>
+                <button id="evaluation-open-datasets" type="button" class="text-button">Prepare or inspect dataset releases →</button>
                 <fieldset class="evaluation-model-fieldset">
                   <legend>Detectors · choose up to two</legend>
                   <div id="evaluation-models" class="evaluation-models"></div>
                 </fieldset>
+                </section>
+                <section class="evaluation-plan-step" aria-labelledby="evaluation-protocol-title">
+                  <div class="evaluation-step-heading"><span aria-hidden="true">02</span><div><h3 id="evaluation-protocol-title">Set the evaluation protocol</h3><p>Device, inference mode and thresholds are saved with the results.</p></div></div>
+                <div class="evaluation-compute-grid"><div>
                 <label for="evaluation-device">Evaluation device</label>
                 <select id="evaluation-device" aria-describedby="evaluation-device-status evaluation-device-hint">
                   <option value="cpu">CPU</option>
@@ -2092,6 +2131,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 </select>
                 <p id="evaluation-device-status" class="field-hint" role="status"></p>
                 <p id="evaluation-device-hint" class="field-hint">Choose independently of the training device. Use Refresh to check local availability. A final test audit keeps the device saved with its validation run.</p>
+                </div>
                 <div class="comparison-mode-field">
                   <label for="evaluation-inference-mode">Inference mode</label>
                   <select id="evaluation-inference-mode" aria-describedby="evaluation-mode-hint">
@@ -2100,6 +2140,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <option value="paired">Full image vs tiled · one model</option>
                   </select>
                   <p id="evaluation-mode-hint" class="field-hint">Evaluate each selected model on the whole image.</p>
+                </div>
                 </div>
                 <div id="evaluation-tiling-fields" class="training-form-grid" hidden>
                   <div>
@@ -2145,6 +2186,12 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   scores, at IoU 0.50–0.95. Classes come from the frozen dataset.
                   Choose thresholds on validation data.
                 </p>
+                </section>
+                </div>
+                <aside class="evaluation-plan-review" aria-labelledby="evaluation-review-title">
+                  <p class="eyebrow">Before you start</p>
+                  <h3 id="evaluation-review-title">Validation run</h3>
+                  <p id="evaluation-readiness" class="field-hint" role="status">Choose a frozen release and compatible models to prepare an evaluation.</p>
                 <p id="evaluation-plan" class="field-hint" role="status" aria-live="polite"></p>
                 <div class="comparison-launch">
                   <p
@@ -2163,7 +2210,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 </div>
                 <p class="field-hint">
                   Local inference on the selected device. No training, model download or API
-                  call. You can cancel in Processing jobs.
+                  call. You can cancel in Project jobs.
                 </p>
                 <p
                   id="evaluation-error"
@@ -2171,11 +2218,13 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   role="alert"
                   hidden
                 ></p>
+                </aside>
               </form>
             </section>
+            </div>
             <section
               class="panel dataset-panel"
-              aria-labelledby="evaluation-history-title"
+              id="evaluation-pane-results" role="tabpanel" aria-labelledby="evaluation-tab-results" hidden
             >
               <div class="panel-heading">
                 <div>
@@ -2185,7 +2234,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     error.
                   </p>
                 </div>
-                <span id="evaluation-history-count" class="count">0</span>
+                <div class="evaluation-heading-actions"><span id="evaluation-history-count" class="count">0</span><button id="evaluation-history-refresh" type="button" class="button button-secondary">Refresh runs</button></div>
               </div>
               <div class="dataset-panel-body">
                 <label for="evaluation-history">Run history</label
@@ -2201,6 +2250,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 <p id="evaluation-empty" class="field-hint">
                   Complete an evaluation to inspect detection quality and record
                   your choice of reference model.
+                  <button type="button" class="text-button" data-evaluation-open="plan">Prepare an evaluation →</button>
                 </p>
                 <div id="evaluation-detail" hidden>
                   <div class="comparison-run-heading">
@@ -2228,22 +2278,31 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     id="evaluation-completeness"
                     class="evaluation-completeness"
                   ></p>
+                  <div class="evaluation-result-actions">
                   <button id="evaluation-save-experiment" type="button"
                     class="button button-secondary" hidden disabled>
                     Create experiment report <span aria-hidden="true">↗</span>
                   </button>
+                  <button id="evaluation-detail-job" type="button" class="button button-secondary" hidden>Job details and cancellation</button>
+                  <button type="button" class="text-button" data-evaluation-section="evaluation-analysis">Explore saved errors ↓</button>
+                  <button id="evaluation-decisions-open" type="button" class="text-button" data-evaluation-section="evaluation-decisions" hidden>Reference decision &amp; test audit ↓</button>
+                  </div>
                   <div id="evaluation-warnings" class="dataset-warnings"></div>
+                  <div id="evaluation-summary-cards" class="evaluation-summary-cards" aria-label="Saved quality summary"></div>
+                  <p id="evaluation-delta" class="field-hint"></p>
+                  <details id="evaluation-metric-details" class="evaluation-result-disclosure"><summary>All quality metrics and timing</summary>
                   <div
                     id="evaluation-metrics"
                     class="evaluation-table-scroll"
                   ></div>
-                  <p id="evaluation-delta" class="field-hint"></p>
                   <p class="field-hint">
                     Tiled forward times sum all tile passes. Total includes
                     image decoding, crops and merging; weight loading and warmup
                     are excluded. COCO AP keeps its 100-detection limit; the
                     precision/recall counts use all saved predictions above threshold.
                   </p>
+                  </details>
+                  <details id="evaluation-class-details" class="evaluation-result-disclosure"><summary>Quality and labeled support by class</summary>
                   <div
                     id="evaluation-class-metrics"
                     class="evaluation-table-scroll"
@@ -2254,6 +2313,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     support and false positives. Small or unrepresentative
                     datasets do not establish real-world performance.
                   </p>
+                  </details>
                   <section
                     id="evaluation-analysis"
                     class="evaluation-analysis"
@@ -2373,40 +2433,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <summary>Evaluation protocol and provenance</summary>
                     <pre id="evaluation-provenance"></pre>
                   </details>
-                  <section
-                    id="evaluation-test-audit"
-                    class="evaluation-action"
-                    hidden
-                    aria-labelledby="evaluation-audit-title"
-                  >
-                    <h3 id="evaluation-audit-title">Final test audit</h3>
-                    <p class="field-hint">
-                      After making your validation choices, evaluate the same
-                      models, inference modes, tiling settings and thresholds
-                      on the reserved test split. Keep
-                      test results for reporting; use validation to select a
-                      reference. The configuration is copied unchanged.
-                    </p>
-                    <label class="checkbox-label" for="evaluation-audit-confirm"
-                      ><input type="checkbox" id="evaluation-audit-confirm" />
-                      My validation choices are fixed for this audit.</label
-                    >
-                    <p id="evaluation-audit-plan" class="field-hint" role="status" aria-live="polite"></p>
-                    <button
-                      id="evaluation-audit-start"
-                      class="button button-secondary"
-                      type="button"
-                      disabled
-                    >
-                      Run saved configuration on test →
-                    </button>
-                    <p
-                      id="evaluation-audit-error"
-                      class="inline-error"
-                      role="alert"
-                      hidden
-                    ></p>
-                  </section>
+                  <div id="evaluation-decisions" class="evaluation-decisions" tabindex="-1">
                   <form
                     id="evaluation-reference-form"
                     class="evaluation-action"
@@ -2461,12 +2488,48 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                       hidden
                     ></p>
                   </form>
+                  <section
+                    id="evaluation-test-audit"
+                    class="evaluation-action"
+                    hidden
+                    aria-labelledby="evaluation-audit-title"
+                  >
+                    <h3 id="evaluation-audit-title">Final test audit</h3>
+                    <p class="field-hint">
+                      After making your validation choices, evaluate the same
+                      models, inference modes, tiling settings and thresholds
+                      on the reserved test split. Keep
+                      test results for reporting; use validation to select a
+                      reference. The configuration is copied unchanged.
+                    </p>
+                    <label class="checkbox-label" for="evaluation-audit-confirm"
+                      ><input type="checkbox" id="evaluation-audit-confirm" />
+                      My validation choices are fixed for this audit.</label
+                    >
+                    <p id="evaluation-audit-plan" class="field-hint" role="status" aria-live="polite"></p>
+                    <button id="evaluation-audit-refresh" type="button" class="text-button" hidden>Refresh audit checks</button>
+                    <button
+                      id="evaluation-audit-start"
+                      class="button button-secondary"
+                      type="button"
+                      disabled
+                    >
+                      Run saved configuration on test →
+                    </button>
+                    <p
+                      id="evaluation-audit-error"
+                      class="inline-error"
+                      role="alert"
+                      hidden
+                    ></p>
+                  </section>
+                  </div>
                 </div>
               </div>
             </section>
             <section
               class="panel dataset-panel"
-              aria-labelledby="evaluation-reference-title"
+              id="evaluation-pane-reference" role="tabpanel" aria-labelledby="evaluation-tab-reference" hidden
             >
               <div class="panel-heading">
                 <div>
@@ -2476,6 +2539,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     history.
                   </p>
                 </div>
+                <button id="evaluation-reference-refresh" type="button" class="button button-secondary">Refresh decisions</button>
               </div>
               <div class="dataset-panel-body">
                 <div id="evaluation-reference-current">
@@ -2587,7 +2651,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 Refresh
               </button>
               <button id="experiments-new" type="button" class="button button-primary">
-                New experiment <span aria-hidden="true">+</span>
+                New report <span aria-hidden="true">+</span>
               </button>
             </div>
             <p
@@ -2653,7 +2717,15 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                       ><span id="experiments-revision" class="field-hint"></span>
                     </div>
                   </header>
-                  <section class="experiments-narrative" aria-label="Experiment notes">
+                  <nav class="experiments-contents" aria-label="Report sections">
+                    <a href="#experiments-notes">Overview</a>
+                    <a href="#experiments-metrics-title">Quality</a>
+                    <a href="#experiments-scenes-title">Scenes</a>
+                    <a href="#experiments-targets-title">Targets</a>
+                    <a href="#experiments-examples-title">Examples</a>
+                    <a href="#experiments-export-title">Download <span aria-hidden="true">↓</span></a>
+                  </nav>
+                  <section id="experiments-notes" class="experiments-narrative" aria-label="Experiment notes" tabindex="-1">
                     <div>
                       <h3>The question</h3>
                       <p id="experiments-objective" class="experiments-prose"></p>
@@ -2684,7 +2756,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     aria-labelledby="experiments-metrics-title"
                   >
                     <div class="experiments-section-heading">
-                      <h3 id="experiments-metrics-title">What the evaluation measured</h3>
+                      <h3 id="experiments-metrics-title" tabindex="-1">Quality measurements</h3>
                       <span id="experiments-frame-count" class="experiments-badge"></span>
                     </div>
                     <div id="experiments-lane-key" class="experiments-lane-key"></div>
@@ -2699,7 +2771,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   </section>
                   <section class="experiments-section" aria-labelledby="experiments-scenes-title">
                     <div class="experiments-section-heading">
-                      <h3 id="experiments-scenes-title">Where the results change</h3>
+                      <h3 id="experiments-scenes-title" tabindex="-1">Results by scene</h3>
                     </div>
                     <p id="experiments-scene-context" class="field-hint"></p>
                     <div id="experiments-scenes" class="experiments-table-wrap"></div>
@@ -2707,7 +2779,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   </section>
                   <section class="experiments-section" aria-labelledby="experiments-targets-title">
                     <div class="experiments-section-heading">
-                      <h3 id="experiments-targets-title">Measurements on deployment targets</h3>
+                      <h3 id="experiments-targets-title" tabindex="-1">Deployment target measurements</h3>
                       <span id="experiments-target-count" class="count"></span>
                     </div>
                     <p id="experiments-target-context" class="field-hint"></p>
@@ -2719,7 +2791,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     aria-labelledby="experiments-examples-title"
                   >
                     <div class="experiments-section-heading">
-                      <h3 id="experiments-examples-title">Examples behind the numbers</h3>
+                      <h3 id="experiments-examples-title" tabindex="-1">Selected examples</h3>
                       <span id="experiments-example-count" class="count"></span>
                     </div>
                     <p class="field-hint">
@@ -2742,7 +2814,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     aria-labelledby="experiments-export-title"
                   >
                     <div>
-                      <h3 id="experiments-export-title">Take the report with you</h3>
+                      <h3 id="experiments-export-title" tabindex="-1">Download this report</h3>
                       <p>
                         A standalone HTML file with the frozen results and your current
                         notes.
@@ -3209,6 +3281,8 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         be frozen; your notes can be revised later.
       </p>
       <form id="experiments-compose-form">
+        <section class="experiments-compose-step" aria-labelledby="experiments-source-title">
+        <div class="experiments-step-heading"><span aria-hidden="true">01</span><div><h3 id="experiments-source-title">Choose saved results</h3><p>Use one completed evaluation as the source of this report.</p></div></div>
         <label for="experiments-evaluation">Completed evaluation</label>
         <select id="experiments-evaluation" required>
           <option value="">Loading completed evaluations…</option>
@@ -3217,7 +3291,10 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         <button id="experiments-preview-refresh" type="button" class="text-button" hidden>
           Refresh report evidence
         </button>
+        </section>
         <div id="experiments-compose-fields" hidden>
+          <section class="experiments-compose-step" aria-labelledby="experiments-notes-title">
+          <div class="experiments-step-heading"><span aria-hidden="true">02</span><div><h3 id="experiments-notes-title">Write your interpretation</h3><p>Your notes can be edited later; the saved evidence stays frozen.</p></div></div>
           <label for="experiments-title">Report title</label
           ><input
             id="experiments-title"
@@ -3226,6 +3303,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             autocomplete="off"
             placeholder="e.g. Analog camera · partial adaptation"
           />
+          <div class="experiments-compose-notes"><div>
           <label for="experiments-objective-input"
             >What did you want to test? <span class="muted">Optional</span></label
           ><textarea
@@ -3234,6 +3312,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             rows="2"
             placeholder="The hypothesis, camera conditions or trade-off you investigated"
           ></textarea>
+          </div><div>
           <label for="experiments-conclusion-input"
             >Your conclusion <span class="muted">Optional</span></label
           ><textarea
@@ -3242,11 +3321,16 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             rows="3"
             placeholder="What the evidence supports, what remains uncertain and what you would try next"
           ></textarea>
-          <div class="experiments-measurement-picker">
-            <div class="experiments-section-heading">
-              <h3>Include target measurements</h3>
+          </div></div>
+          </section>
+          <section class="experiments-compose-step" aria-labelledby="experiments-evidence-title">
+          <div class="experiments-step-heading"><span aria-hidden="true">03</span><div><h3 id="experiments-evidence-title">Select supporting evidence</h3><p>Optional. Choose images and target measurements explicitly.</p></div></div>
+          <details id="experiments-measurements-disclosure" class="experiments-measurement-picker experiments-picker-disclosure">
+            <summary>
+              <span>Target measurements</span>
               <span id="experiments-measurement-count" class="count">0 / 4</span>
-            </div>
+            </summary>
+            <div class="experiments-picker-content">
             <p class="field-hint">
               Optional · select up to four imported measurements tied to these evaluated
               weights and pipelines. Nothing is selected automatically. Their declared
@@ -3261,12 +3345,14 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
               You can save this report without one.
             </p>
             <div id="experiments-measurement-picker" class="experiments-targets"></div>
-          </div>
-          <div class="experiments-example-picker">
-            <div class="experiments-section-heading">
-              <h3>Choose a few examples</h3>
-              <span id="experiments-picked-count" class="count">0 / 6</span>
             </div>
+          </details>
+          <details id="experiments-examples-disclosure" class="experiments-example-picker experiments-picker-disclosure">
+            <summary>
+              <span>Example images</span>
+              <span id="experiments-picked-count" class="count">0 / 6</span>
+            </summary>
+            <div class="experiments-picker-content">
             <p class="field-hint">
               Optional · up to six images. Nothing is selected automatically.
               Include useful successes and failures; these images will be fixed when
@@ -3325,23 +3411,23 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             >
               Show more images
             </button>
-          </div>
+            </div>
+          </details>
+          </section>
+        </div>
+        <div class="experiments-compose-footer">
+          <p id="experiments-compose-error" class="inline-error" role="alert" hidden></p>
           <div class="modal-actions">
+            <p id="experiments-compose-summary" class="field-hint" role="status"></p>
             <button
               id="experiments-create"
               type="submit"
               class="button button-primary"
             >
-              Save experiment <span aria-hidden="true">→</span>
+              Save report <span aria-hidden="true">→</span>
             </button>
           </div>
         </div>
-        <p
-          id="experiments-compose-error"
-          class="inline-error"
-          role="alert"
-          hidden
-        ></p>
       </form>
     </dialog>
     <dialog

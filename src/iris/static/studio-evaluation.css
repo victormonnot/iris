@@ -1,0 +1,140 @@
+/* Validation setup, saved evidence and explicit reference decisions. */
+.evaluation-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 26px;
+}
+.evaluation-section-nav [role="tab"] {
+  padding: 12px 22px;
+  min-height: 46px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: 500 13px/1.5 var(--font-sans);
+  cursor: pointer;
+}
+.evaluation-section-nav [role="tab"]:hover { background: var(--field); color: var(--ink); }
+.evaluation-section-nav [aria-selected="true"] { border-bottom-color: var(--accent); color: var(--ink); }
+#evaluation-workspace .panel-heading { padding: 22px 24px; align-items: flex-start; }
+#evaluation-workspace .panel-heading p { line-height: 1.7; max-width: 650px; }
+#evaluation-workspace .field-hint { line-height: 1.7; overflow-wrap: anywhere; }
+.evaluation-plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; padding: 0; gap: 0; }
+.evaluation-plan-fields { min-width: 0; }
+.evaluation-plan-step { padding: 24px; min-width: 0; }
+.evaluation-plan-step + .evaluation-plan-step { border-top: 1px solid var(--line); }
+.evaluation-step-heading { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 24px; }
+.evaluation-step-heading > span {
+  flex: 0 0 30px;
+  color: var(--accent);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--accent);
+  font: 400 12px/1.2 var(--font-mono);
+}
+.evaluation-step-heading h3 { font-size: 16px; margin: 0 0 7px; }
+.evaluation-step-heading p { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0; }
+.evaluation-plan-step label { display: block; margin-bottom: 9px; }
+.evaluation-plan-step :is(input:not([type="checkbox"]), select) { width: 100%; min-width: 0; }
+.evaluation-plan-step .field-hint { margin-top: 10px; }
+.evaluation-plan-step > .text-button { margin-top: 8px; min-height: 36px; font-size: 12px; }
+#evaluation-models { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+#evaluation-models .model-card { padding: 15px; }
+#evaluation-models .model-card:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+#evaluation-models .model-card-title { font-size: 13px; }
+#evaluation-models .model-card-content { min-width: 0; overflow-wrap: anywhere; }
+#evaluation-models .model-description { font-size: 11px; line-height: 1.7; }
+#evaluation-models .model-card label { display: initial; }
+.evaluation-compute-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.evaluation-compute-grid > div { min-width: 0; }
+.evaluation-compute-grid .comparison-mode-field { margin-top: 0; }
+.evaluation-plan-review { padding: 24px 22px; border-left: 1px solid var(--line); background: var(--surface-raised); min-width: 0; }
+.evaluation-plan-review .eyebrow { margin: 0 0 12px; }
+.evaluation-plan-review > h3 { margin: 0 0 18px; font-size: 18px; font-weight: 400; }
+.evaluation-plan-review > .field-hint { margin-top: 16px; }
+.evaluation-plan-review .comparison-launch { display: flex; flex-direction: column; align-items: stretch; gap: 16px; margin: 22px 0; border-top: 1px solid var(--line); padding-top: 20px; }
+.evaluation-plan-review .selection-count { margin: 0; line-height: 1.8; }
+.evaluation-plan-review #evaluation-start { width: 100%; white-space: normal; }
+.evaluation-heading-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+#evaluation-history { width: 100%; max-width: 100%; text-overflow: ellipsis; }
+#evaluation-pane-results .dataset-panel-body > label { margin-top: 0; }
+#evaluation-pane-results .comparison-run-heading { align-items: flex-start; gap: 16px; }
+#evaluation-pane-results .comparison-run-heading > div { min-width: 0; }
+#evaluation-detail-name { font: 400 26px/1.25 var(--font-display); margin: 0; overflow-wrap: anywhere; }
+#evaluation-detail-status { text-transform: capitalize; flex-shrink: 0; }
+#evaluation-detail-message:empty { display: none; }
+#evaluation-detail { padding-top: 24px; border-top: 1px solid var(--line); }
+#evaluation-completeness { border-left: 2px solid var(--accent); background: var(--field); padding: 14px 16px; line-height: 1.7; }
+.evaluation-result-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; margin: 20px 0; }
+.evaluation-result-actions .text-button { min-height: 36px; }
+.evaluation-summary-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0 16px; }
+.evaluation-summary-cards:empty { display: none; }
+.evaluation-quality-card { min-width: 0; padding: 20px; border: 1px solid var(--line); background: var(--surface-raised); }
+.evaluation-quality-card .eyebrow { margin: 0 0 10px; }
+.evaluation-quality-card h4 { font-size: 14px; font-weight: 500; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }
+.evaluation-quality-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 20px 0; }
+.evaluation-quality-values dt { font-size: 11px; color: var(--muted); margin-bottom: 7px; }
+.evaluation-quality-values dd { margin: 0; color: var(--ink); font: 400 24px/1.4 var(--font-mono); }
+.evaluation-quality-card > .field-hint { margin: 0; font-size: 11px; }
+.evaluation-result-disclosure { border-top: 1px solid var(--line); padding: 15px 0; }
+.evaluation-result-disclosure > summary { cursor: pointer; font-size: 12px; color: var(--accent); line-height: 1.7; }
+#evaluation-workspace .evaluation-table-scroll { border: 1px solid var(--line); border-radius: 0; margin: 16px 0; }
+#evaluation-workspace .evaluation-table { font-size: 12px; }
+#evaluation-workspace .evaluation-table caption { padding: 12px; background: var(--surface-raised); text-align: left; }
+#evaluation-workspace .evaluation-table th { background: var(--field); color: var(--ink); }
+#evaluation-workspace .evaluation-table td { font-variant-numeric: tabular-nums; }
+#evaluation-workspace .evaluation-analysis { padding: 24px 0 0; margin-top: 12px; border-top: 1px solid var(--line); }
+#evaluation-analysis-title { font-size: 18px; font-weight: 400; }
+#evaluation-workspace .evaluation-analysis-controls { padding: 18px; background: var(--surface-raised); border: 1px solid var(--line); }
+#evaluation-workspace .evaluation-analysis-summary { gap: 12px; }
+#evaluation-workspace .evaluation-inspection-heading { border-top: 1px solid var(--line); padding-top: 22px; margin-top: 24px; }
+#evaluation-inspection-title { font-size: 18px; font-weight: 400; }
+#evaluation-workspace .prediction-heading { align-items: flex-start; flex-wrap: wrap; gap: 8px; padding: 14px; }
+#evaluation-workspace .prediction-heading h3 { font-size: 13px; overflow-wrap: anywhere; }
+#evaluation-workspace .prediction-visual { background: var(--canvas); }
+#evaluation-workspace .prediction-visual svg { max-height: 65dvh; }
+#evaluation-workspace .evaluation-legend { flex-wrap: wrap; gap: 8px 16px; line-height: 1.6; }
+#evaluation-workspace .dataset-provenance { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; }
+#evaluation-workspace .dataset-provenance > summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.evaluation-decisions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 24px; align-items: start; }
+.evaluation-decisions:has(#evaluation-test-audit[hidden]) #evaluation-reference-form { grid-column: 1 / -1; }
+#evaluation-workspace .evaluation-action { min-width: 0; padding: 22px; margin: 0; background: var(--surface-raised); border: 1px solid var(--line); }
+#evaluation-workspace .evaluation-action h3 { font-size: 16px; margin-top: 0; }
+#evaluation-workspace .evaluation-action > .training-form-grid { grid-template-columns: minmax(0, 1fr); }
+#evaluation-workspace .evaluation-action .button { white-space: normal; width: 100%; }
+#evaluation-workspace .evaluation-reference-entry { padding: 20px; background: var(--surface-raised); border: 1px solid var(--line); }
+#evaluation-workspace .evaluation-reference-entry + .evaluation-reference-entry { margin-top: 14px; }
+
+@media (max-width: 1280px) {
+  .evaluation-plan-layout { grid-template-columns: minmax(0, 1fr) 260px; }
+  .evaluation-compute-grid,
+  .evaluation-plan-step > .training-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .evaluation-quality-values { gap: 8px; }
+  .evaluation-quality-values dd { font-size: 20px; }
+}
+@media (max-width: 1050px) {
+  .evaluation-plan-layout { grid-template-columns: minmax(0, 1fr); }
+  .evaluation-plan-review { border-left: 0; border-top: 1px solid var(--line); }
+  .evaluation-compute-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .evaluation-summary-cards,
+  .evaluation-decisions { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .evaluation-section-nav [role="tab"] { padding: 12px 10px; font-size: 12px; flex: 1 0 50%; }
+  #evaluation-workspace .panel-heading { padding: 20px 16px; flex-wrap: wrap; gap: 14px; }
+  .evaluation-plan-step,
+  .evaluation-plan-review { padding: 20px 16px; }
+  .evaluation-step-heading { gap: 10px; }
+  .evaluation-compute-grid { grid-template-columns: minmax(0, 1fr); }
+  #evaluation-pane-results .comparison-run-heading { flex-wrap: wrap; }
+  #evaluation-detail-name { font-size: 22px; }
+  .evaluation-result-actions > .button { width: 100%; }
+  .evaluation-quality-card { padding: 16px 12px; }
+  .evaluation-quality-values dd { font-size: 19px; }
+  #evaluation-workspace .evaluation-analysis-controls { padding: 14px; }
+  #evaluation-workspace .evaluation-action { padding: 16px; }
+  #evaluation-pane-reference .panel-heading .button { width: 100%; }
+}
+@media (pointer: coarse) {
+  #evaluation-workspace :is(summary, .text-button) { min-height: 44px; }
+}

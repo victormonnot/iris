@@ -1238,6 +1238,8 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
     const view = context.target_type === "model_exports" ? "exports" : results ? "runs" : "plan";
     window.IRISTrainingNavigation.open(view, { focus: true });
   }
+  if (detail.next_action.workspace === "evaluation" && !$("#evaluation-workspace").hidden)
+    window.IRISEvaluationNavigation.open(results ? "results" : "plan", { focus: true });
   $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
   if (batch && context.batch_id) {
     window.dispatchEvent(new CustomEvent("iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));
