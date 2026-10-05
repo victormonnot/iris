@@ -22,11 +22,13 @@ from iris import __version__
 from iris.store import (
     BENCHMARK_TABLES,
     JSON_FIELDS,
+    MODEL_EXPORT_TABLES,
     SCHEMA,
     SCHEMA_V12,
     SCHEMA_V13,
     SCHEMA_V14,
     SCHEMA_V15,
+    SCHEMA_V16,
     SCHEMA_VERSION,
     TABLES,
     now,
@@ -40,13 +42,15 @@ SCHEMAS = {
     13: SCHEMA_V13,
     14: SCHEMA_V14,
     15: SCHEMA_V15,
+    16: SCHEMA_V16,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
-    12: TABLES - BENCHMARK_TABLES - {"projects", "taxonomy_versions"},
-    13: TABLES - BENCHMARK_TABLES - {"taxonomy_versions"},
-    14: TABLES - BENCHMARK_TABLES,
-    15: TABLES - {"benchmark_reports"},
+    12: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"projects", "taxonomy_versions"},
+    13: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"taxonomy_versions"},
+    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES,
+    15: TABLES - MODEL_EXPORT_TABLES - {"benchmark_reports"},
+    16: TABLES - MODEL_EXPORT_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -55,6 +59,7 @@ MAX_TOTAL_BYTES = 64 * 1024**3
 MAX_FILES = 100000
 MAX_MANIFEST_BYTES = 16 * 1024**2
 MAX_REFERENCE_BYTES = 64 * 1024**2
+MAX_MODEL_EXPORT_BYTES = 1280 * 1024**2
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _CATEGORIES = {
     "database": "Workspace database",
@@ -64,6 +69,7 @@ _CATEGORIES = {
     "datasets": "Frozen dataset versions",
     "benchmarks": "Frozen benchmark references and images",
     "models": "Detector checkpoints",
+    "model_exports": "Standalone trained-model packages",
     "assistance": "Annotation review previews",
     "video_reviews": "Video review storyboards",
     "reports": "Experiment images",
@@ -162,6 +168,8 @@ def allowed_artifact_path(value: str) -> bool:
             or (len(parts) == 2 and parts[-1].endswith((".pth", ".pth.json")))
             or (len(parts) == 3 and parts[1] == "trained" and parts[-1].endswith(".pth"))
         )
+    if root == "model_exports":
+        return len(parts) == 3 and parts[-1] == "model.zip"
     if root == "assistance":
         return len(parts) == 4 and parts[1] == "previews" and parts[-1].endswith(".jpg")
     if root in {"video_reviews", "reports"}:
@@ -192,6 +200,10 @@ def is_reference_document(value: str) -> bool:
         and parts[0] == "models"
         and parts[-1].endswith(".pth.json")
     )
+
+
+def is_model_export_bundle(value: str) -> bool:
+    return value.startswith("model_exports/") and allowed_artifact_path(value)
 
 
 def _canonical(value):
@@ -669,6 +681,58 @@ def _validate_benchmarks(connection, root, require):
                 ) from exc
 
 
+def _validate_model_exports(connection, root, require):
+    """Resolve export ownership before validating frozen, portable evidence."""
+    rows = connection.execute("SELECT * FROM model_exports").fetchall()
+    if not rows:
+        return
+    from iris.model_exports import validate_export_archive
+    from iris.store import _decode
+
+    for raw_row in rows:
+        row = _decode(raw_row)
+        owners = connection.execute(
+            "SELECT d.project_id AS model_project,e.project_id AS evaluation_project "
+            "FROM trained_models m JOIN training_runs t ON t.id=m.training_id "
+            "JOIN dataset_versions d ON d.id=t.dataset_id "
+            "JOIN evaluations v ON v.id=? JOIN dataset_versions e ON e.id=v.dataset_id "
+            "WHERE m.id=?",
+            (row["evaluation_id"], row["trained_model_id"]),
+        ).fetchone()
+        if owners is None or owners["model_project"] != owners["evaluation_project"]:
+            raise ArchiveError("Model export source records belong to different projects")
+        if row["job_id"] is not None:
+            job = connection.execute(
+                "SELECT kind,params FROM jobs WHERE id=?", (row["job_id"],)
+            ).fetchone()
+            params = _parse_json(job["params"]) if job is not None else None
+            if (
+                job is None
+                or job["kind"] != "model_export"
+                or not isinstance(params, dict)
+                or params.get("export_id") != row["id"]
+            ):
+                raise ArchiveError("Model export has an invalid job owner")
+        published = [
+            row[key] is not None
+            for key in ("path", "manifest", "manifest_sha256", "archive_sha256")
+        ]
+        if any(published) and not all(published):
+            raise ArchiveError("Model export publication is incomplete")
+        if all(published):
+            if row["job_id"] is None:
+                raise ArchiveError("Model export publication has no owning job")
+            if row["path"] != f"model_exports/{row['id']}/model.zip":
+                raise ArchiveError("Model export package path differs from its frozen directory")
+            require(row["path"], (f"model_exports/{row['id']}/",), row["archive_sha256"])
+        try:
+            validate_export_archive(row, connection=connection, root=root)
+        except (ValueError, TypeError, AttributeError, KeyError) as exc:
+            raise ArchiveError(
+                "Model export package or frozen measurement evidence is invalid"
+            ) from exc
+
+
 def validate_database(
     root: Path, inventory: dict, *, verify_hashes=False, database_path=None
 ) -> dict:
@@ -811,6 +875,8 @@ def validate_database(
                     )
             if version >= 15:
                 _validate_benchmarks(connection, root, require)
+            if version >= 17:
+                _validate_model_exports(connection, root, require)
             for table, prefix in (
                 ("assistance_previews", "assistance/previews"),
                 ("video_reviews", "video_reviews"),

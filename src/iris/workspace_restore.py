@@ -19,12 +19,14 @@ from iris.workspace_archive import (
     MAX_ARCHIVE_BYTES,
     MAX_FILES,
     MAX_MANIFEST_BYTES,
+    MAX_MODEL_EXPORT_BYTES,
     MAX_REFERENCE_BYTES,
     MAX_TOTAL_BYTES,
     ArchiveCancelled,
     ArchiveError,
     ArchiveLimitError,
     allowed_artifact_path,
+    is_model_export_bundle,
     is_reference_document,
     safe_member_path,
     validate_database,
@@ -213,7 +215,10 @@ def _extract(archive, members, manifest, root, *, restore, progress, cancelled):
     retained = [
         item
         for item in manifest["files"]
-        if restore or item["path"] == "iris.sqlite3" or is_reference_document(item["path"])
+        if restore
+        or item["path"] == "iris.sqlite3"
+        or is_reference_document(item["path"])
+        or is_model_export_bundle(item["path"])
     ]
     required = sum(((item["size_bytes"] + 4095) // 4096 + 1) * 4096 for item in retained)
     if shutil.disk_usage(root).free < required + 1024**2:
@@ -223,9 +228,12 @@ def _extract(archive, members, manifest, root, *, restore, progress, cancelled):
         _cancel(cancelled)
         name = item["path"]
         reference = is_reference_document(name)
+        model_export = is_model_export_bundle(name)
         if reference and item["size_bytes"] > MAX_REFERENCE_BYTES:
             raise ArchiveLimitError("A workspace reference document exceeds its size limit")
-        keep = restore or name == "iris.sqlite3" or reference
+        if model_export and item["size_bytes"] > MAX_MODEL_EXPORT_BYTES:
+            raise ArchiveLimitError("A standalone model package exceeds its size limit")
+        keep = restore or name == "iris.sqlite3" or reference or model_export
         target = root / name
         destination = None
         try:

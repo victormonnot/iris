@@ -5,7 +5,7 @@
   else root.IRISJobTools = tools;
 })(typeof window === "undefined" ? globalThis : window, () => {
   const active = (job) => ["queued", "running"].includes(job.status);
-  const kindNames = { extract: "Frame extraction", infer: "Model comparison", assist: "Annotation assistance", train: "Detector training", evaluate: "Quality evaluation", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
+  const kindNames = { extract: "Frame extraction", infer: "Model comparison", assist: "Annotation assistance", train: "Detector training", evaluate: "Quality evaluation", model_export: "Model export", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
   const statusName = (status) => String(status || "unknown").replaceAll("_", " ");
   function history(jobs, { status = "all", kind = "all", query = "", limit = 8 } = {}) {
     const search = query.trim().toLocaleLowerCase();

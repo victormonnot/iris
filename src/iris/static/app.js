@@ -1212,7 +1212,7 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
   }
   let resultNotice = "Opened the saved results workspace. No task was launched.";
   if (results) {
-    const selector = { comparisons: "#comparison-history", training_runs: "#training-history", evaluations: "#evaluation-history" }[context.target_type];
+    const selector = { comparisons: "#comparison-history", training_runs: "#training-history", evaluations: "#evaluation-history", model_exports: "#model-export-history" }[context.target_type];
     if (selector) await selectJobHistory(selector, context.target_id);
     else if (context.target_type === "assistance_records" && detail.job.params?.frame_id) {
       const frameId = detail.job.params.frame_id;

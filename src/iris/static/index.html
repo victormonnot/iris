@@ -31,6 +31,8 @@
     <script src="/static/preannotations.js" defer></script>
     <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training.js" defer></script>
+    <script src="/static/model-export-tools.js" defer></script>
+    <script src="/static/model-export.js" defer></script>
     <script src="/static/evaluation.js" defer></script>
     <script src="/static/experiments.js" defer></script>
     <script src="/static/benchmark-tools.js" defer></script>
@@ -1775,6 +1777,83 @@ ollama pull qwen3-vl:4b-instruct</pre
                 </div>
               </div>
             </section>
+            <section class="panel dataset-panel" aria-labelledby="model-export-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="model-export-title">Use a trained model elsewhere</h2>
+                  <p>Package a trained detector and compare its outputs on another machine.</p>
+                </div>
+                <button id="model-export-refresh" class="button button-secondary" type="button">Refresh exports</button>
+              </div>
+              <div class="dataset-panel-body">
+                <p class="field-hint">First export profile: IRIS-trained Faster R-CNN MobileNetV3-Large 320 FPN, using PyTorch on CPU. Includes full weights, frozen class definitions, a standalone Python runner and the parity images you select below.</p>
+                <p id="model-export-candidates-status" class="field-hint" role="status">Open Dataset &amp; Training to read available checkpoints.</p>
+                <form id="model-export-form">
+                  <div class="training-form-grid">
+                    <div><label for="model-export-model">Trained checkpoint</label><select id="model-export-model" required disabled><option value="">No trained checkpoint available</option></select></div>
+                    <div><label for="model-export-evaluation">Saved CPU evaluation</label><select id="model-export-evaluation" required disabled><option value="">Choose a trained checkpoint</option></select></div>
+                  </div>
+                  <p id="model-export-model-reason" class="field-hint"></p>
+                  <label for="model-export-name">Package name</label>
+                  <input id="model-export-name" required maxlength="160" placeholder="e.g. Workshop detector · target machine check" autocomplete="off" />
+                  <fieldset class="model-export-frame-fieldset">
+                    <legend>Parity images to include in the package</legend>
+                    <p class="field-hint">Select 1–8 frozen evaluation images. Their saved detector outputs are included for exact comparison. Human annotations and reviewer notes are excluded.</p>
+                    <div id="model-export-frames" class="model-export-frames"></div>
+                    <p id="model-export-frame-count" class="field-hint" role="status">0 images selected</p>
+                  </fieldset>
+                  <button id="model-export-preview" class="button button-secondary" type="submit" disabled>Preview export package</button>
+                  <p class="field-hint">Preparing and creating a package copies saved files. It does not run a model or measure performance.</p>
+                  <div id="model-export-preview-result" class="training-preview" hidden>
+                    <h3>Review package contents</h3>
+                    <p id="model-export-preview-summary" class="field-hint"></p>
+                    <div id="model-export-preview-warnings"></div>
+                    <details class="dataset-provenance"><summary>Frozen weights, classes and runtime contract</summary><pre id="model-export-preview-contract"></pre></details>
+                    <button id="model-export-create" class="button button-primary" type="button" disabled>Create export package</button>
+                  </div>
+                </form>
+                <p id="model-export-error" class="inline-error" role="alert" hidden></p>
+                <div class="model-export-history">
+                  <label for="model-export-history">Export history</label>
+                  <select id="model-export-history" disabled><option value="">No export packages yet</option></select>
+                  <p id="model-export-history-error" class="inline-error" role="alert" hidden></p>
+                  <p id="model-export-history-empty" class="field-hint">Train a checkpoint, then complete a CPU full-image evaluation in Quality evaluation to prepare a portable package.</p>
+                  <div id="model-export-detail" hidden>
+                    <div class="comparison-run-heading"><h3 id="model-export-detail-name"></h3><span id="model-export-detail-status" class="job-status"></span></div>
+                    <p id="model-export-detail-message" class="field-hint" role="status"></p>
+                    <p id="model-export-detail-error" class="inline-error" hidden></p>
+                    <div class="model-export-actions">
+                      <button id="model-export-job" class="button button-secondary" type="button" hidden>Open processing job</button>
+                      <a id="model-export-download" class="button button-secondary" hidden>Download model package ZIP</a>
+                    </div>
+                    <p id="model-export-validation-status" class="field-hint"></p>
+                    <div id="model-export-ready" hidden>
+                      <p class="field-hint">Unzip on the target machine and follow README.md to install the pinned runtime. From the package directory:</p>
+                      <pre class="model-export-commands">python run.py inspect
+python run.py predict image.png --output ../prediction.json
+python run.py measure --output ../measurement.json --repeats 3</pre>
+                      <p class="field-hint">Measure runs the detector on the bundled images. One warm-up is excluded. Recorded prediction time excludes image decoding, model loading and package verification; inspect the report for separate timings. Exact output parity is distinct from detection quality and speed.</p>
+                      <details class="dataset-provenance"><summary>Immutable package identity and contract</summary><pre id="model-export-manifest"></pre></details>
+                      <div class="model-export-measurement-import">
+                        <h4>Import target-machine measurements</h4>
+                        <label for="model-export-measurement-file">Runner measurement JSON · at most 8 MiB</label>
+                        <input id="model-export-measurement-file" type="file" accept=".json,application/json" />
+                        <button id="model-export-measurement-preview" class="button button-secondary" type="button" disabled>Check measurement file</button>
+                        <p id="model-export-measurement-error" class="inline-error" role="alert" hidden></p>
+                        <div id="model-export-measurement-review" class="training-preview" hidden>
+                          <h4>Review checked measurements</h4>
+                          <div id="model-export-measurement-summary"></div>
+                          <details class="dataset-provenance"><summary>Checked parity, timings and declared environment</summary><pre id="model-export-measurement-record"></pre></details>
+                          <button id="model-export-measurement-save" class="button button-primary" type="button" disabled>Save measurements in IRIS</button>
+                        </div>
+                      </div>
+                      <h4 class="model-export-measurement-heading">Saved target-machine measurements</h4>
+                      <div id="model-export-measurements"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
           </section>
           <section
             id="evaluation-workspace"
@@ -2537,7 +2616,7 @@ ollama pull qwen3-vl:4b-instruct</pre
           </div>
           <div class="job-history-controls">
             <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
-            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="assist">Annotation assistance</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="assist">Annotation assistance</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
             <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
             <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
           </div>

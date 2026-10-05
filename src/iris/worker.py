@@ -78,6 +78,10 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_training(store, job["params"]["training_id"], progress, cancelled)
         elif job["kind"] == "evaluate":
             result = run_evaluation(store, job["params"]["evaluation_id"], progress, cancelled)
+        elif job["kind"] == "model_export":
+            from iris.model_exports import run_export
+
+            result = run_export(store, job["params"]["export_id"], progress, cancelled)
         elif job["kind"] == "video_review":
             result = run_video_review(store, job["params"]["video_review_id"], progress, cancelled)
         elif job["kind"] == "benchmark":
@@ -131,6 +135,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "assist": "Annotation proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
                         "evaluate": "Evaluation complete; metrics and predictions saved",
+                        "model_export": "Model package saved; real execution is not validated",
                         "video_review": "Video passages ready for human selection",
                         "benchmark": (
                             "Benchmark attempt finished; inspect coverage and per-image errors"

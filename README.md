@@ -6,11 +6,28 @@ human validation → versioned dataset → fine-tuning → model comparison.
 
 IRIS currently provides **projects, data intake, COCO dataset import, detector comparison, assisted annotation,
 human review, dataset versions and COCO export, local detector fine-tuning, held-out evaluation,
-explicit model reference selection, saved experiment reports, independent annotation benchmarks,
+explicit model reference selection, saved experiment reports, standalone trained-model exports,
+independent annotation benchmarks,
 and workspace backup/restoration**, with a review queue for tracking
 annotation progress and inspecting detector disagreements. Trained checkpoints return to the visual
 comparator and can be measured against their parents. See
 [the architecture](docs/architecture.md).
+
+## Standalone model export
+
+In **Dataset & Training → Model exports**, choose a trained Faster R-CNN checkpoint,
+a completed CPU full-image evaluation, and 1–8 saved images for parity checking.
+Preview and create a ZIP containing the unchanged weights, frozen classes,
+preprocessing/output contract and an independent Python runner. Packaging only
+copies and verifies local files; it does not load the model or execute inference.
+
+The first profile targets PyTorch CPU float32 with pinned dependencies. On the
+target computer, inspect the bundle, predict on a local image, or measure exact
+parity and inference time. Preview and import the generated measurement JSON back
+into IRIS. Failed parity remains visible, timings retain their scopes, and imported
+execution remains declared evidence. Real model/parity/performance validation is
+deferred; software tests use synthetic data and mocked execution.
+See [the export format, runner commands and limitations](docs/model-export.md).
 
 ## Annotation benchmark
 

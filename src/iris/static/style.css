@@ -122,6 +122,109 @@
   margin: 16px 0;
 }
 
+#model-export-form > label,
+#model-export-form > .field-hint {
+  margin-top: 16px;
+}
+
+.model-export-frame-fieldset {
+  margin: 20px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.model-export-frame-fieldset legend {
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.model-export-frames {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  max-height: 380px;
+  overflow-y: auto;
+  margin: 12px 0;
+}
+
+.model-export-frame {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  background: var(--pale);
+  border-radius: 6px;
+}
+
+.model-export-frame input {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+
+.model-export-frame img {
+  width: 52px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.model-export-frame span {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.model-export-history,
+.model-export-measurement-import {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+
+.model-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.model-export-commands {
+  font-size: 11px;
+  line-height: 1.8;
+  padding: 12px;
+  background: var(--pale);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.model-export-measurement-import > label,
+.model-export-measurement-import > .button,
+.model-export-measurement-heading,
+#model-export-detail > .field-hint,
+#model-export-ready > .field-hint {
+  margin-top: 16px;
+}
+
+.model-export-measurement {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.model-export-measurement .field-hint {
+  margin-top: 8px;
+}
+
+#model-export-detail-name {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
 .training-preview {
   padding: 16px;
   margin-top: 20px;

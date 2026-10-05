@@ -13,6 +13,7 @@ from iris.projects import create_project
 from iris.store import (
     BENCHMARK_TABLES,
     DEFAULT_PROJECT_ID,
+    MODEL_EXPORT_TABLES,
     SCHEMA_V13,
     SCHEMA_VERSION,
     TABLES,
@@ -22,7 +23,7 @@ from iris.taxonomies import TAXONOMY, current_taxonomy, get_taxonomy, publish_ta
 from iris.workspace_archive import ArchiveError, create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
-SCHEMA13_TABLES = TABLES - BENCHMARK_TABLES - {"taxonomy_versions"}
+SCHEMA13_TABLES = TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"taxonomy_versions"}
 
 
 def rows(root, tables=SCHEMA13_TABLES):

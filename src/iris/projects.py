@@ -33,6 +33,8 @@ PARENTS = {
     "benchmark_corrections": ("benchmark_outputs", "output_id"),
     "benchmark_timers": ("benchmark_outputs", "output_id"),
     "benchmark_reports": ("benchmarks", "benchmark_id"),
+    "model_exports": ("trained_models", "trained_model_id"),
+    "model_export_measurements": ("model_exports", "export_id"),
 }
 DIRECT = {"sessions", "dataset_versions", "dataset_imports", "taxonomy_versions", "benchmarks"}
 JOB_PARENTS = {
@@ -43,6 +45,7 @@ JOB_PARENTS = {
     "evaluate": ("evaluations", "evaluation_id"),
     "video_review": ("video_reviews", "video_review_id"),
     "benchmark": ("benchmark_trials", "trial_id"),
+    "model_export": ("model_exports", "export_id"),
 }
 
 
@@ -86,6 +89,7 @@ def record_project(store: Store, table: str, record: dict) -> str | None:
             "evaluations",
             "video_reviews",
             "benchmark_trials",
+            "model_exports",
         ):
             rows = store.list(parent_table, job_id=record["id"])
             if rows:

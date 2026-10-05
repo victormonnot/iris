@@ -8,12 +8,12 @@ import zipfile
 import pytest
 import test_benchmarks_archive as archive_fixtures
 
-from iris.store import SCHEMA_V15, SCHEMA_VERSION, TABLES, Store
+from iris.store import MODEL_EXPORT_TABLES, SCHEMA_V15, SCHEMA_V16, SCHEMA_VERSION, TABLES, Store
 from iris.workspace_archive import create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
 benchmark_workspace = archive_fixtures.benchmark_workspace
-OLD_TABLES = TABLES - {"benchmark_reports"}
+OLD_TABLES = TABLES - MODEL_EXPORT_TABLES - {"benchmark_reports"}
 
 
 def rows(root, tables=OLD_TABLES):
@@ -69,7 +69,7 @@ def test_schema16_is_additive_and_repeatable_with_raw_history_and_artifacts(sche
         assert artifacts(schema15) == files
         assert store.list("benchmark_reports") == []
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 16
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -90,13 +90,19 @@ def test_schema16_failure_rolls_back_table_and_version(schema15):
         )
 
 
-@pytest.mark.parametrize("version", [15, 16])
+@pytest.mark.parametrize("version", [15, 16, SCHEMA_VERSION])
 def test_archives_restore_original_database_before_schema16_migration(
     schema15, tmp_path, monkeypatch, version
 ):
     if version == 16:
+        with sqlite3.connect(schema15 / "iris.sqlite3") as connection:
+            connection.executescript(SCHEMA_V16)
+            connection.execute("PRAGMA user_version=16")
+    elif version == SCHEMA_VERSION:
         Store(schema15)
-    tables = OLD_TABLES if version == 15 else TABLES
+    tables = (
+        OLD_TABLES if version == 15 else TABLES - MODEL_EXPORT_TABLES if version == 16 else TABLES
+    )
     original, files = rows(schema15, tables), artifacts(schema15)
     saved = create_archive(schema15, tmp_path / "historical.zip")
     assert saved["manifest"]["schema_version"] == version

@@ -490,6 +490,35 @@ SAM geometry, while their confidence is null and the original native score stays
 in provenance. This avoids treating two provider outputs as a calibrated score.
 See [the combined protocol](combined-preannotation-adapter.md).
 
+## Standalone model packages
+
+Schema 17 adds `model_exports` and `model_export_measurements`. Ownership follows
+the trained model's training dataset; the source evaluation must be in the same
+project. Versions 12–16 retain their original table layouts and database bytes
+when restored, migrating only on opening.
+
+`model_exports.py` verifies a completed CPU full-image evaluation against the
+trained checkpoint's frozen class, runtime and inference contracts. Preview binds
+the chosen image bytes, saved native predictions, checkpoint and runner source to
+a canonical digest. Creation compares that digest in one SQLite transaction and
+queues an idempotent copy job. A bounded staging ZIP is verified before atomic
+publication of the package record and terminal job success. Cancellation keeps
+incomplete copies out of the published inventory; retries require a new preview.
+
+`export_runner.py` is copied verbatim into the bundle and imports no IRIS module.
+Inspection and measurement validation use the standard library; explicit predict
+and measure commands load the pinned CPU runtime and full state_dict. Class order,
+legacy native-to-output IDs, EXIF orientation, Torchvision transforms, native NMS
+and prediction order remain frozen. Exact parity does not silently widen numeric
+tolerances. Real inference and target timing validation remain deferred.
+
+External measurement JSON is bounded, linked to its manifest, checked for complete
+ordered repeats and finite timings, and recomputed before saving. Results are
+immutable and idempotent per payload hash; declared execution is not independently
+verified. Archives validate nested file inventories and hashes, saved predictions,
+source ownership and imported summaries without deserializing checkpoints.
+See [the export contract](model-export.md).
+
 ## Saved benchmark comparisons
 
 Schema 16 adds only `benchmark_reports`. Its owner is an existing benchmark, so

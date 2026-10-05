@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -260,7 +260,7 @@ CREATE TABLE IF NOT EXISTS benchmark_timers (
 """
 )
 
-SCHEMA = (
+SCHEMA_V16 = (
     SCHEMA_V15
     + """
 CREATE TABLE IF NOT EXISTS benchmark_reports (
@@ -269,6 +269,28 @@ CREATE TABLE IF NOT EXISTS benchmark_reports (
     UNIQUE(benchmark_id,snapshot_sha256)
 );
 CREATE INDEX IF NOT EXISTS benchmark_reports_benchmark ON benchmark_reports(benchmark_id);
+"""
+)
+
+MODEL_EXPORT_TABLES = {"model_exports", "model_export_measurements"}
+SCHEMA = (
+    SCHEMA_V16
+    + """
+CREATE TABLE IF NOT EXISTS model_exports (
+    id TEXT PRIMARY KEY, trained_model_id TEXT NOT NULL REFERENCES trained_models(id),
+    evaluation_id TEXT NOT NULL REFERENCES evaluations(id), name TEXT NOT NULL,
+    config TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE,
+    job_id TEXT UNIQUE REFERENCES jobs(id), path TEXT, manifest TEXT,
+    manifest_sha256 TEXT, archive_sha256 TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS model_exports_model ON model_exports(trained_model_id);
+CREATE TABLE IF NOT EXISTS model_export_measurements (
+    id TEXT PRIMARY KEY, export_id TEXT NOT NULL REFERENCES model_exports(id),
+    payload TEXT NOT NULL, summary TEXT NOT NULL, fingerprint TEXT NOT NULL,
+    created_at TEXT NOT NULL, UNIQUE(export_id,fingerprint)
+);
+CREATE INDEX IF NOT EXISTS model_export_measurements_export
+    ON model_export_measurements(export_id);
 """
 )
 
@@ -337,34 +359,40 @@ JSON_FIELDS = {
     "metrics",
     "snapshot",
     "segments",
+    "manifest",
+    "payload",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
-TABLES = BENCHMARK_TABLES | {
-    "projects",
-    "taxonomy_versions",
-    "sessions",
-    "assets",
-    "frames",
-    "jobs",
-    "comparisons",
-    "runs",
-    "predictions",
-    "annotation_revisions",
-    "annotation_suggestions",
-    "assistance_records",
-    "assistance_batches",
-    "assistance_previews",
-    "dataset_versions",
-    "training_runs",
-    "trained_models",
-    "evaluations",
-    "evaluation_models",
-    "evaluation_predictions",
-    "model_references",
-    "dataset_imports",
-    "video_reviews",
-    "experiment_reports",
-}
+TABLES = (
+    BENCHMARK_TABLES
+    | MODEL_EXPORT_TABLES
+    | {
+        "projects",
+        "taxonomy_versions",
+        "sessions",
+        "assets",
+        "frames",
+        "jobs",
+        "comparisons",
+        "runs",
+        "predictions",
+        "annotation_revisions",
+        "annotation_suggestions",
+        "assistance_records",
+        "assistance_batches",
+        "assistance_previews",
+        "dataset_versions",
+        "training_runs",
+        "trained_models",
+        "evaluations",
+        "evaluation_models",
+        "evaluation_predictions",
+        "model_references",
+        "dataset_imports",
+        "video_reviews",
+        "experiment_reports",
+    }
+)
 
 
 def _decode(row: sqlite3.Row | None) -> dict | None:

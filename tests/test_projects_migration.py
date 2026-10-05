@@ -13,6 +13,7 @@ from iris import workspace_archive, workspace_restore
 from iris.store import (
     BENCHMARK_TABLES,
     DEFAULT_PROJECT_ID,
+    MODEL_EXPORT_TABLES,
     PROJECT_TABLES,
     SCHEMA_V12,
     SCHEMA_VERSION,
@@ -22,7 +23,7 @@ from iris.store import (
     now,
 )
 
-LEGACY_TABLES = TABLES - BENCHMARK_TABLES - {"projects", "taxonomy_versions"}
+LEGACY_TABLES = TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"projects", "taxonomy_versions"}
 
 
 def _rows(root, tables=LEGACY_TABLES):
