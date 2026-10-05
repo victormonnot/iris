@@ -29,8 +29,10 @@ from iris.store import (
     SCHEMA_V14,
     SCHEMA_V15,
     SCHEMA_V16,
+    SCHEMA_V17,
     SCHEMA_VERSION,
     TABLES,
+    TRAINING_CHECKPOINT_TABLES,
     now,
 )
 from iris.taxonomies import validate_taxonomy_records
@@ -43,14 +45,24 @@ SCHEMAS = {
     14: SCHEMA_V14,
     15: SCHEMA_V15,
     16: SCHEMA_V16,
+    17: SCHEMA_V17,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
-    12: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"projects", "taxonomy_versions"},
-    13: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"taxonomy_versions"},
-    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES,
-    15: TABLES - MODEL_EXPORT_TABLES - {"benchmark_reports"},
-    16: TABLES - MODEL_EXPORT_TABLES,
+    12: TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - {"projects", "taxonomy_versions"},
+    13: TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - {"taxonomy_versions"},
+    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES,
+    15: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - {"benchmark_reports"},
+    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES,
+    17: TABLES - TRAINING_CHECKPOINT_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -60,6 +72,7 @@ MAX_FILES = 100000
 MAX_MANIFEST_BYTES = 16 * 1024**2
 MAX_REFERENCE_BYTES = 64 * 1024**2
 MAX_MODEL_EXPORT_BYTES = 1280 * 1024**2
+MAX_TRAINING_CHECKPOINT_BYTES = 512 * 1024**2
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _CATEGORIES = {
     "database": "Workspace database",
@@ -70,6 +83,7 @@ _CATEGORIES = {
     "benchmarks": "Frozen benchmark references and images",
     "models": "Detector checkpoints",
     "model_exports": "Standalone trained-model packages",
+    "training_checkpoints": "Training states for explicit continuation",
     "assistance": "Annotation review previews",
     "video_reviews": "Video review storyboards",
     "reports": "Experiment images",
@@ -170,6 +184,8 @@ def allowed_artifact_path(value: str) -> bool:
         )
     if root == "model_exports":
         return len(parts) == 3 and parts[-1] == "model.zip"
+    if root == "training_checkpoints":
+        return len(parts) == 3 and parts[-1].endswith(".pth")
     if root == "assistance":
         return len(parts) == 4 and parts[1] == "previews" and parts[-1].endswith(".jpg")
     if root in {"video_reviews", "reports"}:
@@ -733,6 +749,56 @@ def _validate_model_exports(connection, root, require):
             ) from exc
 
 
+def _validate_training_checkpoints(connection, root, require):
+    """Validate durable state identities without reading or deserializing tensors."""
+    from iris.store import _decode
+    from iris.training_recovery import (
+        validate_training_checkpoint,
+        validate_training_recoveries,
+    )
+
+    for raw_row in connection.execute("SELECT * FROM training_checkpoints"):
+        row = _decode(raw_row)
+        expected_path = f"training_checkpoints/{row['training_id']}/{row['id']}.pth"
+        if row["path"] != expected_path:
+            raise ArchiveError("Training checkpoint path differs from its owning run")
+        if (
+            type(row["step"]) is not int
+            or row["step"] <= 0
+            or type(row["size_bytes"]) is not int
+            or not 0 < row["size_bytes"] <= MAX_TRAINING_CHECKPOINT_BYTES
+        ):
+            raise ArchiveLimitError("Training checkpoint step or file size is unsupported")
+        owner = connection.execute(
+            "SELECT j.kind,j.params FROM training_runs t JOIN jobs j ON j.id=t.job_id WHERE t.id=?",
+            (row["training_id"],),
+        ).fetchone()
+        params = _parse_json(owner["params"]) if owner is not None else None
+        if (
+            owner is None
+            or owner["kind"] != "train"
+            or not isinstance(params, dict)
+            or params.get("training_id") != row["training_id"]
+        ):
+            raise ArchiveError("Training checkpoint has an invalid job owner")
+        require(
+            row["path"],
+            (f"training_checkpoints/{row['training_id']}/",),
+            row["state_sha256"],
+            row["size_bytes"],
+        )
+        try:
+            validate_training_checkpoint(row, connection=connection, root=root)
+        except (ValueError, TypeError, AttributeError, KeyError) as exc:
+            raise ArchiveError(
+                "Training checkpoint metadata or source identity is invalid"
+            ) from exc
+    try:
+        validate_training_recoveries(connection, root)
+    except (ValueError, TypeError, AttributeError, KeyError) as exc:
+        raise ArchiveError("Training continuation lineage or source checkpoint is invalid") from exc
+
+
 def validate_database(
     root: Path, inventory: dict, *, verify_hashes=False, database_path=None
 ) -> dict:
@@ -877,6 +943,8 @@ def validate_database(
                 _validate_benchmarks(connection, root, require)
             if version >= 17:
                 _validate_model_exports(connection, root, require)
+            if version >= 18:
+                _validate_training_checkpoints(connection, root, require)
             for table, prefix in (
                 ("assistance_previews", "assistance/previews"),
                 ("video_reviews", "video_reviews"),
@@ -902,6 +970,11 @@ def validate_database(
                 ):
                     raise ArchiveError("Experiment report no longer matches its frozen checksum")
         for path in sorted(inventory):
+            if (
+                path.startswith("training_checkpoints/")
+                and inventory[path]["size_bytes"] > MAX_TRAINING_CHECKPOINT_BYTES
+            ):
+                raise ArchiveLimitError("A training checkpoint exceeds its file size limit")
             if path == "models/sam3/sam3.pt":
                 from iris.sam_provider import CHECKPOINT_SHA256, CHECKPOINT_SIZE
 

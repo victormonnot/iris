@@ -8,12 +8,20 @@ import zipfile
 import pytest
 import test_benchmarks_archive as archive_fixtures
 
-from iris.store import MODEL_EXPORT_TABLES, SCHEMA_V15, SCHEMA_V16, SCHEMA_VERSION, TABLES, Store
+from iris.store import (
+    MODEL_EXPORT_TABLES,
+    SCHEMA_V15,
+    SCHEMA_V16,
+    SCHEMA_VERSION,
+    TABLES,
+    TRAINING_CHECKPOINT_TABLES,
+    Store,
+)
 from iris.workspace_archive import create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
 benchmark_workspace = archive_fixtures.benchmark_workspace
-OLD_TABLES = TABLES - MODEL_EXPORT_TABLES - {"benchmark_reports"}
+OLD_TABLES = TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - {"benchmark_reports"}
 
 
 def rows(root, tables=OLD_TABLES):
@@ -101,7 +109,11 @@ def test_archives_restore_original_database_before_schema16_migration(
     elif version == SCHEMA_VERSION:
         Store(schema15)
     tables = (
-        OLD_TABLES if version == 15 else TABLES - MODEL_EXPORT_TABLES if version == 16 else TABLES
+        OLD_TABLES
+        if version == 15
+        else TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES
+        if version == 16
+        else TABLES
     )
     original, files = rows(schema15, tables), artifacts(schema15)
     saved = create_archive(schema15, tmp_path / "historical.zip")

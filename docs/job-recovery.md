@@ -72,13 +72,21 @@ the saved job receipt; it does not send the provider request again.
 
 ## Other jobs and limits
 
-Comparisons, training and evaluations retain their saved predictions, histories,
-checkpoints and metrics. **Prepare a new run** opens the relevant workspace without
-launching processing. A new comparison or evaluation is a separate run. Training
-starts from the checkpoint chosen in its form; it does not restore optimizer state
-from an interrupted run. No generic retry button silently reruns model or API work.
+Training runs with durable checkpoints offer **Preview continuation** in their
+training details. Confirmation creates one linked attempt with the same frozen
+inputs, restoring the optimizer, CPU random state and image order. Work after the
+latest saved state is recomputed; the old attempt stays unchanged. Starting from
+a completed model instead initializes a new optimizer. Older runs without saved
+optimizer state require a new run. See [training continuation](long-training.md).
+
+Comparisons and evaluations retain their saved predictions and metrics.
+**Prepare a new run** opens the relevant workspace without launching processing.
+A new comparison or evaluation is a separate run. No generic retry button
+silently reruns model or API work.
 
 The upload queue remains a browser operation: completed uploads are preserved,
 but closing the page does not retain unuploaded browser files for later processing.
 Extraction checkpoints and dispatch receipts use existing SQLite records; schema
 14 and earlier frozen datasets remain compatible with workspace backup and restore.
+Training recovery adds schema 18; opening an older workspace adds its checkpoint
+table without rewriting previous training records or model files.

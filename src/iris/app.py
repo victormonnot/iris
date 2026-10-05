@@ -237,9 +237,20 @@ class TrainingInput(BaseModel):
     scope: Literal["prediction_head_only", "partial_backbone", "full_model"] = (
         "prediction_head_only"
     )
-    steps: int = Field(default=20, ge=1, le=200)
+    steps: int = Field(default=20, ge=1, le=10000)
+    checkpoint_interval: int | None = Field(default=None, ge=1, le=1000)
     learning_rate: float = Field(default=0.001, gt=0, le=0.1)
     seed: int = Field(default=0, ge=0, le=2147483647)
+
+
+class TrainingCreateInput(TrainingInput):
+    request_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    expected_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class TrainingResumeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class EvaluationInput(BaseModel):
@@ -918,7 +929,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
         ]
 
     @app.post("/api/trainings", status_code=202)
-    def train(payload: TrainingInput):
+    def train(payload: TrainingCreateInput):
         require("dataset_versions", payload.dataset_id)
         require_models([payload.parent_model_id])
         try:
@@ -943,6 +954,26 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def training(training_id: str):
         require("training_runs", training_id)
         return training_detail(store, training_id)
+
+    @app.post("/api/trainings/{training_id}/resume-preview")
+    def training_resume_preview(training_id: str):
+        from iris.training_recovery import preview_resume
+
+        require("training_runs", training_id)
+        try:
+            return preview_resume(store, training_id)
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/trainings/{training_id}/resume", status_code=202)
+    def training_resume(training_id: str, payload: TrainingResumeInput):
+        from iris.training_recovery import resume_training
+
+        require("training_runs", training_id)
+        try:
+            return resume_training(store, jobs, training_id, **payload.model_dump())
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/evaluations")
     def evaluations():

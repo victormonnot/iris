@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -273,7 +273,7 @@ CREATE INDEX IF NOT EXISTS benchmark_reports_benchmark ON benchmark_reports(benc
 )
 
 MODEL_EXPORT_TABLES = {"model_exports", "model_export_measurements"}
-SCHEMA = (
+SCHEMA_V17 = (
     SCHEMA_V16
     + """
 CREATE TABLE IF NOT EXISTS model_exports (
@@ -291,6 +291,20 @@ CREATE TABLE IF NOT EXISTS model_export_measurements (
 );
 CREATE INDEX IF NOT EXISTS model_export_measurements_export
     ON model_export_measurements(export_id);
+"""
+)
+
+TRAINING_CHECKPOINT_TABLES = {"training_checkpoints"}
+SCHEMA = (
+    SCHEMA_V17
+    + """
+CREATE TABLE IF NOT EXISTS training_checkpoints (
+    id TEXT PRIMARY KEY, training_id TEXT NOT NULL REFERENCES training_runs(id),
+    step INTEGER NOT NULL CHECK(step > 0), path TEXT NOT NULL UNIQUE,
+    state_sha256 TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+    metadata TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(training_id,step)
+);
+CREATE INDEX IF NOT EXISTS training_checkpoints_training ON training_checkpoints(training_id);
 """
 )
 
@@ -366,6 +380,7 @@ BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = (
     BENCHMARK_TABLES
     | MODEL_EXPORT_TABLES
+    | TRAINING_CHECKPOINT_TABLES
     | {
         "projects",
         "taxonomy_versions",

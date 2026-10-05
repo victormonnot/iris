@@ -92,6 +92,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                 int(bool(target["checkpoint_id"])),
                 target["checkpoint_id"],
             )
+            states = conn.execute(
+                "SELECT count(*) FROM training_checkpoints WHERE training_id=?", (target["id"],)
+            ).fetchone()[0]
+            add("optimizer_states", "Durable optimizer checkpoints", states, target["id"])
         elif target and job["kind"] == "evaluate":
             count = conn.execute(
                 "SELECT COUNT(*) FROM evaluation_predictions WHERE evaluation_id=?", (target["id"],)
@@ -188,6 +192,12 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         next_reason = (
             "Preview an explicit new proposal run. Saved predictions, proposals and human "
             "corrections from this attempt remain available."
+        )
+    if job["kind"] == "train" and target and target["config"].get("checkpoint_protocol"):
+        reason = "Open training results to inspect saved optimizer checkpoints and resume options."
+        next_reason = (
+            "Preview an explicit resume in the training results. It creates a new attempt "
+            "with the same settings and dataset, restoring optimizer and random state."
         )
     return {
         "job": job,

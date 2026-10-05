@@ -124,7 +124,7 @@ def test_dataset_candidates_exclude_draft_and_report_reserved_groups(client):
     [
         {"steps": True},
         {"steps": 0},
-        {"steps": 201},
+        {"steps": 10001},
         {"seed": True},
         {"seed": -1},
         {"learning_rate": 0},

@@ -127,7 +127,7 @@ def test_queue_snapshots_parent_and_dataset_and_publishes_job_atomically(workspa
     "changes",
     [
         {"steps": 0},
-        {"steps": 201},
+        {"steps": 10001},
         {"steps": True},
         {"steps": 1.5},
         {"seed": -1},

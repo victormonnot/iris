@@ -10,7 +10,17 @@ import pytest
 import test_workspace_archive as fixtures
 
 from iris.projects import create_project, project_records, record_project
-from iris.store import MODEL_EXPORT_TABLES, SCHEMA_V16, SCHEMA_VERSION, TABLES, Store, new_id, now
+from iris.store import (
+    MODEL_EXPORT_TABLES,
+    SCHEMA_V16,
+    SCHEMA_V17,
+    SCHEMA_VERSION,
+    TABLES,
+    TRAINING_CHECKPOINT_TABLES,
+    Store,
+    new_id,
+    now,
+)
 from iris.workspace_archive import (
     ArchiveError,
     ArchiveLimitError,
@@ -21,7 +31,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - MODEL_EXPORT_TABLES
+OLD_TABLES = TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES
 
 
 def rows(root, tables=OLD_TABLES):
@@ -80,7 +90,7 @@ def test_schema17_adds_only_export_tables_preserving_raw_rows_and_files(schema16
         assert artifacts(schema16) == files
         assert all(store.list(table) == [] for table in MODEL_EXPORT_TABLES)
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 17
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -105,8 +115,10 @@ def test_schema16_and17_archives_preserve_exact_saved_database(
     schema16, tmp_path, monkeypatch, version
 ):
     if version == 17:
-        Store(schema16)
-    tables = OLD_TABLES if version == 16 else TABLES
+        with sqlite3.connect(schema16 / "iris.sqlite3") as connection:
+            connection.executescript(SCHEMA_V17)
+            connection.execute("PRAGMA user_version=17")
+    tables = OLD_TABLES if version == 16 else TABLES - TRAINING_CHECKPOINT_TABLES
     original = rows(schema16, tables)
     saved = create_archive(schema16, tmp_path / "historical.zip")
     assert saved["manifest"]["schema_version"] == version

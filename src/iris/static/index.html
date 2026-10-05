@@ -30,6 +30,7 @@
     <script src="/static/annotation.js" defer></script>
     <script src="/static/preannotations.js" defer></script>
     <script src="/static/assistance-batches.js" defer></script>
+    <script src="/static/training-recovery.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/model-export-tools.js" defer></script>
     <script src="/static/model-export.js" defer></script>
@@ -1600,7 +1601,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                         id="training-steps"
                         type="number"
                         min="1"
-                        max="200"
+                        max="10000"
                         step="1"
                         value="20"
                         required
@@ -1631,6 +1632,10 @@ ollama pull qwen3-vl:4b-instruct</pre
                       />
                     </div>
                   </div>
+                  <label for="training-checkpoint-interval">Save recovery state every (steps)</label>
+                  <input id="training-checkpoint-interval" type="number" min="1" max="1000"
+                    step="1" value="50" required aria-describedby="training-checkpoint-hint" />
+                  <p id="training-checkpoint-hint" class="field-hint"></p>
                   <p class="field-hint">
                     Changing depth keeps your learning rate unchanged. Choose
                     it explicitly for each run; deeper training does not
@@ -1668,6 +1673,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <p id="training-preview-summary" class="field-hint"></p>
                     <div id="training-preview-counts" class="dataset-counts"></div>
                     <p id="training-preview-workload" class="field-hint"></p>
+                    <p id="training-preview-recovery" class="field-hint"></p>
                     <details class="training-preview-modules">
                       <summary>Layers included in this run</summary>
                       <p id="training-preview-modules" class="field-hint"></p>
@@ -1726,6 +1732,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                       <h3 id="training-detail-name"></h3>
                       <p id="training-detail-context" class="field-hint"></p>
                       <p id="training-detail-scope" class="field-hint"></p>
+                      <p id="training-detail-duration" class="field-hint" role="status"></p>
                     </div>
                     <span id="training-detail-status" class="job-status"></span>
                   </div>
@@ -1760,6 +1767,24 @@ ollama pull qwen3-vl:4b-instruct</pre
                       Open model comparison →
                     </button>
                   </div>
+                  <section id="training-recovery" class="training-recovery" aria-labelledby="training-recovery-title">
+                    <h3 id="training-recovery-title">Continue an interrupted run</h3>
+                    <p id="training-recovery-status" class="field-hint"></p>
+                    <p id="training-recovery-lineage" class="field-hint"></p>
+                    <div id="training-recovery-checkpoints"></div>
+                    <p class="field-hint">Recovery states preserve optimization progress and cannot be used for detection. The latest two states are retained. A completed run publishes a separate model checkpoint for comparison.</p>
+                    <div class="training-recovery-actions">
+                      <button id="training-resume-preview" type="button" class="button button-secondary" disabled>Preview continuation</button>
+                      <button id="training-resume-existing" type="button" class="button button-secondary" hidden>Open continuation →</button>
+                    </div>
+                    <div id="training-resume-plan" class="training-preview" hidden>
+                      <h4>Continue from saved progress</h4>
+                      <p id="training-resume-summary" class="field-hint"></p>
+                      <div id="training-resume-warnings"></div>
+                      <button id="training-resume-start" type="button" class="button button-primary" disabled>Continue CPU training →</button>
+                    </div>
+                    <p id="training-resume-error" class="inline-error" role="alert" hidden></p>
+                  </section>
                   <p class="training-loss-note">
                     Training loss describes optimization on the training frames.
                     It is not detection accuracy and does not prove improvement.
@@ -1770,6 +1795,11 @@ ollama pull qwen3-vl:4b-instruct</pre
                     id="training-loss-history"
                     class="training-loss-history"
                   ></div>
+                  <div class="training-loss-pagination">
+                    <p id="training-loss-page" class="field-hint" role="status"></p>
+                    <button id="training-loss-earlier" type="button" class="button button-quiet" disabled>Earlier steps</button>
+                    <button id="training-loss-later" type="button" class="button button-quiet" disabled>Later steps</button>
+                  </div>
                   <details class="dataset-provenance">
                     <summary>Training configuration and provenance</summary>
                     <pre id="training-provenance"></pre>

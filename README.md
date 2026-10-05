@@ -530,12 +530,14 @@ API keys are read only by the server/worker and are never returned to the UI.
    **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
    either the official checkpoint or an IRIS checkpoint with the exact same class version. Choose a training
    depth and preview the plan before starting a CPU run: 20 optimizer steps by
-   default, configurable from 1 to 200, batch size one, with an explicit learning
-   rate and seed. The preview shows the train image count, visits and complete
-   passes. Editing a setting requires a new preview. Runtime depends on the CPU,
+   default, configurable from 1 to 10,000, batch size one, with an explicit learning
+   rate and seed. The interface saves optimizer recovery state every 50 steps by
+   default. The preview shows the train image count, visits, complete passes and
+   checkpoint policy. Editing a setting requires a new preview. Runtime depends on the CPU,
    images and depth; these limits bound steps, not wall-clock time. No weights
    are downloaded. Custom classes use the same workflow; see
-   [custom training and compatibility](docs/custom-training.md).
+   [custom training and compatibility](docs/custom-training.md) and
+   [longer runs and explicit continuation](docs/long-training.md).
 5. Follow progress, individual loss components and logs. A completed run registers
    its checkpoint and SHA-256, parent, dataset version and settings. Use it in
    **Model comparison** alongside its parent on the same held-out frames.
@@ -550,8 +552,9 @@ retire or reassign a reserved test group. A new version contains a full snapshot
 linking a parent does not automatically add its images. A version holds at most
 1,000 images and makes its own image copies, so allow additional disk space.
 
-Each run chooses its own depth; a trained checkpoint can be continued at another
-depth without changing its parent:
+Each new fine-tuning run chooses its own depth and can start from a completed
+checkpoint at another depth without changing its parent. Resuming an interrupted
+attempt retains its original depth:
 
 | Depth | Parameters updated | Intended experiment |
 | --- | --- | --- |
@@ -574,9 +577,22 @@ analog imagery or small distant objects. It does not change inference resolution
 Loss measures optimization on training examples, **not detection quality**.
 Use the separate evaluation workflow on independent, reviewed imagery to measure
 gains and regressions. Reference selection is explicit. Old checkpoints remain
-available. Cancellation/failure preserves saved step history and logs, but publishes
-no incomplete checkpoint. Restart marks unfinished jobs interrupted. Launch a new
-run to retry; exact optimizer-state resume is not implemented.
+available. Cancellation or failure preserves saved step history and logs without
+publishing an incomplete inference model. Restart marks unfinished jobs interrupted.
+For a run with durable recovery state, preview and explicitly start a successor
+attempt from its latest saved step. The successor keeps the same frozen data,
+settings and runtime identity, restores SGD momentum, CPU RNG and sampler state,
+and recomputes any work after that saved step. The source history remains intact;
+training never restarts automatically.
+
+Recovery states are saved every configured interval and at the final step. The
+interval is 1–1,000 steps and at least `ceil(total_steps / 200)`, limiting the plan
+to 200 periodic saves. IRIS retains the latest two states per attempt, each up to
+512 MiB; allow space for a state being written and states retained by earlier
+attempts. They are separate from completed inference checkpoints. Legacy API runs
+of at most 200 steps without a checkpoint interval retain their previous behavior
+and cannot be resumed. Real detector training and resume measurements remain
+deferred; software tests use synthetic fixtures and tiny modules.
 
 ### Export a reviewed release
 
@@ -772,7 +788,8 @@ SAM native-box validation, isolated runtime transport and offline recovery,
 bounded combined-stage planning, dynamic review inputs and per-call reservations,
 local batch eligibility, atomic queueing, cancellation and interrupted history,
 budget checks, immutable dataset snapshots, split leakage, checkpoint provenance,
-training-depth contracts, read-only workload previews and frozen-layer preservation,
+training-depth contracts, read-only workload previews, frozen-layer preservation,
+durable optimizer/RNG state, explicit continuation and interrupted-attempt lineage,
 COCO archive validation, imported-label review and source split preservation,
 frozen COCO exports, negative images, checksums and interrupted-download cleanup,
 review progress, saved-prediction disagreement and read-only queue persistence,

@@ -20,6 +20,7 @@ PARENTS = {
     "assistance_previews": ("frames", "frame_id"),
     "assistance_batches": ("sessions", "session_id"),
     "training_runs": ("dataset_versions", "dataset_id"),
+    "training_checkpoints": ("training_runs", "training_id"),
     "trained_models": ("training_runs", "training_id"),
     "evaluations": ("dataset_versions", "dataset_id"),
     "evaluation_models": ("evaluations", "evaluation_id"),

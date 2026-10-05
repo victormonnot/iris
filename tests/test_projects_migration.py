@@ -18,12 +18,19 @@ from iris.store import (
     SCHEMA_V12,
     SCHEMA_VERSION,
     TABLES,
+    TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
     now,
 )
 
-LEGACY_TABLES = TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"projects", "taxonomy_versions"}
+LEGACY_TABLES = (
+    TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - {"projects", "taxonomy_versions"}
+)
 
 
 def _rows(root, tables=LEGACY_TABLES):

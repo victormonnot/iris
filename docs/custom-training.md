@@ -28,6 +28,14 @@ data. Use the plan preview before starting a bounded CPU run. A successful run
 records a checkpoint hash and full class definitions and returns the checkpoint
 to the model catalog. Loss is not a quality measurement.
 
+Runs support 1 to 10,000 CPU optimizer steps. The interface saves recovery state
+every 50 steps by default, with the interval reviewed in the plan. A stopped
+attempt with a saved state can be continued explicitly in a new attempt with
+the same data, settings and runtime. Continuation preserves SGD momentum and
+RNG state; starting another fine-tuning run from a completed checkpoint uses a
+new optimizer. See [longer training and continuation](long-training.md) for
+the interval limits, storage policy, timing scope and legacy API behavior.
+
 ## Saved inference and annotation
 
 Custom checkpoint outputs use the stable class ID as their label, with numeric
@@ -64,11 +72,16 @@ Checkpoints contain a tensor state dictionary, with architecture, N+1 head size,
 class snapshot, input transform, hashes and training provenance recorded by IRIS.
 Reload reconstructs the architecture and exact head before strict state loading.
 This checks that custom heads can be saved and reloaded without relying on current
-project definitions. Standalone model packaging and external deployment formats
-are separate work; no ONNX, TensorRT or embedded-runtime export is provided here.
+project definitions. The [standalone model export workflow](model-export.md)
+packages a completed trained checkpoint, its frozen classes and inference recipe,
+a CPU PyTorch runner, and saved evaluation examples for external parity checks.
+Real exported-model execution and target performance remain to be tested. No
+ONNX, TensorRT or embedded-runtime export is provided. Internal optimizer
+recovery states cannot be used as inference exports.
 
 The existing CPU scopes and step limits apply to custom classes. Multimodal
 candidate review retains its original Person / Car scope. Direct detector
 preannotation and disagreement review support compatible frozen custom classes.
-A short synthetic training run verifies the software path, not detector
-quality on real images. No model weights or datasets are downloaded automatically.
+Synthetic fixtures verify the software path, including state continuation, not
+detector quality on real images. Real detector training and resume trials remain
+deferred. No model weights or datasets are downloaded automatically.

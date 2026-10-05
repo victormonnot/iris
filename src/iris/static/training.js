@@ -3,6 +3,7 @@
 (() => {
   const datasetTools = window.IRISDatasetTools;
   const taxonomyTools = window.IRISTaxonomyTools;
+  const recoveryTools = window.IRISTrainingRecovery;
   const workspace = {
     visible: false,
     candidates: null,
@@ -39,6 +40,11 @@
     trainingModelsRequest: 0,
     trainingModelsLoading: false,
     trainingModelsError: null,
+    resumePreview: null,
+    resumeRequest: 0,
+    resumeBusy: false,
+    resumeOperation: null,
+    lossPage: 0,
     historyRequest: 0,
     jobStatuses: new Map(),
   };
@@ -657,6 +663,7 @@
       learning_rate: Number($("#training-rate").value),
       seed: Number($("#training-seed").value),
       scope: $("#training-scope").value,
+      checkpoint_interval: Number($("#training-checkpoint-interval").value),
     };
   }
 
@@ -717,17 +724,19 @@
     $("#training-scope-description").textContent =
       selected?.description || "Choose a training depth.";
     $("#training-scope-cost").textContent = selected?.cost || "";
+    const steps = Number($("#training-steps").value);
+    const interval = $("#training-checkpoint-interval");
+    const minimum = recoveryTools.checkpointMinimum(steps);
+    interval.min = String(minimum);
+    $("#training-checkpoint-hint").textContent =
+      `Minimum ${minimum} step(s) for this plan, up to 200 periodic saves. Keep the latest two recovery states, up to 512 MiB each. ` +
+      (Number(interval.value) > steps
+        ? "This short plan ends before its first periodic save; reduce the interval to save progress during the run."
+        : "After cancellation or interruption, continue explicitly from the latest complete state; later unsaved steps may be repeated.");
   }
 
   function renderTrainingPreview(preview, payload) {
-    if (
-      preview.config?.scope !== payload.scope ||
-      preview.scope?.id !== payload.scope ||
-      preview.dataset?.id !== payload.dataset_id ||
-      preview.parent?.id !== payload.parent_model_id ||
-      preview.workload?.steps !== payload.steps ||
-      preview.workload?.device !== "cpu"
-    )
+    if (!recoveryTools.previewMatches(preview, payload))
       throw new Error(
         "The training preview does not match these settings. Preview the plan again.",
       );
@@ -758,6 +767,9 @@
     ].join(" · ");
     $("#training-preview-modules").textContent =
       `Layers to update: ${(preview.scope.trainable_modules || []).join(", ")}. Parameter counts are recorded when the training model is loaded.`;
+    $("#training-preview-recovery").textContent =
+      `Save recovery state every ${payload.checkpoint_interval} steps; retain the latest two states. ` +
+      "Continuation uses the same frozen dataset, settings, optimizer and random state. No duration estimate is available before observing this run.";
     warnings("#training-preview-notes", preview.notes);
     updateTrainingLaunch();
   }
@@ -887,6 +899,13 @@
   function renderLossHistory(history) {
     const container = $("#training-loss-history");
     container.replaceChildren();
+    const page = recoveryTools.lossPage(history, workspace.lossPage);
+    workspace.lossPage = page.page;
+    $("#training-loss-page").textContent = page.total
+      ? `Showing ${page.start + 1}–${page.end} of ${page.total} recorded steps. Full history remains saved with the run.`
+      : "";
+    $("#training-loss-earlier").disabled = page.page >= page.pages - 1;
+    $("#training-loss-later").disabled = page.page === 0;
     if (!history.length) {
       container.append(
         node(
@@ -901,14 +920,14 @@
     table.append(node("caption", "sr-only", "Training loss by optimizer step"));
     const head = node("thead");
     const headings = node("tr");
-    for (const label of ["Step", "Training loss", "Elapsed time"]) {
+    for (const label of ["Step", "Training loss", "Active time"]) {
       const cell = node("th", "", label);
       cell.scope = "col";
       headings.append(cell);
     }
     head.append(headings);
     const body = node("tbody");
-    for (const item of history) {
+    for (const item of page.items) {
       const row = node("tr");
       row.append(
         node("td", "", String(item.step)),
@@ -931,12 +950,133 @@
     container.append(table);
   }
 
+  function invalidateResumePreview() {
+    ++workspace.resumeRequest;
+    workspace.resumePreview = null;
+    $("#training-resume-plan").hidden = true;
+    $("#training-resume-start").disabled = true;
+  }
+
+  function selectTraining(id) {
+    invalidateResumePreview();
+    workspace.trainingId = id;
+    workspace.trainingDetail = null;
+    workspace.lossPage = 0;
+    $("#training-history").value = id;
+    $("#training-detail").hidden = true;
+    showError("#training-resume-error", null);
+    if (id) loadTraining(id);
+  }
+
+  function renderRecovery(detail) {
+    const recovery = detail.recovery || {};
+    $("#training-recovery-status").textContent = recovery.reason ||
+      (recovery.supported ? "Recovery availability is being checked." : "This run has no saved recovery state. Start a new plan to enable periodic saves.");
+    const lineage = $("#training-recovery-lineage");
+    lineage.replaceChildren();
+    if (detail.config.resume_from) {
+      lineage.append(document.createTextNode(`This attempt continues from step ${detail.config.resume_from.step}. The earlier attempt and its outcome remain saved. `));
+      const source = node("button", "text-button", "Open earlier attempt");
+      source.type = "button";
+      source.addEventListener("click", () => selectTraining(detail.config.resume_from.training_id));
+      lineage.append(source);
+    }
+    const snapshots = $("#training-recovery-checkpoints");
+    snapshots.replaceChildren();
+    for (const checkpoint of [...(detail.checkpoints || [])].sort((a, b) => b.step - a.step).slice(0, 2)) {
+      const size = Number.isFinite(checkpoint.size_bytes) ? ` · ${(checkpoint.size_bytes / 1024 / 1024).toFixed(1)} MiB` : "";
+      snapshots.append(node("p", "field-hint", `Saved step ${checkpoint.step}${size} · ${new Date(checkpoint.created_at).toLocaleString()}`));
+    }
+    const existing = recovery.existing_training_id || recoveryTools.findResume(workspace.trainings, detail.id)?.id;
+    $("#training-resume-existing").hidden = !existing;
+    $("#training-resume-existing").disabled = workspace.resumeBusy;
+    $("#training-resume-existing").dataset.trainingId = existing || "";
+    $("#training-resume-preview").disabled = workspace.resumeBusy || !recovery.can_resume || Boolean(existing);
+    $("#training-resume-preview").textContent = workspace.resumeOperation === "preview" ? "Checking saved progress…" : "Preview continuation";
+    $("#training-resume-start").disabled = workspace.resumeBusy || !recoveryTools.resumeMatches(workspace.resumePreview, detail);
+    $("#training-resume-start").textContent = workspace.resumeOperation === "start" ? "Queuing continuation…" : "Continue CPU training →";
+  }
+
+  async function previewResume() {
+    if ($("#training-resume-preview").disabled) return;
+    const detail = workspace.trainingDetail;
+    if (!detail?.recovery?.can_resume) return;
+    invalidateResumePreview();
+    const request = workspace.resumeRequest;
+    workspace.resumeBusy = true;
+    workspace.resumeOperation = "preview";
+    renderRecovery(detail);
+    showError("#training-resume-error", null);
+    try {
+      const preview = await api(`/api/trainings/${encodeURIComponent(detail.id)}/resume-preview`, { method: "POST", body: "{}" });
+      if (request !== workspace.resumeRequest || workspace.trainingId !== detail.id || !workspace.visible) return;
+      if (!recoveryTools.resumeMatches(preview, workspace.trainingDetail))
+        throw new Error("Saved progress changed. Refresh the run and preview its continuation again.");
+      workspace.resumePreview = preview;
+      $("#training-resume-plan").hidden = false;
+      $("#training-resume-summary").textContent =
+        `Continue from saved step ${preview.checkpoint_step} to the original target of ${preview.target_steps} steps (${preview.remaining_steps} remaining). ` +
+        (preview.remaining_steps === 0 ? "Optimization is complete; this attempt will finish publishing the model checkpoint. " : "") +
+        `${preview.recorded_steps} steps were recorded in the earlier attempt; ${preview.recomputed_steps} recorded step(s) after this state will be repeated. ` +
+        "The dataset, training depth, learning rate and seed stay fixed. This creates a new attempt and preserves the earlier one.";
+      warnings("#training-resume-warnings", preview.warnings);
+    } catch (error) {
+      if (request === workspace.resumeRequest && workspace.trainingId === detail.id && workspace.visible)
+        showError("#training-resume-error", error);
+    } finally {
+      workspace.resumeBusy = false;
+      workspace.resumeOperation = null;
+      if (workspace.trainingDetail) renderRecovery(workspace.trainingDetail);
+    }
+  }
+
+  async function startResume() {
+    const detail = workspace.trainingDetail;
+    const approved = workspace.resumePreview;
+    if (workspace.resumeBusy || !recoveryTools.resumeMatches(approved, detail)) return;
+    const request = workspace.resumeRequest;
+    workspace.resumeBusy = true;
+    workspace.resumeOperation = "start";
+    renderRecovery(detail);
+    showError("#training-resume-error", null);
+    let saved;
+    try {
+      try {
+        saved = await api(`/api/trainings/${encodeURIComponent(detail.id)}/resume`, {
+          method: "POST", body: JSON.stringify({ expected_fingerprint: approved.fingerprint }),
+        });
+      } catch (error) {
+        try { saved = recoveryTools.findResume(await api("/api/trainings"), detail.id); }
+        catch { /* Retain the original request failure if history is unavailable. */ }
+        if (!saved) throw error;
+      }
+      if (request !== workspace.resumeRequest || workspace.trainingId !== detail.id || !workspace.visible) return;
+      invalidateResumePreview();
+      workspace.trainingId = saved.id;
+      workspace.lossPage = 0;
+      await refreshTrainings();
+      await refreshJobs();
+      notify(`Continuation queued from saved step ${approved.checkpoint_step}. Follow progress or cancel in Processing jobs.`);
+    } catch (error) {
+      if (request === workspace.resumeRequest && workspace.trainingId === detail.id && workspace.visible) {
+        invalidateResumePreview();
+        showError("#training-resume-error", new Error(`${error.message} Check run history before starting another continuation.`));
+      }
+    } finally {
+      workspace.resumeBusy = false;
+      workspace.resumeOperation = null;
+      if (workspace.trainingDetail) renderRecovery(workspace.trainingDetail);
+    }
+  }
+
   async function loadTraining(id) {
     const request = ++workspace.trainingRequest;
     try {
       const detail = await api(`/api/trainings/${encodeURIComponent(id)}`);
       if (request !== workspace.trainingRequest || workspace.trainingId !== id)
         return;
+      if (recoveryTools.recoveryKey(workspace.trainingDetail) !== recoveryTools.recoveryKey(detail))
+        invalidateResumePreview();
       workspace.trainingDetail = detail;
       $("#training-detail").hidden = false;
       $("#training-detail-name").textContent = detail.name;
@@ -944,7 +1084,7 @@
         (item) => item.id === detail.dataset_id,
       );
       $("#training-detail-context").textContent =
-        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · CPU · ${detail.history.length}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · CPU · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
       const trained = detail.metadata?.trainable_parameters;
       const total = detail.metadata?.total_parameters;
       const modules =
@@ -971,7 +1111,16 @@
       );
       $("#training-checkpoint").hidden = !detail.checkpoint_id;
       $("#training-checkpoint-id").textContent = detail.checkpoint_id || "";
+      const duration = recoveryTools.observedDuration(detail.history, detail.config.steps);
+      const elapsed = detail.history.at(-1)?.elapsed_seconds;
+      const active = detail.job?.status === "running";
+      $("#training-detail-duration").textContent =
+        (Number.isFinite(elapsed) ? `${recoveryTools.durationText(elapsed)} active time recorded; downtime excluded. ` : "") +
+        (active && duration
+          ? `About ${recoveryTools.durationText(duration.remainingSeconds)} remaining, based on the latest ${duration.observedSteps} observed steps. Saving and completion can add time; this estimate may change.`
+          : active ? "A duration estimate appears after enough steps have been observed." : "");
       renderLossHistory(detail.history);
+      renderRecovery(detail);
       $("#training-provenance").textContent = JSON.stringify(
         {
           dataset_id: detail.dataset_id,
@@ -979,6 +1128,8 @@
           config: detail.config,
           metadata: detail.metadata,
           checkpoint_id: detail.checkpoint_id,
+          recovery: detail.recovery,
+          recovery_checkpoints: detail.checkpoints,
         },
         null,
         2,
@@ -1014,10 +1165,21 @@
     loadDataset(workspace.datasetId);
   });
   $("#training-history").addEventListener("change", (event) => {
-    workspace.trainingId = event.target.value;
-    workspace.trainingDetail = null;
-    $("#training-detail").hidden = true;
-    loadTraining(workspace.trainingId);
+    selectTraining(event.target.value);
+  });
+  $("#training-resume-preview").addEventListener("click", previewResume);
+  $("#training-resume-start").addEventListener("click", startResume);
+  $("#training-resume-existing").addEventListener("click", (event) => {
+    const id = event.currentTarget.dataset.trainingId;
+    if (id) selectTraining(id);
+  });
+  $("#training-loss-earlier").addEventListener("click", () => {
+    workspace.lossPage += 1;
+    renderLossHistory(workspace.trainingDetail?.history || []);
+  });
+  $("#training-loss-later").addEventListener("click", () => {
+    workspace.lossPage -= 1;
+    renderLossHistory(workspace.trainingDetail?.history || []);
   });
   $("#training-form").addEventListener("input", invalidateTrainingPreview);
   $("#training-dataset").addEventListener("change", renderTrainingModels);
@@ -1084,16 +1246,27 @@
       return;
     const payload = trainingPayload();
     if (!payload.name) return $("#training-name").focus();
+    const approved = workspace.trainingPreview;
+    const request = workspace.trainingPreviewRequest;
     workspace.trainingBusy = true;
     workspace.trainingOperation = "start";
     updateTrainingLaunch();
     showError("#training-error", null);
     try {
-      const detail = await api("/api/trainings", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      let detail;
+      try {
+        detail = await api("/api/trainings", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, request_id: approved.request_id, expected_fingerprint: approved.fingerprint }),
+        });
+      } catch (error) {
+        try { detail = recoveryTools.findRequest(await api("/api/trainings"), approved.request_id); }
+        catch { /* Retain the original request failure if history is unavailable. */ }
+        if (!detail) throw error;
+      }
+      if (request !== workspace.trainingPreviewRequest || !workspace.visible) return;
       workspace.trainingId = detail.id;
+      workspace.lossPage = 0;
       $("#training-name").value = "";
       invalidateTrainingPreview();
       await refreshTrainings();
@@ -1102,8 +1275,10 @@
         `Training “${detail.name}” queued for ${payload.steps} CPU steps. Follow progress or cancel in Processing jobs.`,
       );
     } catch (error) {
-      invalidateTrainingPreview();
-      showError("#training-error", error);
+      if (request === workspace.trainingPreviewRequest && workspace.visible) {
+        invalidateTrainingPreview();
+        showError("#training-error", new Error(`${error.message} Check run history before starting another plan.`));
+      }
     } finally {
       workspace.trainingBusy = false;
       workspace.trainingOperation = null;
@@ -1136,6 +1311,7 @@
       invalidatePartitionPlan();
       resetDatasetExport();
       invalidateTrainingPreview();
+      invalidateResumePreview();
     }
   });
   window.addEventListener("iris:taxonomy", (event) => {
@@ -1148,6 +1324,7 @@
   window.addEventListener("pagehide", () => {
     ++workspace.datasetRequest;
     invalidateTrainingPreview();
+    invalidateResumePreview();
     resetDatasetExport();
     for (const url of workspace.exportUrls.keys()) releaseExportUrl(url);
   });

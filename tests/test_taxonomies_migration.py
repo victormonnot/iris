@@ -17,13 +17,20 @@ from iris.store import (
     SCHEMA_V13,
     SCHEMA_VERSION,
     TABLES,
+    TRAINING_CHECKPOINT_TABLES,
     Store,
 )
 from iris.taxonomies import TAXONOMY, current_taxonomy, get_taxonomy, publish_taxonomy
 from iris.workspace_archive import ArchiveError, create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
-SCHEMA13_TABLES = TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - {"taxonomy_versions"}
+SCHEMA13_TABLES = (
+    TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - {"taxonomy_versions"}
+)
 
 
 def rows(root, tables=SCHEMA13_TABLES):

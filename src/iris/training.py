@@ -29,7 +29,7 @@ from iris.models import (
 )
 from iris.store import Store, new_id, now
 
-MAX_STEPS = 200
+MAX_STEPS = 10000
 CLASS_MAPPING = {"person": 1, "car": 2}
 SCOPE_VERSION = 1
 TRAINING_SCOPES = {
@@ -129,6 +129,7 @@ def _prepare_training(
     learning_rate: float = 0.001,
     seed: int = 0,
     scope: str = "prediction_head_only",
+    checkpoint_interval: int | None = None,
 ) -> tuple:
     selected_scope = training_scope(scope)
     if not isinstance(name, str):
@@ -137,7 +138,7 @@ def _prepare_training(
     if not 1 <= len(name) <= 160:
         raise ValueError("Training name must contain between 1 and 160 characters")
     if isinstance(steps, bool) or not isinstance(steps, int) or not 1 <= steps <= MAX_STEPS:
-        raise ValueError("Choose between 1 and 200 training steps")
+        raise ValueError("Choose between 1 and 10,000 training steps")
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2147483647:
         raise ValueError("Seed must be an integer between 0 and 2147483647")
     if (
@@ -176,6 +177,15 @@ def _prepare_training(
         **contract,
         "quality_metrics": "Not computed; training loss does not measure detection quality",
     }
+    if checkpoint_interval is not None or steps > 200:
+        from iris.training_recovery import PROTOCOL, validate_config
+
+        config.update(
+            checkpoint_protocol=PROTOCOL,
+            checkpoint_interval=50 if checkpoint_interval is None else checkpoint_interval,
+            history_interval=10,
+        )
+        validate_config(config)
     return name, config, dataset, parent, training_frames
 
 
@@ -189,6 +199,7 @@ def preview_training(
     learning_rate: float = 0.001,
     seed: int = 0,
     scope: str = "prediction_head_only",
+    checkpoint_interval: int | None = None,
 ) -> dict:
     """Validate a run and describe its bounded work without loading model parameters."""
     _, config, dataset, parent, frames = _prepare_training(
@@ -200,8 +211,24 @@ def preview_training(
         learning_rate=learning_rate,
         seed=seed,
         scope=scope,
+        checkpoint_interval=checkpoint_interval,
+    )
+    from iris.training_recovery import digest, durable
+
+    request_id = new_id()
+    fingerprint = digest(
+        {
+            "name": name.strip(),
+            "dataset_id": dataset_id,
+            "parent_model_id": parent_model_id,
+            "config": config,
+            "request_id": request_id,
+        }
     )
     return {
+        "request_id": request_id,
+        "fingerprint": fingerprint,
+        "resume_supported": durable(config),
         "config": config,
         "scope": training_scope(scope),
         "dataset": {
@@ -229,6 +256,23 @@ def preview_training(
             "Exact parameter counts are recorded after the worker loads the checkpoint.",
             *(
                 [
+                    f"Save optimizer and RNG state every {config['checkpoint_interval']} "
+                    f"steps and at completion. "
+                    "Keep the latest two states per attempt (up to 512 MiB each); source "
+                    "states stay with resumed attempts.",
+                    "After an interruption, explicitly preview a new attempt from the "
+                    "latest durable state. "
+                    "Recorded work after that state is recomputed. CPU float32 only; "
+                    "real resume tests are deferred.",
+                ]
+                if durable(config)
+                else [
+                    "This short run has no optimizer recovery. Enable checkpointing for "
+                    "durable state."
+                ]
+            ),
+            *(
+                [
                     "Deeper adaptation needs more CPU memory and computation; "
                     "use a small learning rate and a short first run."
                 ]
@@ -250,6 +294,9 @@ def create_training(
     learning_rate: float = 0.001,
     seed: int = 0,
     scope: str = "prediction_head_only",
+    checkpoint_interval: int | None = None,
+    request_id: str | None = None,
+    expected_fingerprint: str | None = None,
 ) -> dict:
     name, config, _, _, _ = _prepare_training(
         store,
@@ -260,9 +307,47 @@ def create_training(
         learning_rate=learning_rate,
         seed=seed,
         scope=scope,
+        checkpoint_interval=checkpoint_interval,
     )
+    from iris.training_recovery import _ID, digest, durable
+
+    if durable(config):
+        if (
+            not isinstance(request_id, str)
+            or not _ID.fullmatch(request_id)
+            or expected_fingerprint
+            != digest(
+                {
+                    "name": name,
+                    "dataset_id": dataset_id,
+                    "parent_model_id": parent_model_id,
+                    "config": config,
+                    "request_id": request_id,
+                }
+            )
+        ):
+            raise ValueError(
+                "Training inputs changed or the preview is missing; preview this run again"
+            )
+        config["request_id"] = request_id
     training_id, job_id, created_at = new_id(), new_id(), now()
     with jobs.guard, store.connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if durable(config):
+            previous = connection.execute(
+                "SELECT id,name,config,dataset_id,parent_model_id FROM training_runs "
+                "WHERE json_extract(config,'$.request_id')=?",
+                (request_id,),
+            ).fetchone()
+            if previous:
+                if (
+                    json.loads(previous["config"]) != config
+                    or previous["name"] != name
+                    or previous["dataset_id"] != dataset_id
+                    or previous["parent_model_id"] != parent_model_id
+                ):
+                    raise ValueError("This preview was already used with different training inputs")
+                return training_detail(store, previous["id"])
         connection.execute(
             "INSERT INTO jobs (id,kind,status,params,message,created_at) VALUES (?,?,?,?,?,?)",
             (
@@ -301,7 +386,15 @@ def training_detail(store: Store, training_id: str) -> dict:
     )
     if checkpoint:
         checkpoint = {key: value for key, value in checkpoint.items() if key != "path"}
-    return {**training, "job": store.get("jobs", training["job_id"]), "checkpoint": checkpoint}
+    from iris.training_recovery import recovery_summary
+
+    return {
+        **training,
+        "job": store.get("jobs", training["job_id"]),
+        "checkpoint": checkpoint,
+        "checkpoints": store.list("training_checkpoints", training_id=training_id),
+        "recovery": recovery_summary(store, training),
+    }
 
 
 def _read_training_image(store: Store, frame: dict) -> Image.Image:
@@ -483,6 +576,21 @@ class _HeadTrainer:
         if self.contract["taxonomy_id"] == "iris-objects-v1":
             self.metadata["native_to_coco"] = IRIS_NATIVE_TO_COCO
 
+    def resume_runtime(self):
+        from iris.training_state import runtime_identity
+
+        return runtime_identity(self)
+
+    def write_resume_state(self, path, *, binding, sampler):
+        from iris.training_state import write_state
+
+        write_state(self, path, binding=binding, sampler=sampler)
+
+    def load_resume_state(self, path, *, binding, sampler, expected_sha256):
+        from iris.training_state import load_state
+
+        load_state(self, path, binding=binding, sampler=sampler, expected_sha256=expected_sha256)
+
     def step(self, image: Image.Image, boxes: list[dict]) -> dict:
         torch = self.torch
         tensor = self.detector.functional.pil_to_tensor(image).to(dtype=torch.float32) / 255
@@ -571,7 +679,12 @@ def run_training(
     training = store.get("training_runs", training_id)
     if training is None:
         raise ValueError("Training run not found")
-    if training["history"] or training["checkpoint_id"]:
+    from iris import training_recovery as recovery
+
+    resumable = recovery.durable(training["config"])
+    if training["checkpoint_id"] or (
+        training["history"] and not (resumable and training["config"].get("resume_from"))
+    ):
         raise ValueError("A training run is immutable; create a new run to retry")
     result = {
         "training_id": training_id,
@@ -582,6 +695,8 @@ def run_training(
     if cancelled():
         return {**result, "cancelled": True}
     config = training["config"]
+    if resumable:
+        recovery.validate_config(config)
     selected_scope = _scope_from_config(config)
     dataset = store.get("dataset_versions", training["dataset_id"])
     if dataset is None or dataset["manifest_sha256"] != config["dataset_manifest_sha256"]:
@@ -597,6 +712,7 @@ def run_training(
     _check_holdouts(manifest, parent)
     frames = [frame for frame in manifest["frames"] if frame["split"] == "train"]
     progress(0, f"Loading the local parent checkpoint; scope: {selected_scope['label']}")
+    token = recovery.claim_attempt(store, training) if resumable else None
     trainer = (trainer_factory or _HeadTrainer)(store.root, training["parent_model_id"], config)
     metadata = {
         **trainer.metadata,
@@ -619,11 +735,53 @@ def run_training(
         "trainable_modules": selected_scope["trainable_modules"],
         "quality_metrics": None,
     }
-    store.update("training_runs", training_id, {"metadata": metadata})
-    randomizer, order, history = random.Random(config["seed"]), [], []
+    if resumable:
+        if not recovery.save_metadata(store, training, metadata, token):
+            return {**result, "cancelled": True}
+        history = list(training["history"])
+        randomizer, order, _, sampler = recovery.sampling(config["seed"], frames, len(history))
+        if config.get("resume_from"):
+            checkpoint = store.get("training_checkpoints", config["resume_from"]["checkpoint_id"])
+            with store.connect() as connection:
+                recovery.validate_training_recoveries(connection, store.root)
+            expected = recovery.binding(training, history, trainer.resume_runtime())
+            if recovery.canonical(checkpoint["metadata"]) != recovery.canonical(
+                {"binding": expected, "sampler": sampler}
+            ):
+                raise ValueError(
+                    "Training state or CPU runtime changed; cannot resume this attempt"
+                )
+            trainer.load_resume_state(
+                store.artifact_path(checkpoint["path"]),
+                binding=expected,
+                sampler=sampler,
+                expected_sha256=checkpoint["state_sha256"],
+            )
+        result["steps_completed"] = len(history)
+    else:
+        store.update("training_runs", training_id, {"metadata": metadata})
+        randomizer, order, history = random.Random(config["seed"]), [], []
+    elapsed_before = history[-1]["elapsed_seconds"] if history else 0.0
     started = time.perf_counter()
-    for step in range(1, config["steps"] + 1):
+    last_saved = len(history)
+
+    def save_state():
+        nonlocal last_saved
+        if resumable and history and len(history) != last_saved:
+            sampler = json.loads(
+                recovery.canonical(
+                    {"random_state": randomizer.getstate(), "remaining_order": order}
+                )
+            )
+            saved = recovery.save_checkpoint(store, training, trainer, history, sampler, token)
+            if saved:
+                last_saved = len(history)
+            return bool(saved)
+        return True
+
+    for step in range(len(history) + 1, config["steps"] + 1):
         if cancelled():
+            save_state()
             return {**result, "cancelled": True}
         if not order:
             order = list(range(len(frames)))
@@ -638,10 +796,18 @@ def run_training(
                 "step": step,
                 "frame_id": frame["frame_id"],
                 **measurement,
-                "elapsed_seconds": time.perf_counter() - started,
+                "elapsed_seconds": elapsed_before + time.perf_counter() - started,
             }
         )
-        store.update("training_runs", training_id, {"history": history})
+        if resumable:
+            if step % config["checkpoint_interval"] == 0 or step == config["steps"]:
+                if not save_state():
+                    return {**result, "cancelled": True}
+            elif step % config["history_interval"] == 0:
+                if not recovery.save_history(store, training, history, token):
+                    return {**result, "cancelled": True}
+        else:
+            store.update("training_runs", training_id, {"history": history})
         result["steps_completed"] = step
         progress(
             step / config["steps"],
@@ -649,6 +815,7 @@ def run_training(
             f"training loss {measurement['loss']:.4f}",
         )
     if cancelled():
+        save_state()
         return {**result, "cancelled": True}
     directory = store.artifact_path("models/trained")
     directory.mkdir(parents=True, exist_ok=True)
@@ -671,9 +838,14 @@ def run_training(
         with store.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             job = connection.execute(
-                "SELECT status,cancel_requested FROM jobs WHERE id=?", (training["job_id"],)
+                "SELECT status,cancel_requested,params FROM jobs WHERE id=?",
+                (training["job_id"],),
             ).fetchone()
-            if job["cancel_requested"] or job["status"] not in {"queued", "running"}:
+            if (
+                job["cancel_requested"]
+                or job["status"] not in {"queued", "running"}
+                or (resumable and json.loads(job["params"]).get("training_claim") != token)
+            ):
                 return {**result, "cancelled": True}
             connection.execute(
                 "INSERT INTO trained_models "

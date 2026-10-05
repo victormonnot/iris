@@ -35,7 +35,8 @@ New extraction jobs carry a frozen sampling contract in `jobs.params` and durabl
 position checkpoints in `jobs.result`. Recovery verifies the source, retained
 images, pinned taxonomy and deduplication inventory, then creates a linked attempt
 with a compare-and-swap fingerprint. The old terminal job is preserved. This is
-separate from restarting model training, which does not restore optimizer state.
+separate from the training continuation protocol described below, which also
+restores the optimizer and random states.
 
 Provider records retain a dispatch receipt in their metadata. Atomic claims prevent
 two workers from executing one saved request. Dispatch is recorded before network
@@ -275,15 +276,32 @@ Training uses a zero RPN score threshold so negative images still supply
 background proposals; the inference preset's threshold can discard every
 proposal on such images. Training proposal filtering is recorded separately
 from inference filtering, which remains unchanged when loading a checkpoint.
-CPU SGD runs for a bounded number of steps with
-batch size one and a recorded seed; only train images are read. Loss components
-and visited frame IDs are persisted each step. Completed state dictionaries are
+CPU SGD runs for up to 10,000 steps with batch size one and a recorded seed; only
+train images are read. Durable runs persist loss components and visited frame IDs
+every ten steps or when saving a checkpoint. Completed state dictionaries are
 published atomically with the model registry entry and loaded with `weights_only`.
 Cancelled or failed runs retain their history and logs without registering a
-partial model. Resume from optimizer state is not available. The registry records
+partial model. The registry records
 ancestor training groups/hashes and refuses parents that have consumed a new
 dataset's held-out data. This cannot establish independence from the official
 parent's pretraining corpus.
+
+Schema 18 adds `training_checkpoints`, owned through the training run and its
+dataset. Recovery states are separate from inference models: they contain full
+model state, SGD momentum, module modes, gradient evidence, CPU RNG and the
+remaining image order. Their metadata binds the original configuration, dataset,
+parent, history prefix and runtime identity. The worker claims an attempt once;
+state publication and its history prefix commit together, and late workers cannot
+publish after interruption. The latest two registered states per attempt are
+retained. New training previews bind creation to the displayed configuration.
+
+Explicit continuation checks a stopped attempt and creates at most one successor,
+preserving the source run. The successor repeats work beyond the latest durable
+step and restores the saved optimizer only after compatibility checks. A final-step
+state can retry model publication without another optimizer step. Legacy short
+runs without recovery state remain readable. Archives preserve schema 12–17
+databases and validate schema 18 lineage and state hashes without deserializing
+Torch files. See [longer training and continuation](long-training.md).
 
 Experiment reports capture one successfully completed evaluation and its dataset,
 checkpoint and available training lineage in a versioned, checksummed snapshot.
