@@ -176,7 +176,7 @@ def test_idempotency_and_restart_do_not_duplicate_session_or_proposals(store, tm
         {"category_mapping": {"4": "person", "9": "truck"}},
         {"category_mapping": {4: "person", 9: "car"}},
         {"category_mapping": {"4": "person", "9": "car", "77": "exclude"}},
-        {"source_url": "file:///tmp/example"},
+        {"source_url": "file://remote-host/tmp/example"},
         {"source_url": "https://username:password@example.test"},
         {"source_split": "validation"},
         {"scene_group": ""},

@@ -115,11 +115,16 @@ def test_preview_does_not_create_sessions_or_reviews_and_survives_restart(client
         assert "path" not in listed and "images" not in listed
 
 
-def test_import_requires_review_and_preserves_provenance_through_freeze(client):
+@pytest.mark.parametrize(
+    "source_url",
+    ["https://example.invalid/synthetic-fixture", "file:///home/you/media/FPV%20session"],
+)
+def test_import_requires_review_and_preserves_provenance_through_freeze(client, source_url):
     detail = preview(client)
-    result = commit(client, detail)
+    source_config = {**config(), "source_url": source_url}
+    result = commit(client, detail, source_config)
     assert result["proposal_count"] == 1 and result["excluded_annotation_count"] == 1
-    assert commit(client, detail) == result
+    assert commit(client, detail, source_config) == result
     frame_id = result["frame_ids"][0]
     document = client.get(f"/api/frames/{frame_id}/annotation").json()
     assert document["revision"] == 0
@@ -130,7 +135,11 @@ def test_import_requires_review_and_preserves_provenance_through_freeze(client):
     assert candidates["excluded"]["unannotated"] == 1
     review = fixture_review(client, frame_id)
     assert review["boxes"][0]["source"]["kind"] == "imported"
-    negative = commit(client, preview(client, 100, negative=True), config("fixture-val", "val"))
+    negative = commit(
+        client,
+        preview(client, 100, negative=True),
+        {**config("fixture-val", "val"), "source_url": source_url},
+    )
     negative_id = negative["frame_ids"][0]
     assert negative["proposal_count"] == 0
     assert client.get(f"/api/frames/{negative_id}/annotation").json()["revision"] == 0
@@ -148,10 +157,75 @@ def test_import_requires_review_and_preserves_provenance_through_freeze(client):
     for frame in manifest["frames"]:
         source = frame["source"]["metadata"]["dataset_import"]
         assert source["license_name"] == "Synthetic test data"
-        assert source["source_url"] == config()["source_url"]
+        assert source["source_url"] == source_url
         assert source["source_split"] == frame["split"]
         assert source["category_mapping"] == config()["category_mapping"]
     assert frozen.json()["summary"]["negative_count"] == 1
+
+
+def test_local_source_location_is_metadata_only(client, tmp_path, monkeypatch):
+    source = tmp_path / "Original media" / "camera.mjpeg"
+    assert not source.exists()
+    for method in ("open", "stat", "resolve"):
+        original = getattr(Path, method)
+
+        def guarded(path, *args, _original=original, **kwargs):
+            if path == source:
+                pytest.fail("Import must not access the recorded source location")
+            return _original(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, method, guarded)
+    detail = preview(client)
+    source_url = source.as_uri()
+    result = commit(client, detail, {**config(), "source_url": source_url})
+    restored = client.get(f"/api/dataset-imports/{detail['id']}").json()
+    assert restored["config"]["source_url"] == source_url
+    (asset,) = client.get(f"/api/sessions/{result['session_id']}/assets").json()
+    assert asset["metadata"]["dataset_import"]["source_url"] == source_url
+    (frame,) = client.get(f"/api/sessions/{result['session_id']}/frames").json()
+    assert frame["extraction"]["dataset_import"]["source_url"] == source_url
+    assert client.get(f"/api/frames/{frame['id']}/image").status_code == 200
+    assert client.get(f"/api/frames/{frame['id']}/annotation").json()["revision"] == 0
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        "file:",
+        "file://",
+        "file:///",
+        "file:relative/path",
+        "file:/absolute/path",
+        "file://server/absolute/path",
+        "file://localhost/absolute/path",
+        "file://user:password@localhost/absolute/path",
+        "file:////server/share",
+        "file:///%2Fserver/share",
+        "file:///path?query=value",
+        "file:///path?",
+        "file:///path#fragment",
+        "file:///path#",
+        "file:///path with spaces",
+        "file:///path%00",
+        "file:///path%0A",
+        "file:///%5Cserver%5Cshare",
+        "https://user:password@example.invalid/path",
+        "https://@example.invalid/path",
+        "javascript:alert(1)",
+        "data:text/plain,source",
+        "ftp://example.invalid/path",
+    ],
+)
+def test_unsupported_source_locations_do_not_commit(client, source_url):
+    detail = preview(client)
+    response = client.post(
+        f"/api/dataset-imports/{detail['id']}/commit",
+        json={**config(), "source_url": source_url},
+    )
+    assert response.status_code == 422, response.text
+    assert "Source location" in response.json()["detail"]
+    assert client.get("/api/sessions").json() == []
+    assert client.get(f"/api/dataset-imports/{detail['id']}").json()["status"] == "preview"
 
 
 def test_declared_split_reserves_unreviewed_groups_and_pixels(client):
@@ -208,7 +282,7 @@ def test_unknown_split_cannot_import_pixels_into_a_conflicting_group(client):
         {"source_split": "validation"},
         {"name": " "},
         {"license_name": ""},
-        {"source_url": "file:///etc/passwd"},
+        {"source_url": "file://remote-host/etc/passwd"},
         {"unknown": True},
     ],
 )

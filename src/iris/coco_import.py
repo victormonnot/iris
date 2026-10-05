@@ -16,7 +16,7 @@ import zipfile
 import zlib
 from collections import Counter
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from PIL import Image, UnidentifiedImageError
 
@@ -503,6 +503,38 @@ def _import_taxonomy(store: Store, row: dict) -> dict:
     return taxonomy
 
 
+def _source_url(value: str) -> str:
+    """Validate provenance syntax without accessing the referenced location."""
+    value = _text(value, "Source location", 2000)
+    valid = False
+    try:
+        url = urlsplit(value)
+        if not any(character.isspace() for character in value):
+            if url.scheme in {"http", "https"}:
+                valid = bool(url.hostname) and url.username is None and url.password is None
+            elif url.scheme == "file":
+                path = unquote(url.path, errors="strict")
+                valid = (
+                    value.lower().startswith("file:///")
+                    and not url.netloc
+                    and len(path) > 1
+                    and path.startswith("/")
+                    and not path.startswith("//")
+                    and "\\" not in path
+                    and not any(ord(character) < 32 or ord(character) == 127 for character in path)
+                    and "?" not in value
+                    and "#" not in value
+                )
+    except (UnicodeError, ValueError):
+        pass
+    if not valid:
+        raise ValueError(
+            "Source location must be an HTTP(S) URL without credentials or a local "
+            "file:///absolute/path URI without a host, query or fragment; it is metadata only."
+        )
+    return value
+
+
 def _config(
     summary: dict,
     *,
@@ -518,21 +550,10 @@ def _config(
     config = {
         "name": _text(name, "Import name", 160),
         "scene_group": _text(scene_group, "Scene group", 160),
-        "source_url": _text(source_url, "Source URL", 2000),
+        "source_url": _source_url(source_url),
         "license_name": _text(license_name, "License", 500),
         "attribution": _text(attribution, "Attribution", 2000, multiline=True),
     }
-    url = urlsplit(config["source_url"])
-    if (
-        url.scheme not in {"http", "https"}
-        or not url.hostname
-        or url.username
-        or url.password
-        or any(character.isspace() for character in config["source_url"])
-    ):
-        raise ValueError(
-            "Source URL must be an HTTP(S) URL without credentials; it is metadata only."
-        )
     if source_split is not None and (
         not isinstance(source_split, str) or source_split not in SPLITS
     ):

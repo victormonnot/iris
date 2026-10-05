@@ -57,10 +57,17 @@ and keypoint payloads are retained as source metadata but are not interpreted.
 
 ## Provenance and human review
 
-Provide a name, scene group, source URL, license description and attribution.
+Provide a name, scene group, source location, license description and attribution.
 These fields record provenance; IRIS does not infer permission from a URL or
 verify that a license applies. Keep original terms and attribution with any
 dataset you redistribute.
+
+The source location accepts an HTTP(S) URL without credentials or a local
+`file:///absolute/path` URI, for example `file:///home/you/media/FPV%20session`.
+File URIs must have no host (including `localhost`), query or fragment; encode
+spaces as `%20`. The API retains the field name `source_url`. This location is
+metadata only: IRIS never opens, resolves or fetches it. Images still come only
+from the uploaded ZIP, and the recorded location need not exist on this machine.
 
 One package creates one session and scene group. Split larger datasets into
 packages for their existing scene groups and splits. COCO has no standard split
