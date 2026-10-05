@@ -25,6 +25,8 @@ from urllib.request import Request, urlopen
 
 from PIL import Image, ImageOps
 
+from iris.training_architectures import FRCNN, capabilities
+
 RUNTIME_VERSIONS = {"torch": "2.10.0", "torchvision": "0.25.0"}
 # COCO category IDs contain gaps; never use a compact 0..79 class index.
 # Source: torchvision v0.25.0, models/_meta.py (_COCO_CATEGORIES).
@@ -156,7 +158,7 @@ TIMING_PROTOCOL = {
 }
 
 
-TRAINING_ARCHITECTURE = "fasterrcnn_mobilenet_v3_large_320_fpn"
+TRAINING_ARCHITECTURE = FRCNN
 IRIS_NATIVE_TO_COCO = {0: 0, 1: 1, 2: 3}
 
 
@@ -188,10 +190,10 @@ def _trained_spec(row: dict) -> dict:
         "weight_sha256": row["weight_sha256"],
         "weights_name": "IRIS fine-tuned",
         "weight_url": None,
-        "license_url": get_spec(TRAINING_ARCHITECTURE)["license_url"],
+        "license_url": get_spec(row["architecture"])["license_url"],
         "task": "object_detection",
         "inference": True,
-        "training": row["architecture"] == TRAINING_ARCHITECTURE,
+        **capabilities(row["architecture"]),
         "classes": [
             {"id": contract["output_class_mapping"][item["id"]], "name": item["id"]}
             for item in contract["taxonomy"]["classes"]
@@ -232,7 +234,7 @@ def get_spec(model_id: str, root: Path | None = None) -> dict:
         ],
         task="object_detection",
         inference=True,
-        training=spec["architecture"] == TRAINING_ARCHITECTURE,
+        **capabilities(spec["architecture"]),
         origin="official",
     )
     return spec

@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 ARCHITECTURE = "fasterrcnn_mobilenet_v3_large_320_fpn"
+SSDLITE_ARCHITECTURE = "ssdlite320_mobilenet_v3_large"
 MAX_JSON_BYTES = 2 * 1024 * 1024
 MAX_CHECKPOINT_BYTES = 1024 * 1024 * 1024
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
@@ -112,6 +113,36 @@ def native_profile(target_device):
     profile["cuda"] = {"tf32_matmul": False, "tf32_cudnn": False, "cudnn_benchmark": False}
     profile["timing"]["cuda_synchronization"] = "Before timing and after every timed stage"
     profile["timing"]["preprocess_ms"] += "; includes transfer to the selected device"
+    return profile
+
+
+def ssdlite_profile(target_device):
+    """An explicit architecture profile without changing historical Faster R-CNN recipes."""
+    profile = native_profile(target_device)
+    profile.update(
+        id="iris-torchvision-ssdlite-native-v1",
+        architecture=SSDLITE_ARCHITECTURE,
+        builder={
+            "weights": None,
+            "weights_backbone": None,
+            "num_classes": "class_count + 1",
+            "score_thresh": 0.001,
+            "nms_thresh": 0.5,
+            "detections_per_img": 100,
+            "topk_candidates": 300,
+        },
+        backbone_normalization={"type": "BatchNorm2d", "eps": 0.001, "momentum": 0.03},
+    )
+    profile["input"].update(
+        image_mean=[0.5, 0.5, 0.5],
+        image_std=[0.5, 0.5, 0.5],
+        size_divisible=1,
+        fixed_size=[320, 320],
+    )
+    profile["timing"]["inference_ms"] = (
+        "Full forward including normalization, fixed-size resize, anchor decoding, "
+        "NMS and coordinate restoration"
+    )
     return profile
 
 
@@ -317,15 +348,22 @@ def validate_manifest(manifest):
         {"format", "id", "name", "created_at", "model", "source", "profile", "files", "validation"},
         "manifest",
     )
-    if manifest["format"] not in ("iris-model-export-v1", "iris-model-export-v2"):
+    if manifest["format"] not in (
+        "iris-model-export-v1",
+        "iris-model-export-v2",
+        "iris-model-export-v3",
+    ):
         raise ValueError("Unsupported model export format")
     _identifier(manifest["id"], "export ID")
     _text(manifest["name"], "export name", 200)
     _timestamp(manifest["created_at"])
-    modern = manifest["format"] == "iris-model-export-v2"
+    modern = manifest["format"] != "iris-model-export-v1"
     profile = manifest["profile"]
+    profile_factory = (
+        ssdlite_profile if manifest["format"] == "iris-model-export-v3" else native_profile
+    )
     expected_profile = (
-        native_profile(profile.get("device")) if modern and isinstance(profile, dict) else PROFILE
+        profile_factory(profile.get("device")) if modern and isinstance(profile, dict) else PROFILE
     )
     if canonical_bytes(profile) != canonical_bytes(expected_profile):
         raise ValueError("Unsupported runtime profile")
@@ -338,7 +376,7 @@ def validate_manifest(manifest):
     _object(model, {"id", "name", "architecture", "sha256", "size", "class_contract"}, "model")
     _identifier(model["id"], "model ID")
     _text(model["name"], "model name", 200)
-    if model["architecture"] != ARCHITECTURE:
+    if model["architecture"] != profile["architecture"]:
         raise ValueError("Unsupported trained model architecture")
     _hash(model["sha256"])
     _integer(model["size"], "checkpoint size", 1, MAX_CHECKPOINT_BYTES)
@@ -714,9 +752,11 @@ def _runtime_modules(manifest, device=None):
         index = int(selected.split(":")[1]) if ":" in selected else torch.cuda.current_device()
         if index >= torch.cuda.device_count():
             raise RuntimeError("Selected CUDA device does not exist")
+        operators = ["torchvision::nms"]
+        if manifest["profile"]["architecture"] == ARCHITECTURE:
+            operators.append("torchvision::roi_align")
         if not torchvision.extension._has_ops() or any(
-            not torch._C._dispatch_has_kernel_for_dispatch_key(name, "CUDA")
-            for name in ("torchvision::nms", "torchvision::roi_align")
+            not torch._C._dispatch_has_kernel_for_dispatch_key(name, "CUDA") for name in operators
         ):
             raise RuntimeError(
                 "Torchvision CUDA detection operators are missing; install matching builds"
@@ -785,10 +825,13 @@ class Detector:
         self.torch, self.torchvision = torch, torchvision
         self.contract = manifest["model"]["class_contract"]
         torch.set_num_threads(min(4, os.cpu_count() or 1))
-        options = dict(PROFILE["builder"])
+        profile = manifest["profile"]
+        options = dict(profile["builder"])
         options["num_classes"] = len(self.contract["class_mapping"]) + 1
-        self.model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(**options)
-        _restore_frozen_batchnorm(self.model.backbone, torch, torchvision)
+        builder = getattr(torchvision.models.detection, profile["architecture"])
+        self.model = builder(**options)
+        if profile["architecture"] == ARCHITECTURE:
+            _restore_frozen_batchnorm(self.model.backbone, torch, torchvision)
         checkpoint = _safe_file(Path(directory).resolve(), "model.pth")
         with checkpoint.open("rb") as source:
             digest = hashlib.file_digest(source, "sha256").hexdigest()

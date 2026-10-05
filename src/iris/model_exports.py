@@ -47,6 +47,20 @@ NATIVE_FILTERING = {
         "post_nms_top_n": 150,
     },
 }
+SSDLITE_INPUT_TRANSFORM = {
+    **INPUT_TRANSFORM,
+    "image_mean": [0.5, 0.5, 0.5],
+    "image_std": [0.5, 0.5, 0.5],
+    "max_size": 320,
+    "fixed_size": [320, 320],
+    "size_divisible": 1,
+}
+SSDLITE_NATIVE_FILTERING = {
+    "score_threshold": 0.001,
+    "nms_iou_threshold": 0.5,
+    "max_detections_per_image": 100,
+    "ssdlite_topk_candidates_per_class": 300,
+}
 WARNINGS = [
     "The package includes the selected frozen images and saved native predictions. "
     "It does not include human annotation boxes or reviewer notes.",
@@ -191,8 +205,12 @@ def _source(store, model_id, evaluation_id):
     model = store.get("trained_models", model_id)
     if model is None:
         raise ValueError("Choose a locally trained checkpoint")
-    if model["architecture"] != TRAINING_ARCHITECTURE:
-        raise ValueError("This export profile supports trained Faster R-CNN MobileNetV3 only")
+    architecture = model["architecture"]
+    if architecture not in (TRAINING_ARCHITECTURE, _runtime().SSDLITE_ARCHITECTURE):
+        raise ValueError("This export supports trained Faster R-CNN and SSDLite MobileNetV3 only")
+    ssdlite = architecture == _runtime().SSDLITE_ARCHITECTURE
+    if model["metadata"].get("architecture", None if ssdlite else architecture) != architecture:
+        raise ValueError("Checkpoint metadata architecture differs from the trained model")
     contract = class_contract(model["metadata"])
     detail = evaluation_detail(store, evaluation_id)
     if record_project(store, "trained_models", model) != record_project(
@@ -209,12 +227,14 @@ def _source(store, model_id, evaluation_id):
     reference_device = _runtime().device_family(metadata.get("device"))
     if (
         metadata.get("weight_sha256") != model["weight_sha256"]
-        or metadata.get("architecture") != TRAINING_ARCHITECTURE
+        or metadata.get("architecture") != architecture
         or metadata.get("precision") != "float32"
         or class_contract(metadata) != contract
         or metadata.get("head_class_slots") != len(contract["class_mapping"]) + 1
-        or metadata.get("input_transform") != INPUT_TRANSFORM
-        or metadata.get("native_filtering") != NATIVE_FILTERING
+        or metadata.get("input_transform")
+        != (SSDLITE_INPUT_TRANSFORM if ssdlite else INPUT_TRANSFORM)
+        or metadata.get("native_filtering")
+        != (SSDLITE_NATIVE_FILTERING if ssdlite else NATIVE_FILTERING)
         or not isinstance(metadata.get("torch_version"), str)
         or metadata["torch_version"].split("+")[0] != "2.10.0"
         or not isinstance(metadata.get("torchvision_version"), str)
@@ -262,6 +282,7 @@ def candidates(store, project_id=DEFAULT_PROJECT_ID):
             {
                 "id": model["id"],
                 "name": model["name"],
+                "architecture": model["architecture"],
                 "eligible": bool(choices),
                 "evaluations": choices,
                 "reason": ""
@@ -301,7 +322,8 @@ def _plan(
     ):
         raise ValueError("Choose a name and 1–8 distinct parity images")
     model, detail, run, dataset = _source(store, trained_model_id, evaluation_id)
-    modern = target_device == "cuda" or run["metadata"]["device"] != "cpu"
+    ssdlite = model["architecture"] == _runtime().SSDLITE_ARCHITECTURE
+    modern = ssdlite or target_device == "cuda" or run["metadata"]["device"] != "cpu"
     available = {
         frame["frame_id"]: frame for frame in dataset["frames"] if frame["split"] == detail["split"]
     }
@@ -361,7 +383,11 @@ def _plan(
             }
         )
     plan = {
-        "format": "iris-model-export-plan-v2" if modern else "iris-model-export-plan-v1",
+        "format": "iris-model-export-plan-v3"
+        if ssdlite
+        else "iris-model-export-plan-v2"
+        if modern
+        else "iris-model-export-plan-v1",
         "request_id": request_id,
         "name": name.strip(),
         "trained_model_id": trained_model_id,
@@ -390,7 +416,9 @@ def _plan(
             "weight_sha256": model["weight_sha256"],
             "frames": references,
         },
-        "profile": _runtime().native_profile(target_device)
+        "profile": _runtime().ssdlite_profile(target_device)
+        if ssdlite
+        else _runtime().native_profile(target_device)
         if modern
         else deepcopy(_runtime().PROFILE),
     }
@@ -418,9 +446,11 @@ def _manifest(plan, identifier, created_at):
             "size": frame["size"],
         }
     return {
-        "format": "iris-model-export-v2"
-        if plan["format"] == "iris-model-export-plan-v2"
-        else "iris-model-export-v1",
+        "format": {
+            "iris-model-export-plan-v1": "iris-model-export-v1",
+            "iris-model-export-plan-v2": "iris-model-export-v2",
+            "iris-model-export-plan-v3": "iris-model-export-v3",
+        }[plan["format"]],
         "id": identifier,
         "name": plan["name"],
         "created_at": created_at,

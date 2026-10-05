@@ -347,6 +347,10 @@ def preview_resume(store, training_id):
     parent = _ready_parent(store, training["parent_model_id"])
     if parent["weight_sha256"] != training["config"]["parent_weight_sha256"]:
         raise ValueError("Parent checkpoint changed; resume is unavailable")
+    from iris.training_architectures import FRCNN
+
+    if parent["architecture"] != training["config"].get("architecture", FRCNN):
+        raise ValueError("Parent architecture changed; resume is unavailable")
     _check_holdouts(_manifest(store, training["dataset_id"]), parent)
     # Verify every frozen training file at explicit preview, without opening hold-outs.
     for frame in _manifest(store, training["dataset_id"])["frames"]:

@@ -35,6 +35,7 @@ _CONFIG_FIELDS = (
     "warnings",
 )
 _TRAINING_CONFIG_FIELDS = (
+    "architecture",
     "steps",
     "learning_rate",
     "seed",
@@ -51,6 +52,7 @@ _TRAINING_CONFIG_FIELDS = (
     "taxonomy_id",
 )
 _TRAINING_METADATA_FIELDS = (
+    "architecture",
     "scope",
     "scope_version",
     "trainable_modules",
@@ -186,6 +188,13 @@ def _training_summary(store, model_id, expected_sha256=None):
         return None
     history = run["history"]
     selected_config = _pick(config, _TRAINING_CONFIG_FIELDS)
+    selected_metadata = _pick(run["metadata"], _TRAINING_METADATA_FIELDS)
+    for source, target, field in (
+        (config, selected_config, "training_adapter"),
+        (run["metadata"], selected_metadata, "training_loss_policy"),
+    ):
+        if field in source:
+            target[field] = _pick(source[field], ("id", "empty_image_hard_negatives", "batchnorm"))
     if "taxonomy" in config:
         from iris.model_taxonomy import class_contract
 
@@ -200,7 +209,7 @@ def _training_summary(store, model_id, expected_sha256=None):
         "parent_weight_sha256": config.get("parent_weight_sha256"),
         "created_at": run["created_at"],
         "config": selected_config,
-        "metadata": _pick(run["metadata"], _TRAINING_METADATA_FIELDS),
+        "metadata": selected_metadata,
         "history_summary": {
             "steps_completed": len(history),
             "first_loss": history[0].get("loss") if history else None,

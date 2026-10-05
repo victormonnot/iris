@@ -263,6 +263,10 @@ def _validate_payload(trainer, payload: dict, binding: dict, sampler: dict) -> N
         or any(type(mode) is not bool for mode in modes.values())
     ):
         raise ValueError("Training state model modes are invalid")
+    if any(
+        modes.get(name) is not False for name in getattr(trainer, "frozen_batchnorm_modules", [])
+    ):
+        raise ValueError("Training state changed frozen batch normalization modes")
     gradients = payload["gradient_modules"]
     if (
         type(gradients) is not list

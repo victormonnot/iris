@@ -87,7 +87,7 @@ from the lightweight workspace dependencies:
 
 | Model | First capability | Official checkpoint size |
 | --- | --- | --- |
-| [SSDLite320 MobileNetV3-Large, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.ssdlite320_mobilenet_v3_large.html) | Inference baseline | 13.4 MB |
+| [SSDLite320 MobileNetV3-Large, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.ssdlite320_mobilenet_v3_large.html) | Inference and fine-tuning | 13.4 MB |
 | [Faster R-CNN MobileNetV3-Large 320 FPN, COCO_V1](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn.html) | Inference and fine-tuning | 74.2 MB |
 
 They share an optional PyTorch runtime with CPU or NVIDIA CUDA execution. These are starting
@@ -109,6 +109,18 @@ COCO output IDs 1/3; custom outputs use saved class IDs 1…N. Complete class
 contracts travel with training, model specs, comparisons, evaluation and reports.
 Checkpoints store model state and explicit architecture metadata. Installation
 size, memory use, and runtime are larger than the weight files alone.
+
+Training capabilities are selected from a pure architecture registry, without
+importing the optional ML runtime in catalog requests. SSDLite uses its native
+six-scale classifier layout: class projection rows are transferred per anchor,
+while depthwise features and class-independent regression are preserved. The
+training-only adapter supplies background loss for empty images and pins its
+policy in the configuration. Ordinary SSDLite BatchNorm retains its running
+statistics in all scopes; affine weights follow the selected scope. The existing
+Faster R-CNN scope and recovery contracts remain valid. Completed models retain
+the selected architecture and can be evaluated together on the same class version.
+Native SSDLite exports have their own frozen profile; no model conversion or
+schema migration is needed. See [trainable models](trainable-models.md).
 
 Visual comparisons support full-image and tiled runs. Model IDs always identify
 the original checkpoint; a separate `full` / `tiled` run variant identifies the
@@ -153,7 +165,7 @@ Custom classes and definitions are supported in the manual editor and COCO impor
 Publication uses compare-and-swap on the project's current version. Adoption creates
 a new draft revision, retains earlier revisions and requires human validation again.
 Custom detector proposal mappings use explicitly configured COCO IDs. Frozen datasets
-and COCO exports support custom classes, as do Faster R-CNN training, inference,
+and COCO exports support custom classes, as do Faster R-CNN and SSDLite training, inference,
 evaluation, disagreement review and reports. Multimodal candidate review retains
 the original definitions. See [class version behavior](classes.md).
 An unsupported class is not silently mapped to a superficially similar class.
@@ -443,7 +455,7 @@ explicit runtime provisioning. The README records setup commands and verificatio
 | 1. Local data workspace | Import images/video into sessions, extract frames, inspect provenance, select images, inspect and cancel jobs. | Import a generated video fixture, extract and select frames, restart, and recover metadata and job outcomes. Fixtures exercise the pipeline; they are not field data. |
 | 2. Saved model comparisons | Run both detectors on identical frames, persist raw predictions and timing, overlay results and inspect disagreements. | Execute both real checkpoints on a small authorized sample and reopen the comparison after restart; missing weights are a visible dependency. |
 | 3. Assisted and manual annotation | Create, move, resize, reclassify, and delete boxes; request local multimodal suggestions and accept, correct, or reject them. | Complete one real Ollama request and human review; test invalid responses, coordinate conversions, and validated empty images. Test doubles are identified as fixtures. |
-| 4. Dataset versions and training | Freeze reviewed labels and group-based splits; run bounded Faster R-CNN fine-tuning; register the resulting checkpoint. | Reject leakage and unreviewed labels, preserve old manifests after edits, and complete a real short training job that produces a reloadable checkpoint. |
+| 4. Dataset versions and training | Freeze reviewed labels and group-based splits; run bounded detector fine-tuning; register the resulting checkpoint. | Reject leakage and unreviewed labels, preserve old manifests after edits, and complete a real short training job that produces a reloadable checkpoint. |
 | 5. Before/after evaluation | Reuse the comparator for parent and trained checkpoints, compute metrics on a common held-out reference, and inspect regressions. | Reproduce the full chain from new source data to a checkpoint and evaluation after restart. Report gains or regressions as measured; never require an improvement to declare the loop functional. |
 
 The full demonstration on real data needs authorized recordings, independent scene groups,

@@ -1,7 +1,8 @@
 # Longer CPU/CUDA training and explicit continuation
 
 IRIS supports 1 to 10,000 optimizer steps for Faster R-CNN MobileNetV3-Large
-320 FPN and its compatible trained descendants. Training uses CPU or one selected
+320 FPN, SSDLite320 MobileNetV3-Large and their compatible trained descendants.
+Training uses CPU or one selected
 NVIDIA CUDA device, float32, batch size one, and the selected light, partial or
 full depth. The frozen
 training split supplies every example; validation and test images remain

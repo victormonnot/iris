@@ -58,7 +58,7 @@ validated images using that version. Other versions remain selectable; there is
 no implicit relabeling or merging of different definitions. The release records
 the complete class snapshot and its internal and export numeric mappings.
 
-Custom releases also support Faster R-CNN training, inference, evaluation, error
+Custom releases also support Faster R-CNN and SSDLite training, inference, evaluation, error
 analysis and experiment reports. Trained parents must share the exact saved class
 version. Official evaluation baselines require an explicit COCO mapping for every
 target class. Matching trained predictions can become reviewable proposals without

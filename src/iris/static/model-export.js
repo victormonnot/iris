@@ -80,7 +80,7 @@
     if (!evaluations.length) field("evaluation").append(new Option("No eligible saved evaluation", ""));
     for (const item of evaluations) field("evaluation").append(new Option(`${item.name || item.id} · ${deviceLabel(item.device)} · ${item.frames?.length || 0} images`, item.id));
     if (evaluations.some((item) => item.id === previous)) field("evaluation").value = previous;
-    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled evaluations are not eligible. Training, reference evaluation and destination devices are independent." : "Only the supported trained Faster R-CNN architecture can use this export profile.");
+    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled evaluations are not eligible. Training, reference evaluation and destination devices are independent." : "Supported trained Faster R-CNN and SSDLite checkpoints can use a native PyTorch export profile.");
     renderFrames();
   }
   async function refreshCandidates() {

@@ -154,3 +154,6 @@ This feature supplies native PyTorch CPU/CUDA execution and portable weights. It
 does not convert models to ONNX or TensorRT, quantize them, certify Jetson hardware,
 or promise a latency, memory budget or frame rate. Those are separate target
 integration and measurement tasks.
+
+Both trainable architectures follow these device rules; see [model choices](trainable-models.md)
+for their training and deployment contracts.

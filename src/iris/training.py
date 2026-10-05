@@ -29,53 +29,29 @@ from iris.models import (
     catalog,
 )
 from iris.store import Store, new_id, now
+from iris.training_architectures import (
+    SCOPE_VERSION,
+    SSDLITE,
+    TRAINING_ARCHITECTURES,
+    training_scope,
+)
+from iris.training_architectures import (
+    TRAINING_SCOPES as TRAINING_SCOPES,  # Preserve the historical public scopes.
+)
 from iris.training_device import CUDA_PROTOCOL, device_label, normalize_device, resolve_device
 
 MAX_STEPS = 10000
 CLASS_MAPPING = {"person": 1, "car": 2}
-SCOPE_VERSION = 1
-TRAINING_SCOPES = {
-    "prediction_head_only": {
-        "id": "prediction_head_only",
-        "label": "Prediction head only",
-        "description": "Adjust the class prediction head while keeping visual features fixed.",
-        "trainable_modules": ["roi_heads.box_predictor"],
-    },
-    "partial_backbone": {
-        "id": "partial_backbone",
-        "label": "Last backbone stage and detector",
-        "description": (
-            "Adapt the final visual feature stage, feature pyramid, proposals and ROI heads."
-        ),
-        "trainable_modules": [
-            "backbone.body.13",
-            "backbone.body.14",
-            "backbone.body.15",
-            "backbone.body.16",
-            "backbone.fpn",
-            "rpn",
-            "roi_heads",
-        ],
-    },
-    "full_model": {
-        "id": "full_model",
-        "label": "All detector layers",
-        "description": (
-            "Adapt all visual features and detection layers, including early image features."
-        ),
-        "trainable_modules": ["backbone", "rpn", "roi_heads"],
-    },
-}
-
-
-def training_scope(scope: str) -> dict:
-    if not isinstance(scope, str) or scope not in TRAINING_SCOPES:
-        raise ValueError("Choose prediction_head_only, partial_backbone or full_model")
-    return deepcopy(TRAINING_SCOPES[scope])
 
 
 def _scope_from_config(config: dict) -> dict:
-    scope = training_scope(config.get("scope", "prediction_head_only"))
+    architecture = config.get("architecture", TRAINING_ARCHITECTURE)
+    scope = training_scope(config.get("scope", "prediction_head_only"), architecture)
+    if architecture == SSDLITE:
+        from iris.ssdlite_training import POLICY
+
+        if config.get("training_adapter") != POLICY or "scope_version" not in config:
+            raise ValueError("SSDLite training adapter changed; create a new run")
     if "scope_version" not in config:
         if scope["id"] != "prediction_head_only" or "trainable_modules" in config:
             raise ValueError("Unsupported legacy training scope contract; create a new run")
@@ -98,9 +74,9 @@ def _manifest(store: Store, dataset_id: str) -> dict:
 
 def _ready_parent(store: Store, parent_model_id: str) -> dict:
     parent = next((item for item in catalog(store.root) if item["id"] == parent_model_id), None)
-    if parent is None or parent.get("architecture") != TRAINING_ARCHITECTURE:
+    if parent is None or parent.get("architecture") not in TRAINING_ARCHITECTURES:
         raise ValueError(
-            "Choose the Faster R-CNN MobileNetV3-Large 320 FPN detector or its trained descendants"
+            "Choose a supported Faster R-CNN or SSDLite detector, or its trained descendants"
         )
     if parent["status"] != "ready":
         raise RuntimeError(parent.get("reason") or "Parent checkpoint is unavailable")
@@ -134,7 +110,7 @@ def _prepare_training(
     checkpoint_interval: int | None = None,
     device: str = "cpu",
 ) -> tuple:
-    selected_scope = training_scope(scope)
+    training_scope(scope)  # Reject an invalid scope before accessing a dataset.
     device = normalize_device(device)
     if not isinstance(name, str):
         raise ValueError("Training name must contain between 1 and 160 characters")
@@ -162,6 +138,7 @@ def _prepare_training(
     if not any(frame["boxes"] for frame in training_frames):
         raise ValueError("Training needs at least one positive annotation in the selected classes")
     parent = _ready_parent(store, parent_model_id)
+    selected_scope = training_scope(scope, parent["architecture"])
     compatible_parent(parent, contract)
     _check_holdouts(manifest, parent)
     device, device_identity = resolve_device(device)
@@ -182,6 +159,10 @@ def _prepare_training(
         **contract,
         "quality_metrics": "Not computed; training loss does not measure detection quality",
     }
+    if parent["architecture"] == SSDLITE:
+        from iris.ssdlite_training import POLICY
+
+        config.update(architecture=SSDLITE, training_adapter=deepcopy(POLICY))
     if device != "cpu":
         config.update(
             device_identity=device_identity,
@@ -243,7 +224,7 @@ def preview_training(
         "fingerprint": fingerprint,
         "resume_supported": durable(config),
         "config": config,
-        "scope": training_scope(scope),
+        "scope": _scope_from_config(config),
         "dataset": {
             "id": dataset["id"],
             "name": dataset["name"],
@@ -267,6 +248,16 @@ def preview_training(
             "checkpoint on validation data.",
             "Frozen batch-normalization statistics remain unchanged for every training depth.",
             "Exact parameter counts are recorded after the worker loads the checkpoint.",
+            *(
+                [
+                    "SSDLite uses a fixed 320 × 320 input. Small objects may lose detail; "
+                    "compare validation quality before selecting a model.",
+                    "On empty training images, the three hardest background anchors contribute "
+                    "classification loss. Positive images retain the native SSD loss.",
+                ]
+                if parent["architecture"] == SSDLITE
+                else []
+            ),
             *(
                 [
                     f"Save optimizer and RNG state every {config['checkpoint_interval']} "
@@ -476,57 +467,83 @@ class _HeadTrainer:
             raise ValueError("Parent checkpoint changed since training was queued")
         compatible_parent(self.detector.spec, self.contract)
         self.model = self.detector.model
-        inference_proposal_threshold = self.model.rpn.score_thresh
-        # The MobileNet320 inference preset drops RPN proposals below 0.05.
-        # A negative image can then contain no sampled ROIs, making both ROI
-        # losses undefined. Keep background proposals during optimization;
-        # loading the saved weights through the inference adapter keeps its
-        # original filtering settings, independent of this training-only change.
-        self.model.rpn.score_thresh = 0.0
-        if self.detector.spec.get("origin") != "trained":
-            previous = self.model.roi_heads.box_predictor
-            predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
-                previous.cls_score.in_features, len(self.class_mapping) + 1
-            ).to(self.device)
-            # Keep seeded initialization for unmapped classes. Only an explicit
-            # native COCO mapping authorizes copying an official category's rows.
-            source_rows = {
-                0: 0,
-                **{
-                    self.class_mapping[item["id"]]: item["coco_id"]
-                    for item in self.contract["taxonomy"]["classes"]
-                    if item.get("coco_id") is not None
-                },
-            }
-            with torch.no_grad():
-                for target, source in source_rows.items():
-                    predictor.cls_score.weight[target].copy_(previous.cls_score.weight[source])
-                    predictor.cls_score.bias[target].copy_(previous.cls_score.bias[source])
-                    predictor.bbox_pred.weight[target * 4 : (target + 1) * 4].copy_(
-                        previous.bbox_pred.weight[source * 4 : (source + 1) * 4]
-                    )
-                    predictor.bbox_pred.bias[target * 4 : (target + 1) * 4].copy_(
-                        previous.bbox_pred.bias[source * 4 : (source + 1) * 4]
-                    )
-            self.model.roi_heads.box_predictor = predictor
-        if (
-            self.model.roi_heads.box_predictor.cls_score.out_features != len(self.class_mapping) + 1
-            or self.model.roi_heads.box_predictor.bbox_pred.out_features
-            != (len(self.class_mapping) + 1) * 4
-        ):
-            raise ValueError("Parent prediction head does not match its frozen class mapping")
+        self.architecture = config.get("architecture", TRAINING_ARCHITECTURE)
+        if self.detector.spec.get("architecture", TRAINING_ARCHITECTURE) != self.architecture:
+            raise ValueError("Parent architecture differs from the frozen training configuration")
+        adapter_metadata = {}
+        if self.architecture == SSDLITE:
+            from iris.ssdlite_training import configure_ssdlite_training, prepare_ssdlite_head
+
+            adapter_metadata.update(
+                prepare_ssdlite_head(
+                    self.model,
+                    torch,
+                    self.contract,
+                    trained=self.detector.spec.get("origin") == "trained",
+                )
+            )
+            adapter_metadata.update(configure_ssdlite_training(self.model, torch))
+        else:
+            inference_proposal_threshold = self.model.rpn.score_thresh
+            # The MobileNet320 inference preset drops RPN proposals below 0.05.
+            # A negative image can then contain no sampled ROIs, making both ROI
+            # losses undefined. Keep background proposals during optimization;
+            # loading the saved weights through the inference adapter keeps its
+            # original filtering settings, independent of this training-only change.
+            self.model.rpn.score_thresh = 0.0
+            if self.detector.spec.get("origin") != "trained":
+                previous = self.model.roi_heads.box_predictor
+                predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
+                    previous.cls_score.in_features, len(self.class_mapping) + 1
+                ).to(self.device)
+                # Keep seeded initialization for unmapped classes. Only an explicit
+                # native COCO mapping authorizes copying an official category's rows.
+                source_rows = {
+                    0: 0,
+                    **{
+                        self.class_mapping[item["id"]]: item["coco_id"]
+                        for item in self.contract["taxonomy"]["classes"]
+                        if item.get("coco_id") is not None
+                    },
+                }
+                with torch.no_grad():
+                    for target, source in source_rows.items():
+                        predictor.cls_score.weight[target].copy_(previous.cls_score.weight[source])
+                        predictor.cls_score.bias[target].copy_(previous.cls_score.bias[source])
+                        predictor.bbox_pred.weight[target * 4 : (target + 1) * 4].copy_(
+                            previous.bbox_pred.weight[source * 4 : (source + 1) * 4]
+                        )
+                        predictor.bbox_pred.bias[target * 4 : (target + 1) * 4].copy_(
+                            previous.bbox_pred.bias[source * 4 : (source + 1) * 4]
+                        )
+                self.model.roi_heads.box_predictor = predictor
+            if (
+                self.model.roi_heads.box_predictor.cls_score.out_features
+                != len(self.class_mapping) + 1
+                or self.model.roi_heads.box_predictor.bbox_pred.out_features
+                != (len(self.class_mapping) + 1) * 4
+            ):
+                raise ValueError("Parent prediction head does not match its frozen class mapping")
         modules = dict(self.model.named_modules())
         selected_modules = self.scope["trainable_modules"]
         if any(prefix not in modules for prefix in selected_modules):
             raise ValueError("Detector module layout does not match the selected training scope")
-        if self.scope["id"] == "partial_backbone" and list(self.model.backbone.body._modules) != [
-            str(index) for index in range(17)
-        ]:
-            raise ValueError("The partial scope requires the supported 17-block MobileNet backbone")
-        if any(
-            isinstance(module, torch.nn.modules.batchnorm._BatchNorm) for module in modules.values()
-        ):
-            raise ValueError("The training detector must retain frozen batch normalization")
+        if self.architecture == TRAINING_ARCHITECTURE:
+            if self.scope["id"] == "partial_backbone" and list(
+                self.model.backbone.body._modules
+            ) != [str(index) for index in range(17)]:
+                raise ValueError(
+                    "The partial scope requires the supported 17-block MobileNet backbone"
+                )
+            if any(
+                isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
+                for module in modules.values()
+            ):
+                raise ValueError("The training detector must retain frozen batch normalization")
+        elif list(self.model.backbone.features._modules) != ["0", "1"] or list(
+            self.model.backbone.extra._modules
+        ) != [str(index) for index in range(4)]:
+            raise ValueError("Unsupported SSDLite feature layout")
         self.named_parameters = dict(self.model.named_parameters())
         self.selected_parameters = {}
         self.frozen_parameters = {}
@@ -559,13 +576,17 @@ class _HeadTrainer:
             name
             for name, module in modules.items()
             if isinstance(module, torchvision.ops.misc.FrozenBatchNorm2d)
+            or (
+                self.architecture == SSDLITE
+                and isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
+            )
         ]
         self.gradient_modules = set()
         self.model.train()
         if self.scope["id"] == "prediction_head_only":
             self.model.backbone.eval()
-        # FrozenBatchNorm forwards do not update statistics even in train mode;
-        # keep the module mode explicit and verify all buffers before publication.
+        # Preserve all running statistics, including ordinary SSDLite BatchNorm.
+        # Eval mode retains affine gradients and supports batch-one 1x1 feature maps.
         for name in self.frozen_batchnorm_modules:
             modules[name].eval()
         self.optimizer = torch.optim.SGD(
@@ -576,6 +597,7 @@ class _HeadTrainer:
         )
         self.metadata = {
             **self.detector.metadata,
+            "architecture": self.architecture,
             **self.contract,
             "trainable_parameters": sum(parameter.numel() for parameter in self.parameters),
             "frozen_parameters": sum(
@@ -586,14 +608,20 @@ class _HeadTrainer:
             "scope_version": config.get("scope_version", 0),
             "trainable_modules": selected_modules,
             "frozen_batchnorm_modules": self.frozen_batchnorm_modules,
-            "training_proposal_filtering": {
-                "rpn_score_threshold": self.model.rpn.score_thresh,
-                "parent_inference_rpn_score_threshold": inference_proposal_threshold,
-                "rpn_nms_iou_threshold": self.model.rpn.nms_thresh,
-                "pre_nms_top_n": self.model.rpn.pre_nms_top_n(),
-                "post_nms_top_n": self.model.rpn.post_nms_top_n(),
-                "reason": "Retain background proposals for negative training images",
-            },
+            **(
+                {
+                    "training_proposal_filtering": {
+                        "rpn_score_threshold": self.model.rpn.score_thresh,
+                        "parent_inference_rpn_score_threshold": inference_proposal_threshold,
+                        "rpn_nms_iou_threshold": self.model.rpn.nms_thresh,
+                        "pre_nms_top_n": self.model.rpn.pre_nms_top_n(),
+                        "post_nms_top_n": self.model.rpn.post_nms_top_n(),
+                        "reason": "Retain background proposals for negative training images",
+                    },
+                }
+                if self.architecture == TRAINING_ARCHITECTURE
+                else adapter_metadata
+            ),
             "deterministic_algorithms": self.device.type == "cpu",
             "training_device": str(self.device),
             "checkpoint_storage_device": "cpu",
@@ -718,7 +746,10 @@ class _HeadTrainer:
         )
         return {
             "head_weights_changed": any(
-                changed and _matches_module(name, "roi_heads.box_predictor")
+                changed
+                and _matches_module(
+                    name, "head" if self.architecture == SSDLITE else "roi_heads.box_predictor"
+                )
                 for name, changed in changes.items()
             ),
             "trainable_weights_changed": True,
@@ -796,6 +827,8 @@ def _run_training(store, training_id, progress, cancelled, trainer_factory):
     parent = _ready_parent(store, training["parent_model_id"])
     if parent["weight_sha256"] != config["parent_weight_sha256"]:
         raise ValueError("Parent checkpoint changed since training was queued")
+    if parent["architecture"] != config.get("architecture", TRAINING_ARCHITECTURE):
+        raise ValueError("Parent architecture differs from the frozen training configuration")
     compatible_parent(parent, contract)
     _check_holdouts(manifest, parent)
     frames = [frame for frame in manifest["frames"] if frame["split"] == "train"]
@@ -804,6 +837,7 @@ def _run_training(store, training_id, progress, cancelled, trainer_factory):
     trainer = (trainer_factory or _HeadTrainer)(store.root, training["parent_model_id"], config)
     metadata = {
         **trainer.metadata,
+        "architecture": parent["architecture"],
         **contract,
         "dataset_id": dataset["id"],
         "dataset_manifest_sha256": dataset["manifest_sha256"],
@@ -943,7 +977,7 @@ def _run_training(store, training_id, progress, cancelled, trainer_factory):
                     training["name"],
                     training_id,
                     training["parent_model_id"],
-                    TRAINING_ARCHITECTURE,
+                    parent["architecture"],
                     str(destination.relative_to(store.root)),
                     digest,
                     json.dumps(metadata),

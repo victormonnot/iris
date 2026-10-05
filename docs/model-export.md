@@ -1,7 +1,8 @@
 # Portable trained-model export
 
-IRIS exports a trained **Faster R-CNN MobileNetV3-Large 320 FPN** checkpoint with
-a standalone CPU or NVIDIA CUDA runner. The package contains the original PyTorch `state_dict`,
+IRIS exports trained **Faster R-CNN MobileNetV3-Large 320 FPN** and
+**SSDLite320 MobileNetV3-Large** checkpoints with a standalone CPU or NVIDIA CUDA
+runner. The package contains the original PyTorch `state_dict`,
 its frozen classes, the complete inference recipe, dependencies, saved reference
 predictions, and the small set of reference images needed to check parity outside
 IRIS. This is model export; dataset COCO export is a separate operation.
@@ -42,21 +43,28 @@ parity/reference.json
 parity/images/<frame_id>.png
 ```
 
-Existing CPU-reference/CPU-target exports use `iris-model-export-v1`, freezing the
+Faster R-CNN CPU-reference/CPU-target exports use `iris-model-export-v1`, freezing the
 `iris-torchvision-trained-cpu-v1` profile in
-`src/iris/export_runner.py`, and contains the evaluation, evaluation-model row,
+`src/iris/export_runner.py`, and contain the evaluation, evaluation-model row,
 dataset, dataset-manifest hash, and checkpoint identities. Its inventory excludes
 `manifest.json` itself. The manifest hash is computed over sorted, compact UTF-8
 JSON with no trailing newline. The reference file uses the same canonical
 encoding. Image hashes cover the encoded PNG bytes, rather than IRIS's separate
 RGB pixel hash.
 
-A CUDA target or CUDA reference uses `iris-model-export-v2` and the
+A Faster R-CNN CUDA target or CUDA reference uses `iris-model-export-v2` and the
 `iris-torchvision-trained-native-v2` profile. Its `profile.device` freezes the
 target family (`cpu` or `cuda`), and `source.reference_device` records the saved
 evaluation device. Version 1 manifests and measurements remain unchanged and
 readable. Existing package files are validated against their own frozen inventory,
 without requiring that their runner match the current IRIS source code.
+
+SSDLite uses `iris-model-export-v3` and the distinct
+`iris-torchvision-ssdlite-native-v1` profile for both CPU and CUDA targets. It
+records the target and reference devices just like version 2. Its builder,
+normalization, fixed input size, and native filtering are bound to SSDLite;
+substituting a Faster R-CNN architecture or recipe is rejected. The original
+Faster R-CNN profile bytes and existing package contracts remain unchanged.
 
 Reference sets contain one to eight images, in a frozen order, and their complete
 native predictions. The runner accepts checkpoint files up to 1 GiB, individual
@@ -85,8 +93,9 @@ device. The selected family must match the frozen target; there is no automatic
 fallback to CPU. Create another export to measure the same model on a different
 device family. `check-runtime` explicitly imports the installed packages and
 queries the selected device, without constructing a detector or loading weights.
-For CUDA it also requires registered Torchvision CUDA detection operators and a
-GPU architecture supported by the installed PyTorch build.
+For CUDA it also requires registered Torchvision CUDA detection operators
+(`nms` for SSDLite; `nms` and `roi_align` for Faster R-CNN) and a GPU architecture
+supported by the installed PyTorch build.
 Success only confirms the dependency/device probe; real inference still needs to
 be tested.
 
@@ -107,10 +116,9 @@ still writes its full measurement report for inspection and import into IRIS.
 
 ## Frozen inference recipe
 
-The runner builds `fasterrcnn_mobilenet_v3_large_320_fpn` with `weights=None` and
-`weights_backbone=None`. It uses the frozen class count plus the background slot,
-replaces backbone `BatchNorm2d` modules with `FrozenBatchNorm2d(eps=1e-5)`, and
-loads the local checkpoint with `weights_only=True`, `map_location="cpu"`, and
+Both builders use `weights=None`, `weights_backbone=None`, and the frozen class
+count plus the background slot. The runner loads the local checkpoint with
+`weights_only=True`, `map_location="cpu"`, and
 `load_state_dict(strict=True)`. It then transfers the model to the selected CPU or
 CUDA device and uses evaluation mode and float32 inference. Threads are capped at
 `min(4, os.cpu_count() or 1)`. CUDA execution disables TF32 for matrix multiplication
@@ -120,12 +128,25 @@ packaged for either device independently of its training origin.
 Images receive EXIF orientation correction, RGB conversion, and CHW float32
 conversion divided by 255. Normalization, resizing, proposal filtering, NMS,
 and restoration to original oriented coordinates are part of the Torchvision
-forward. The frozen profile records mean `[0.485, 0.456, 0.406]`, standard
-deviation `[0.229, 0.224, 0.225]`, short-edge size 320, maximum long edge 640, and
-padding divisible by 32. There is no second external resize or normalization.
+forward. There is no second external resize or normalization.
+
+| Recipe | Faster R-CNN MobileNetV3 | SSDLite320 MobileNetV3 |
+| --- | --- | --- |
+| Builder | `fasterrcnn_mobilenet_v3_large_320_fpn` | `ssdlite320_mobilenet_v3_large` |
+| Normalization layers | Backbone `FrozenBatchNorm2d`, epsilon `1e-5` | Builder `BatchNorm2d`, epsilon `0.001`, momentum `0.03` |
+| Image mean | `[0.485, 0.456, 0.406]` | `[0.5, 0.5, 0.5]` |
+| Image standard deviation | `[0.229, 0.224, 0.225]` | `[0.5, 0.5, 0.5]` |
+| Resize | Short edge 320, maximum long edge 640 | Fixed 320 × 320 |
+| Padding divisor | 32 | 1 |
+| Candidate filtering | RPN settings below | Top 300 candidates per class |
+
+SSDLite retains its ordinary BatchNorm layers and saved running statistics; the
+Faster R-CNN frozen normalization conversion is never applied to it. Both use
+evaluation mode at inference, regardless of the training scope.
 
 Final box score threshold is 0.001, box NMS IoU threshold is 0.5, and maximum
-detections per image is 100. The inference RPN score threshold is 0.05, its NMS
+detections per image is 100 for both architectures. Faster R-CNN's inference RPN
+score threshold is 0.05, its NMS
 IoU threshold is 0.7, and its pre/post-NMS limits are 150. The training-only RPN
 threshold of 0.0 is not an inference setting.
 
@@ -139,6 +160,8 @@ that per-prediction field for the builtin head.
 
 These settings follow the existing IRIS adapter and the pinned upstream
 [Torchvision builder](https://raw.githubusercontent.com/pytorch/vision/v0.25.0/torchvision/models/detection/faster_rcnn.py),
+[SSDLite builder](https://raw.githubusercontent.com/pytorch/vision/v0.25.0/torchvision/models/detection/ssdlite.py),
+[SSD transform setup](https://raw.githubusercontent.com/pytorch/vision/v0.25.0/torchvision/models/detection/ssd.py),
 [transform](https://raw.githubusercontent.com/pytorch/vision/v0.25.0/torchvision/models/detection/transform.py),
 and [FrozenBatchNorm implementation](https://raw.githubusercontent.com/pytorch/vision/v0.25.0/torchvision/ops/misc.py).
 The [PyTorch 2.10 loading API](https://docs.pytorch.org/docs/2.10/generated/torch.load.html)

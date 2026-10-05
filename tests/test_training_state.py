@@ -44,6 +44,7 @@ def tiny():
             parameter.requires_grad_(False)
         return SimpleNamespace(
             torch=torch,
+            architecture="fasterrcnn_mobilenet_v3_large_320_fpn",
             model=model,
             scope={"trainable_modules": ["head"]},
             selected_parameters=selected,

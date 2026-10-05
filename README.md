@@ -15,7 +15,7 @@ comparator and can be measured against their parents. See
 
 ## Standalone model export
 
-In **Dataset & Training → Model exports**, choose a trained Faster R-CNN checkpoint,
+In **Dataset & Training → Model exports**, choose a trained Faster R-CNN or SSDLite checkpoint,
 a completed CPU or CUDA full-image evaluation, a CPU or CUDA target, and 1–8 saved
 images for parity checking.
 Preview and create a ZIP containing the unchanged weights, frozen classes,
@@ -31,6 +31,20 @@ execution remains declared evidence. Real model/parity/performance validation is
 deferred; software tests use synthetic data and mocked execution. A different
 device can produce different numerical results; parity mismatches remain visible.
 See [the export format, runner commands and limitations](docs/model-export.md).
+
+## Trainable model choices
+
+Fine-tune **Faster R-CNN MobileNetV3-Large 320 FPN** or the lighter
+**SSDLite320 MobileNetV3-Large** candidate on the same frozen dataset and custom
+classes. Both support CPU/CUDA, three training depths, explicit checkpoint
+continuation, quality evaluation and standalone CPU/CUDA export. The interface
+shows each model's actual training scope. SSDLite retains frozen normalization
+statistics and explicitly learns background on negative images.
+
+Compare held-out quality and exported target measurements before choosing a
+model. Smaller weights do not establish better latency, memory use or quality;
+real SSDLite/GPU trials remain deferred. See
+[model choices, training policies and validation limits](docs/trainable-models.md).
 
 ## Annotation benchmark
 
@@ -537,7 +551,7 @@ API keys are read only by the server/worker and are never returned to the UI.
    edits, class changes and selection changes leave that version intact. If reviews
    changed since the candidate list was loaded, refresh before freezing again.
 4. Choose the frozen dataset and a ready
-   **Faster R-CNN MobileNetV3-Large 320 FPN** parent,
+   **Faster R-CNN MobileNetV3-Large 320 FPN** or **SSDLite320 MobileNetV3-Large** parent,
    either the official checkpoint or an IRIS checkpoint with the exact same class version. Choose a training
    depth and a CPU or available NVIDIA CUDA device, then preview the plan: 20 optimizer steps by
    default, configurable from 1 to 10,000, batch size one, with an explicit learning
@@ -564,7 +578,8 @@ linking a parent does not automatically add its images. A version holds at most
 
 Each new fine-tuning run chooses its own depth and can start from a completed
 checkpoint at another depth without changing its parent. Resuming an interrupted
-attempt retains its original depth:
+attempt retains its original depth. This table describes Faster R-CNN;
+[model choices](docs/trainable-models.md) lists SSDLite's different module scopes:
 
 | Depth | Parameters updated | Intended experiment |
 | --- | --- | --- |
@@ -572,7 +587,7 @@ attempt retains its original depth:
 | Partial | Last MobileNet feature stage, feature pyramid, proposal network and detection heads | Adapt later visual features, for example when trying footage from a different camera. Earlier feature stages stay fixed. |
 | Full | All learnable detector parameters | Also adapt early visual features; requires more computation and can overfit a small dataset. |
 
-The head contains one slot per frozen class plus background. Official weights
+The head contains one slot per frozen class plus background (per anchor for SSDLite). Official weights
 initialize background and any explicitly mapped COCO classes; other classes use
 the recorded seed for initialization. A compatible IRIS parent's head is retained. All depths keep the pretrained frozen
 batch-normalization statistics fixed and use SGD on the frozen **train** split only.

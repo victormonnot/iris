@@ -58,7 +58,7 @@
     prediction_head_only: {
       label: "Light · prediction head",
       description:
-        "Update the final classification and box prediction layer. Keep visual features frozen for a small baseline run.",
+        "Update the final classification and box prediction layers. Keep visual features frozen for a small baseline run.",
       cost:
         "The light scope updates the fewest parameters. The detector still processes each training image on the selected device.",
     },
@@ -77,8 +77,31 @@
         "Updating all trainable layers requires more computation and memory than the light scope. No duration estimate is available.",
     },
   };
-  const scopeLabel = (scope) =>
-    trainingScopes[scope || "prediction_head_only"]?.label || scope;
+  const scopeLabel = (scope, modelId) => {
+    const id = scope || "prediction_head_only";
+    return modelScopes(workspace.models.find((model) => model.id === modelId))
+      .find((item) => item.id === id)?.label || trainingScopes[id]?.label || id;
+  };
+  const selectedTrainingModel = () => workspace.models.find(
+    (item) => item.id === $("#training-parent").value,
+  );
+  function modelScopes(model) {
+    if (!model?.training) return [];
+    return Array.isArray(model.training_scopes)
+      ? model.training_scopes
+      : Object.entries(trainingScopes).map(([id, scope]) => ({ id, ...scope }));
+  }
+
+  function renderTrainingScopes() {
+    const select = $("#training-scope");
+    const previous = select.value;
+    const scopes = modelScopes(selectedTrainingModel());
+    select.replaceChildren();
+    for (const scope of scopes) select.append(new Option(scope.label, scope.id));
+    if (!scopes.length) select.append(new Option("Choose a supported checkpoint", ""));
+    select.value = scopes.some((scope) => scope.id === previous) ? previous : scopes[0]?.id || "";
+    return select.value !== previous;
+  }
 
   function showError(selector, error) {
     $(selector).textContent = error?.message || "";
@@ -686,9 +709,8 @@
 
   function updateTrainingLaunch() {
     const dataset = workspace.datasets.find((item) => item.id === $("#training-dataset").value);
-    const model = workspace.models.find(
-      (item) => item.id === $("#training-parent").value,
-    );
+    const model = selectedTrainingModel();
+    const selectedScope = modelScopes(model).find((scope) => scope.id === $("#training-scope").value);
     const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
     const device = workspace.trainingDevices.find((item) => item.id === $("#training-device").value);
     const unavailable =
@@ -699,7 +721,8 @@
       !datasetTools.mlSupported(dataset) ||
       !compatibility.compatible ||
       model?.status !== "ready" ||
-      !model.training;
+      !model.training ||
+      !selectedScope;
     for (const field of $("#training-form").querySelectorAll("input, select"))
       field.disabled = workspace.trainingBusy;
     $("#training-device").disabled = workspace.trainingBusy || workspace.trainingDevicesLoading;
@@ -715,6 +738,7 @@
       workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
       !workspace.models.some((item) => item.status === "ready" && datasetTools.modelCompatibility(dataset, item, "training").compatible);
+    $("#training-scope").disabled = workspace.trainingBusy || !modelScopes(model).length;
     const taxonomy = datasetTools.taxonomyOf(dataset);
     $("#training-dataset-limitation").textContent = dataset
       ? `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.map((item) => item.name).join(", ")}. Trained parents must use these exact saved definitions.`
@@ -722,7 +746,8 @@
     if (!workspace.trainingModelsLoading)
       $("#training-model-status").textContent = workspace.trainingModelsError || (model?.status === "ready"
         ? compatibility.reason
-        : "A ready Faster R-CNN MobileNet V3 checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
+        : "A ready Faster R-CNN or SSDLite checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
+    $("#training-model-description").textContent = model?.training_summary || "";
     $("#training-preview").disabled = unavailable;
     $("#training-preview").textContent =
       workspace.trainingOperation === "preview"
@@ -736,10 +761,12 @@
       workspace.trainingOperation === "start"
         ? "Queuing training…"
         : `Start ${recoveryTools.deviceLabel($("#training-device").value)} training →`;
-    const selected = trainingScopes[$("#training-scope").value];
     $("#training-scope-description").textContent =
-      selected?.description || "Choose a training depth.";
-    $("#training-scope-cost").textContent = selected?.cost || "";
+      selectedScope?.description || "Choose a training depth.";
+    $("#training-scope-cost").textContent = selectedScope?.cost || trainingScopes[selectedScope?.id]?.cost || "";
+    $("#training-scope-modules").textContent = selectedScope?.trainable_modules?.length
+      ? `Layers to update: ${selectedScope.trainable_modules.join(", ")}.`
+      : "";
     const steps = Number($("#training-steps").value);
     const interval = $("#training-checkpoint-interval");
     const minimum = recoveryTools.checkpointMinimum(steps);
@@ -759,7 +786,7 @@
     workspace.trainingPreview = preview;
     workspace.trainingPreviewKey = JSON.stringify(payload);
     $("#training-preview-result").hidden = false;
-    $("#training-preview-scope").textContent = scopeLabel(preview.scope.id);
+    $("#training-preview-scope").textContent = preview.scope.label || scopeLabel(preview.scope.id);
     $("#training-preview-summary").textContent =
       `${preview.dataset.name} · starting from ${preview.parent.name} · learning rate ${payload.learning_rate} · seed ${payload.seed}`;
     const counts = $("#training-preview-counts");
@@ -842,8 +869,10 @@
     }
     const ready = eligible.filter((model) => model.status === "ready" && datasetTools.modelCompatibility(dataset, model, "training").compatible);
     if (!ready.length) select.prepend(new Option("No compatible ready checkpoint", ""));
-    select.value = ready.some((model) => model.id === previous) ? previous : ready[0]?.id || "";
-    if (select.value !== previous) invalidateTrainingPreview();
+    const defaultModel = ready.find((model) => model.id === "fasterrcnn_mobilenet_v3_large_320_fpn") || ready[0];
+    select.value = ready.some((model) => model.id === previous) ? previous : defaultModel?.id || "";
+    const scopeChanged = renderTrainingScopes();
+    if (select.value !== previous || scopeChanged) invalidateTrainingPreview();
     else updateTrainingLaunch();
   }
 
@@ -863,6 +892,7 @@
       workspace.models = [];
       workspace.trainingModelsError = error.message;
       select.replaceChildren(new Option("Model availability unavailable", ""));
+      renderTrainingScopes();
       select.disabled = true;
       $("#training-model-status").textContent = error.message;
     } finally {
@@ -920,7 +950,7 @@
     for (const run of workspace.trainings)
       select.append(
         new Option(
-          `${run.name} · ${scopeLabel(run.config?.scope)} · ${recoveryTools.deviceLabel(run.config?.device)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
+          `${run.name} · ${scopeLabel(run.config?.scope, run.parent_model_id)} · ${recoveryTools.deviceLabel(run.config?.device)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
           run.id,
         ),
       );
@@ -1132,16 +1162,14 @@
         (item) => item.id === detail.dataset_id,
       );
       $("#training-detail-context").textContent =
-        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope)} · ${recoveryTools.deviceLabel(detail.config.device)} · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope, detail.parent_model_id)} · ${recoveryTools.deviceLabel(detail.config.device)} · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
       const trained = detail.metadata?.trainable_parameters;
       const total = detail.metadata?.total_parameters;
       const modules =
         detail.metadata?.trainable_modules ||
         detail.config.trainable_modules ||
-        (detail.config.scope === undefined ||
-        detail.config.scope === "prediction_head_only"
-          ? ["roi_heads.box_predictor"]
-          : []);
+        modelScopes(workspace.models.find((item) => item.id === detail.parent_model_id))
+          .find((scope) => scope.id === (detail.config.scope || "prediction_head_only"))?.trainable_modules || [];
       const counts =
         Number.isFinite(trained) && Number.isFinite(total)
           ? `${trained.toLocaleString()} of ${total.toLocaleString()} parameters trainable. `
@@ -1231,6 +1259,7 @@
   });
   $("#training-form").addEventListener("input", invalidateTrainingPreview);
   $("#training-dataset").addEventListener("change", renderTrainingModels);
+  $("#training-parent").addEventListener("change", renderTrainingScopes);
   $("#training-form").addEventListener("change", invalidateTrainingPreview);
   $("#dataset-form").addEventListener("submit", async (event) => {
     event.preventDefault();

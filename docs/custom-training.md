@@ -8,18 +8,21 @@ has the same meaning as that source category. Names alone never create mappings.
 
 ## Parent checkpoint and training
 
-The supported trainable architecture is Faster R-CNN MobileNetV3-Large 320 FPN.
-Start from its provisioned official weights or an IRIS checkpoint with the exact
+The supported trainable architectures are Faster R-CNN MobileNetV3-Large 320 FPN
+and SSDLite320 MobileNetV3-Large. Start from provisioned official weights or an IRIS checkpoint with the exact
 same frozen class snapshot and mappings. A trained parent from another class
 version is incompatible even if its labels have the same names. Start from official
 weights for the new definitions; existing datasets and checkpoints remain usable.
 
 The prediction head has N object classes plus background. With an official parent,
-IRIS copies background and the classifier and box-regression rows for explicitly
-mapped COCO categories. Classes without mappings retain seeded initialization.
+IRIS copies background and explicitly mapped COCO classifier rows. Faster R-CNN
+also copies per-class box-regression rows; SSDLite preserves its class-independent
+regression and maps classifier rows separately for every anchor. Classes without mappings retain seeded initialization.
 With a compatible trained parent, the learned head is retained. The chosen light,
 partial or full training depth then determines which parameters can change.
-Initialization and class mappings are recorded with the training settings.
+Initialization and class mappings are recorded with the training settings. See
+[trainable model choices](trainable-models.md) for architecture-specific depths,
+frozen normalization and SSDLite's explicit negative-image loss policy.
 
 Only the frozen training split is read by the optimizer. At least one training
 image must contain a positive annotation; validated negatives are also supported.
