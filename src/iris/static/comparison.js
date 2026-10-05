@@ -8,6 +8,7 @@
     chosenModels: new Set(),
     choicesTouched: false,
     catalogRequest: 0,
+    catalogLoading: true,
     history: [],
     sessionId: null,
     activeId: null,
@@ -136,6 +137,13 @@
     const saving = state.bulkSelecting || state.pendingSelections.size > 0;
     const modelCount = comparison.chosenModels.size;
     const mode = inferenceMode();
+    const readyCount = comparison.models.filter((model) => model.status === "ready").length;
+    $("#model-selection-summary").textContent = comparison.catalogLoading
+      ? "Checking models…"
+      : `${modelCount} selected · ${readyCount} ready`;
+    $("#model-catalog-hint").textContent = mode === "paired"
+      ? "Choose one model for full image vs tiled. Availability checks local files and dependencies; the runtime is loaded only when you start a run."
+      : "Choose up to two models. Availability checks local files and dependencies; the runtime is loaded only when you start a run.";
     const tiled = mode !== "full";
     const tileSize = Number($("#comparison-tile-size").value);
     const overlapText = $("#comparison-tile-overlap").value;
@@ -209,9 +217,10 @@
     for (const model of comparison.models) {
       const ready = model.status === "ready";
       const card = node(
-        "label",
+        "article",
         `model-card${ready ? " ready" : " unavailable"}`,
       );
+      const selection = node("label", "model-card-selection");
       const checkbox = node("input");
       checkbox.type = "checkbox";
       checkbox.value = model.id;
@@ -231,41 +240,68 @@
       });
       const content = node("span", "model-card-content");
       const title = node("span", "model-card-title");
+      const availability = {
+        missing_weights: "Weights missing",
+        missing_runtime: "Runtime missing",
+        invalid_weights: "Checkpoint issue",
+      };
       title.append(
         node("strong", "", model.name),
         node(
           "span",
           `model-availability${ready ? " ready" : ""}`,
-          ready ? "Ready" : "Setup required",
+          ready ? "Ready" : availability[model.status] || "Setup required",
         ),
       );
       content.append(
         title,
-        node("span", "model-description", model.architecture),
+        node("span", "model-card-origin", model.origin === "trained"
+          ? "Trained in IRIS · frozen class version"
+          : `Official pretrained · ${model.weights_name || "detector weights"}`),
       );
+      const classes = model.taxonomy?.classes || model.classes || [];
+      const classNames = classes.map((item) => item.display_name || item.name || item.id);
+      const classCount = `${classes.length} output class${classes.length === 1 ? "" : "es"}`;
       content.append(
         node(
           "span",
           "model-description",
           ready
-            ? `${model.classes.length} classes · verified local weights · runtime checked at launch`
+            ? `${classCount} · local weights verified`
             : model.reason || "Local model dependencies are unavailable.",
         ),
       );
-      if (!ready && model.download_bytes)
-        content.append(
-          node(
-            "span",
-            "model-description",
-            `Weights: ${formatBytes(model.download_bytes)}`,
-          ),
-        );
-      card.append(checkbox, content);
+      selection.append(checkbox, content);
+      const details = node("details", "model-card-details");
+      details.append(node("summary", "", "Classes and model details"));
+      if (model.training_summary)
+        details.append(node("p", "model-description", model.training_summary));
+      const metadata = node("dl", "model-card-metadata");
+      for (const [label, value] of [
+        ["Architecture", model.architecture],
+        ["Source", model.origin === "trained" ? "Local training checkpoint" : "Official pretrained weights"],
+        ["Weights", model.weights_name],
+        ["Weight size", model.download_bytes ? formatBytes(model.download_bytes) : null],
+        ["Class version", model.taxonomy_id],
+        ["Parent model", model.parent_model_id],
+        ["Training run", model.training_id],
+      ]) {
+        if (!value) continue;
+        metadata.append(node("dt", "", label), node("dd", "", value));
+      }
+      details.append(metadata);
+      details.append(node("p", "model-classes-heading", classCount));
+      details.append(node("p", "model-class-names", classNames.join(" · ") || "Class definitions are unavailable for this checkpoint."));
+      if (classes.length)
+        details.append(node("p", "model-description", model.origin === "trained"
+          ? "These labels are frozen with the checkpoint. Names and mappings may differ from the current project class version."
+          : "These are the detector's original labels. Mapping to project classes is a separate step when using its predictions."));
+      card.append(selection, details);
       catalog.append(card);
     }
     if (!comparison.models.length)
       catalog.append(
-        node("p", "muted small", "No models are available in the catalog."),
+        node("p", "model-catalog-empty", "No models are listed. Refresh the catalog to check local detectors and completed training checkpoints."),
       );
     $("#model-setup").hidden = !comparison.models.some(
       (model) => model.status !== "ready",
@@ -277,7 +313,10 @@
 
   async function refreshModels() {
     const request = ++comparison.catalogRequest;
+    comparison.catalogLoading = true;
     $("#refresh-models").disabled = true;
+    $("#model-catalog").setAttribute("aria-busy", "true");
+    $("#model-selection-summary").textContent = "Checking models…";
     showError("#model-error", null);
     try {
       const models = await api("/api/models");
@@ -307,8 +346,12 @@
       renderModels();
       showError("#model-error", error);
     } finally {
-      if (request === comparison.catalogRequest)
+      if (request === comparison.catalogRequest) {
+        comparison.catalogLoading = false;
         $("#refresh-models").disabled = false;
+        $("#model-catalog").setAttribute("aria-busy", "false");
+        updateLaunch();
+      }
     }
   }
 

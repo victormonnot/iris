@@ -20,6 +20,9 @@
     <link rel="stylesheet" href="/static/studio-intake.css" />
     <link rel="stylesheet" href="/static/studio-annotation.css" />
     <link rel="stylesheet" href="/static/studio-datasets.css" />
+    <link rel="stylesheet" href="/static/studio-models.css" />
+    <link rel="stylesheet" href="/static/studio-training.css" />
+    <link rel="stylesheet" href="/static/studio-training-history.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -38,6 +41,7 @@
     <script src="/static/preannotations.js" defer></script>
     <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training-recovery.js" defer></script>
+    <script src="/static/training-navigation.js" defer></script>
     <script src="/static/training.js" defer></script>
     <script src="/static/model-export-tools.js" defer></script>
     <script src="/static/model-export.js" defer></script>
@@ -419,7 +423,7 @@
             >
               <div class="panel-heading">
                 <div>
-                  <h2 id="comparison-setup-title">Run on your selection</h2>
+                  <h2 id="comparison-setup-title">Compare local models</h2>
                   <p>
                     Compare local detectors on the same frames. Results are
                     saved with their model configuration.
@@ -430,7 +434,13 @@
                 </button>
               </div>
               <div class="comparison-setup-body">
-                <div id="model-catalog" class="model-catalog">
+                <div class="comparison-model-library">
+                  <div class="model-library-heading">
+                    <h3>Choose detectors</h3>
+                    <span id="model-selection-summary" class="count" role="status" aria-live="polite">Checking models…</span>
+                  </div>
+                  <p id="model-catalog-hint" class="field-hint">Choose up to two models. Availability checks local files and dependencies; the runtime is loaded only when you start a run.</p>
+                <div id="model-catalog" class="model-catalog" aria-label="Local detector catalog" aria-describedby="model-catalog-hint" aria-busy="true">
                   <p class="muted small">Loading model availability…</p>
                 </div>
                 <p
@@ -440,9 +450,9 @@
                   hidden
                 ></p>
                 <details id="model-setup" class="setup-help" hidden>
-                  <summary>Set up local inference</summary>
+                  <summary>Install runtime or pretrained weights</summary>
                   <p>
-                    The optional CPU runtime and pretrained weights are
+                    The optional CPU runtime and official pretrained weights are
                     installed separately. These commands download software and
                     model weights; your source data stays local. No download
                     starts from this page.
@@ -455,8 +465,14 @@
                     command. See the README for installation details and model
                     licenses.
                   </p>
+                  <p>A missing or invalid trained checkpoint needs its saved training output or a workspace backup; these commands only download official weights.</p>
                 </details>
-                <form id="comparison-form">
+                </div>
+                <form id="comparison-form" class="comparison-run-setup">
+                  <div class="comparison-run-heading">
+                    <h3>Configure this comparison</h3>
+                    <span class="phase-tag">Local inference</span>
+                  </div>
                   <div class="comparison-form-fields">
                     <div>
                       <label for="comparison-name">Run name</label
@@ -1378,6 +1394,13 @@ ollama pull qwen3-vl:4b-instruct</pre
             aria-label="Dataset and training"
             hidden
           >
+            <div class="training-section-nav" role="tablist" aria-label="Dataset and training views">
+              <button id="training-tab-datasets" type="button" role="tab" aria-selected="true" aria-controls="training-pane-datasets">Datasets</button>
+              <button id="training-tab-plan" type="button" role="tab" aria-selected="false" aria-controls="training-pane-plan" tabindex="-1">New training</button>
+              <button id="training-tab-runs" type="button" role="tab" aria-selected="false" aria-controls="training-pane-runs" tabindex="-1">Run history</button>
+              <button id="training-tab-exports" type="button" role="tab" aria-selected="false" aria-controls="training-pane-exports" tabindex="-1">Model exports</button>
+            </div>
+            <div id="training-pane-datasets" role="tabpanel" aria-labelledby="training-tab-datasets">
             <div class="dataset-workspace-intro">
               <p class="eyebrow">Validated data / Frozen versions</p>
               <p class="dataset-scope">Build a release from reviewed images across your project, then use that exact version for training and evaluation.</p>
@@ -1491,7 +1514,6 @@ ollama pull qwen3-vl:4b-instruct</pre
                 </section>
               </form>
             </section>
-            <div class="training-columns">
               <section
                 class="panel dataset-panel studio-dataset-releases"
                 aria-labelledby="dataset-history-title"
@@ -1544,6 +1566,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                       class="dataset-warnings"
                     ></div>
                     <div class="dataset-download-actions">
+                      <button id="dataset-use-training" type="button" class="button button-primary" disabled>Train from this release →</button>
                       <button
                         id="dataset-coco-download"
                         class="button button-secondary"
@@ -1580,9 +1603,10 @@ ollama pull qwen3-vl:4b-instruct</pre
                   </div>
                 </div>
               </section>
+            </div>
               <section
-                class="panel dataset-panel"
-                aria-labelledby="training-create-title"
+                id="training-pane-plan" role="tabpanel" aria-labelledby="training-tab-plan" hidden
+                class="panel dataset-panel studio-training-plan"
               >
                 <div class="panel-heading">
                   <div>
@@ -1594,7 +1618,11 @@ ollama pull qwen3-vl:4b-instruct</pre
                   </div>
                   <span class="local-label">CPU / NVIDIA GPU</span>
                 </div>
-                <form id="training-form" class="dataset-panel-body">
+                <form id="training-form" class="dataset-panel-body training-plan-layout">
+                  <div class="training-plan-fields">
+                  <section class="training-plan-step" aria-labelledby="training-inputs-title">
+                    <div class="training-step-heading"><span aria-hidden="true">01</span><div><h3 id="training-inputs-title">Choose data and a starting model</h3><p>Train from a frozen release and a compatible local checkpoint.</p></div></div>
+                  <div class="training-field">
                   <label for="training-name">Training name</label>
                   <input
                     id="training-name"
@@ -1603,11 +1631,17 @@ ollama pull qwen3-vl:4b-instruct</pre
                     placeholder="e.g. Project detector · first pass"
                     autocomplete="off"
                   />
+                  </div>
+                  <div class="training-inputs-grid">
+                  <div class="training-field">
                   <label for="training-dataset">Dataset release</label>
                   <select id="training-dataset" required disabled>
                     <option value="">Freeze a dataset first</option>
                   </select>
                   <p id="training-dataset-limitation" class="field-hint"></p>
+                  <button type="button" class="text-button" data-training-open="datasets">Prepare or inspect releases →</button>
+                  </div>
+                  <div class="training-field">
                   <label for="training-parent">Starting checkpoint</label>
                   <select id="training-parent" required disabled aria-describedby="training-model-status training-model-description">
                     <option value="">Checking local models…</option>
@@ -1618,6 +1652,14 @@ ollama pull qwen3-vl:4b-instruct</pre
                     role="status"
                   ></p>
                   <p id="training-model-description" class="field-hint"></p>
+                  <div class="training-model-actions"><button id="training-models-refresh" type="button" class="text-button">Refresh models</button><button id="training-models-open" type="button" class="text-button">Inspect model library →</button></div>
+                  </div>
+                  </div>
+                  </section>
+                  <section class="training-plan-step" aria-labelledby="training-compute-title">
+                    <div class="training-step-heading"><span aria-hidden="true">02</span><div><h3 id="training-compute-title">Set compute and training depth</h3><p>The training device and eventual deployment target are independent choices.</p></div></div>
+                  <div class="training-inputs-grid">
+                  <div class="training-field">
                   <label for="training-device">Training device</label>
                   <select id="training-device" required aria-describedby="training-device-status training-device-hint">
                     <option value="cpu">CPU</option>
@@ -1625,7 +1667,9 @@ ollama pull qwen3-vl:4b-instruct</pre
                   </select>
                   <p id="training-device-status" class="field-hint" role="status"></p>
                   <button id="training-devices-refresh" type="button" class="text-button">Refresh devices</button>
-                  <p id="training-device-hint" class="field-hint">Train on CPU or an available NVIDIA CUDA GPU. The resulting weights can be exported for CPU or GPU separately. Refreshing checks availability; it does not install software or run a model.</p>
+                  <p id="training-device-hint" class="field-hint">CPU or an available NVIDIA CUDA GPU. Refresh checks local availability without installing software or running a model.</p>
+                  </div>
+                  <div class="training-field">
                   <label for="training-scope">Training depth for this run</label>
                   <select
                     id="training-scope"
@@ -1644,7 +1688,12 @@ ollama pull qwen3-vl:4b-instruct</pre
                   </select>
                   <p id="training-scope-description" class="field-hint"></p>
                   <p id="training-scope-cost" class="field-hint"></p>
-                  <p id="training-scope-modules" class="field-hint"></p>
+                  <details class="training-layer-details"><summary>Layers updated at this depth</summary><p id="training-scope-modules" class="field-hint"></p></details>
+                  </div>
+                  </div>
+                  </section>
+                  <section class="training-plan-step" aria-labelledby="training-budget-title">
+                    <div class="training-step-heading"><span aria-hidden="true">03</span><div><h3 id="training-budget-title">Set the run budget and recovery</h3><p>Bound optimizer steps and choose when to save resumable progress.</p></div></div>
                   <div class="training-settings">
                     <div>
                       <label for="training-steps">Optimizer steps</label
@@ -1692,16 +1741,23 @@ ollama pull qwen3-vl:4b-instruct</pre
                     it explicitly for each run; deeper training does not
                     guarantee a better detector.
                   </p>
-                  <p class="field-hint">
+                  <details class="training-behavior"><summary>Training behavior and limits</summary><p class="field-hint">
                     Batch size 1 · classes from the frozen dataset. Batch normalization statistics stay
                     fixed at every depth. Only training frames update the model;
                     validation and test frames are preserved for evaluation.
                   </p>
                   <p class="field-hint">
                     Starting a run uses the selected device and local disk space. The step limit
-                    bounds the run; you can cancel it in Processing jobs. No
+                    bounds the run; you can cancel it in Project jobs. No
                     model download or API call starts here.
                   </p>
+                  </details>
+                  </section>
+                  </div>
+                  <aside class="training-plan-review" aria-labelledby="training-plan-review-title">
+                  <p class="eyebrow">Before you start</p>
+                  <h3 id="training-plan-review-title">Review the training plan</h3>
+                  <p id="training-readiness" class="field-hint" role="status">Choose a release and a local model to prepare your plan.</p>
                   <button
                     id="training-preview"
                     type="submit"
@@ -1745,28 +1801,34 @@ ollama pull qwen3-vl:4b-instruct</pre
                     role="alert"
                     hidden
                   ></p>
+                  </aside>
                 </form>
               </section>
-            </div>
             <section
               class="panel dataset-panel"
-              aria-labelledby="training-history-title"
+              id="training-pane-runs"
+              role="tabpanel"
+              aria-labelledby="training-tab-runs"
+              hidden
             >
               <div class="panel-heading">
                 <div>
                   <h2 id="training-history-title">Training runs</h2>
                   <p>
-                    Inspect optimization progress and compare each completed
-                    checkpoint.
+                    Follow local runs, inspect saved progress and open a completed model.
                   </p>
                 </div>
-                <span id="training-history-count" class="count">0</span>
+                <div class="training-history-actions">
+                  <span id="training-history-count" class="count">0</span>
+                  <button id="training-history-refresh" type="button" class="button button-secondary">Refresh runs</button>
+                </div>
               </div>
               <div class="dataset-panel-body">
-                <label for="training-history">Run history</label>
+                <label for="training-history">Choose a run</label>
                 <select id="training-history" disabled>
                   <option value="">No training runs yet</option>
                 </select>
+                <p id="training-history-status" class="field-hint" role="status"></p>
                 <p
                   id="training-history-error"
                   class="inline-error"
@@ -1775,17 +1837,18 @@ ollama pull qwen3-vl:4b-instruct</pre
                 ></p>
                 <p id="training-history-empty" class="field-hint">
                   Start a bounded local run once a dataset release and local model
-                  are ready.
+                  are ready. <button type="button" class="text-button" data-training-open="plan">Plan a training run →</button>
                 </p>
                 <div id="training-detail" hidden>
-                  <div class="comparison-run-heading">
+                  <div class="comparison-run-heading training-run-heading">
                     <div>
                       <h3 id="training-detail-name"></h3>
                       <p id="training-detail-context" class="field-hint"></p>
-                      <p id="training-detail-scope" class="field-hint"></p>
-                      <p id="training-detail-duration" class="field-hint" role="status"></p>
                     </div>
-                    <span id="training-detail-status" class="job-status"></span>
+                    <div class="training-run-actions">
+                      <span id="training-detail-status" class="job-status"></span>
+                      <button id="training-detail-job" type="button" class="button button-secondary" hidden>Job details &amp; cancellation</button>
+                    </div>
                   </div>
                   <p
                     id="training-detail-message"
@@ -1798,13 +1861,30 @@ ollama pull qwen3-vl:4b-instruct</pre
                     role="alert"
                     hidden
                   ></p>
+                  <div class="training-run-metrics" aria-label="Recorded optimization progress">
+                    <div class="training-step-metric">
+                      <span class="training-metric-label">Optimizer steps</span>
+                      <strong id="training-detail-steps">0 / 0</strong>
+                      <progress id="training-detail-progress" max="1" value="0" aria-label="Completed optimizer steps"></progress>
+                    </div>
+                    <div>
+                      <span class="training-metric-label">Latest training loss</span>
+                      <strong id="training-detail-loss">Not recorded</strong>
+                    </div>
+                    <div>
+                      <span class="training-metric-label">Recorded active time</span>
+                      <strong id="training-detail-active-time">Not recorded</strong>
+                    </div>
+                  </div>
+                  <p id="training-detail-duration" class="field-hint" role="status"></p>
                   <div
                     id="training-checkpoint"
                     class="training-checkpoint"
                     hidden
                   >
                     <div>
-                      <strong>Checkpoint ready for comparison</strong>
+                      <strong>Trained model ready</strong>
+                      <p class="field-hint">Compare its predictions or evaluate it on held-out images.</p>
                       <p
                         id="training-checkpoint-id"
                         class="field-hint monospace"
@@ -1819,15 +1899,19 @@ ollama pull qwen3-vl:4b-instruct</pre
                     </button>
                   </div>
                   <section id="training-recovery" class="training-recovery" aria-labelledby="training-recovery-title">
-                    <h3 id="training-recovery-title">Continue an interrupted run</h3>
-                    <p id="training-recovery-status" class="field-hint"></p>
-                    <p id="training-recovery-lineage" class="field-hint"></p>
-                    <div id="training-recovery-checkpoints"></div>
-                    <p class="field-hint">Recovery states preserve optimization progress and cannot be used for detection. The latest two states are retained. A completed run publishes a separate model checkpoint for comparison.</p>
-                    <div class="training-recovery-actions">
-                      <button id="training-resume-preview" type="button" class="button button-secondary" disabled>Preview continuation</button>
-                      <button id="training-resume-existing" type="button" class="button button-secondary" hidden>Open continuation →</button>
+                    <div class="training-recovery-heading">
+                      <div>
+                        <h3 id="training-recovery-title">Saved progress &amp; continuation</h3>
+                        <p id="training-recovery-status" class="field-hint"></p>
+                      </div>
+                      <div class="training-recovery-actions">
+                        <button id="training-resume-preview" type="button" class="button button-secondary" disabled>Preview continuation</button>
+                        <button id="training-resume-existing" type="button" class="button button-secondary" hidden>Open continuation →</button>
+                      </div>
                     </div>
+                    <p id="training-recovery-lineage" class="field-hint"></p>
+                    <div id="training-recovery-checkpoints" aria-label="Retained recovery states"></div>
+                    <p class="training-recovery-note">The latest two recovery states are retained for continuation. They cannot be used for detection; a completed run publishes a separate model checkpoint.</p>
                     <div id="training-resume-plan" class="training-preview" hidden>
                       <h4>Continue from saved progress</h4>
                       <p id="training-resume-summary" class="field-hint"></p>
@@ -1836,6 +1920,8 @@ ollama pull qwen3-vl:4b-instruct</pre
                     </div>
                     <p id="training-resume-error" class="inline-error" role="alert" hidden></p>
                   </section>
+                  <details class="training-loss-disclosure">
+                    <summary>Optimization history <span id="training-loss-count" class="muted"></span></summary>
                   <p class="training-loss-note">
                     Training loss describes optimization on the training frames.
                     It is not detection accuracy and does not prove improvement.
@@ -1851,14 +1937,16 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <button id="training-loss-earlier" type="button" class="button button-quiet" disabled>Earlier steps</button>
                     <button id="training-loss-later" type="button" class="button button-quiet" disabled>Later steps</button>
                   </div>
+                  </details>
                   <details class="dataset-provenance">
                     <summary>Training configuration and provenance</summary>
+                    <p id="training-detail-scope" class="field-hint"></p>
                     <pre id="training-provenance"></pre>
                   </details>
                 </div>
               </div>
             </section>
-            <section class="panel dataset-panel" aria-labelledby="model-export-title">
+            <section id="training-pane-exports" role="tabpanel" aria-labelledby="training-tab-exports" hidden class="panel dataset-panel">
               <div class="panel-heading">
                 <div>
                   <h2 id="model-export-title">Use a trained model elsewhere</h2>

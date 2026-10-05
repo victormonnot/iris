@@ -602,6 +602,7 @@
       );
       workspace.datasetDetail = detail;
       $("#dataset-coco-download").disabled = false;
+      updateTrainingLaunch();
       showError("#dataset-history-error", null);
     } catch (error) {
       if (request === workspace.datasetRequest)
@@ -614,6 +615,7 @@
     workspace.exportController?.abort();
     workspace.exportController = null;
     workspace.datasetDetail = null;
+    $("#dataset-use-training").disabled = true;
     $("#dataset-coco-download").disabled = true;
     $("#dataset-coco-download").textContent = "Download COCO ZIP";
     $("#dataset-export-status").textContent = "";
@@ -749,6 +751,12 @@
       field.disabled = workspace.trainingBusy;
     $("#training-device").disabled = workspace.trainingBusy || workspace.trainingDevicesLoading;
     $("#training-devices-refresh").disabled = workspace.trainingBusy || workspace.trainingDevicesLoading;
+    $("#training-models-refresh").disabled = workspace.trainingBusy || workspace.trainingModelsLoading;
+    $("#training-models-open").disabled = workspace.trainingBusy || !state.sessionId;
+    $("#training-models-open").title = state.sessionId ? "Inspect local checkpoints and setup instructions" : "Choose a session to open the comparison model library";
+    $("#dataset-use-training").disabled = workspace.trainingBusy ||
+      !workspace.datasetDetail || workspace.datasetDetail.id !== workspace.datasetId ||
+      !datasetTools.mlSupported(workspace.datasetDetail);
     $("#training-device-status").textContent = workspace.trainingDevicesLoading
       ? "Checking the local PyTorch runtime and visible devices…"
       : [workspace.trainingDevicesError, device?.reason,
@@ -765,12 +773,28 @@
     $("#training-dataset-limitation").textContent = dataset
       ? `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.map((item) => item.name).join(", ")}. Trained parents must use these exact saved definitions.`
       : "Choose a frozen release to see compatible starting checkpoints.";
-    if (!workspace.trainingModelsLoading)
-      $("#training-model-status").textContent = workspace.trainingModelsError || (model?.status === "ready"
+    $("#training-model-status").textContent = workspace.trainingModelsLoading
+      ? "Checking local checkpoints and supported training depths…"
+      : workspace.trainingModelsError || (model?.status === "ready"
         ? compatibility.reason
         : "A ready Faster R-CNN or SSDLite checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
     $("#training-model-description").textContent = model?.training_summary || "";
     $("#training-preview").disabled = unavailable;
+    $("#training-readiness").textContent = workspace.trainingBusy
+      ? workspace.trainingOperation === "start" ? "Queuing this reviewed plan…" : "Checking the frozen release, checkpoint and settings…"
+      : workspace.trainingModelsLoading || workspace.trainingDevicesLoading
+        ? "Checking local models and compute availability…"
+        : !datasetTools.mlSupported(dataset)
+          ? "Choose a compatible frozen release in Datasets to prepare a training plan."
+          : workspace.trainingModelsError || !model || !compatibility.compatible || model.status !== "ready" || !model.training || !selectedScope
+            ? "A compatible, ready starting checkpoint is required. Review model availability beside the selector."
+            : !device?.available
+              ? "The selected training device is unavailable. Choose an available device or refresh availability."
+              : workspace.trainingPreview && workspace.trainingPreviewKey === JSON.stringify(trainingPayload())
+                ? "Plan checked. Review the details below, then start training when ready."
+                : !$("#training-name").value.trim()
+                  ? "Name this run, review its settings, then preview the plan."
+                  : "Preview this plan to check the dataset, checkpoint and settings before starting.";
     $("#training-preview").textContent =
       workspace.trainingOperation === "preview"
         ? "Checking training plan…"
@@ -972,15 +996,21 @@
     for (const run of workspace.trainings)
       select.append(
         new Option(
-          `${run.name} · ${scopeLabel(run.config?.scope, run.parent_model_id)} · ${recoveryTools.deviceLabel(run.config?.device)} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
+          `${run.name} · ${run.job?.status || "Unknown status"} · ${new Date(run.created_at).toLocaleString()}`,
           run.id,
         ),
       );
     select.value = workspace.trainingId || "";
   }
 
-  async function refreshTrainings() {
+  async function refreshTrainings(event) {
     const request = ++workspace.historyRequest;
+    const announce = event?.type === "click" ||
+      $("#training-history-status").textContent === "Refreshing run history…" ||
+      !$("#training-history-error").hidden;
+    $("#training-history-refresh").disabled = true;
+    $("#training-history").setAttribute("aria-busy", "true");
+    if (announce) $("#training-history-status").textContent = "Refreshing run history…";
     try {
       const trainings = await api("/api/trainings");
       if (request !== workspace.historyRequest) return;
@@ -990,9 +1020,20 @@
       renderTrainingHistory();
       showError("#training-history-error", null);
       if (workspace.trainingId) await loadTraining(workspace.trainingId);
+      if (request === workspace.historyRequest && announce)
+        $("#training-history-status").textContent = $("#training-history-error").hidden
+          ? "Run history refreshed."
+          : "The run list loaded, but the selected run could not be read. Try Refresh runs again.";
     } catch (error) {
-      if (request === workspace.historyRequest)
+      if (request === workspace.historyRequest) {
         showError("#training-history-error", error);
+        $("#training-history-status").textContent = "Run history could not be refreshed. Try Refresh runs again.";
+      }
+    } finally {
+      if (request === workspace.historyRequest) {
+        $("#training-history-refresh").disabled = false;
+        $("#training-history").setAttribute("aria-busy", "false");
+      }
     }
   }
 
@@ -1001,6 +1042,9 @@
     container.replaceChildren();
     const page = recoveryTools.lossPage(history, workspace.lossPage);
     workspace.lossPage = page.page;
+    $("#training-loss-count").textContent = page.total
+      ? `${page.total.toLocaleString()} recorded steps`
+      : "No recorded steps";
     $("#training-loss-page").textContent = page.total
       ? `Showing ${page.start + 1}–${page.end} of ${page.total} recorded steps. Full history remains saved with the run.`
       : "";
@@ -1085,7 +1129,12 @@
     snapshots.replaceChildren();
     for (const checkpoint of [...(detail.checkpoints || [])].sort((a, b) => b.step - a.step).slice(0, 2)) {
       const size = Number.isFinite(checkpoint.size_bytes) ? ` · ${(checkpoint.size_bytes / 1024 / 1024).toFixed(1)} MiB` : "";
-      snapshots.append(node("p", "field-hint", `Saved step ${checkpoint.step}${size} · ${new Date(checkpoint.created_at).toLocaleString()}`));
+      const saved = node("div", "training-recovery-state");
+      saved.append(
+        node("strong", "", `Saved step ${checkpoint.step.toLocaleString()}`),
+        node("span", "field-hint", `${new Date(checkpoint.created_at).toLocaleString()}${size}`),
+      );
+      snapshots.append(saved);
     }
     const existing = recovery.existing_training_id || recoveryTools.findResume(workspace.trainings, detail.id)?.id;
     $("#training-resume-existing").hidden = !existing;
@@ -1156,6 +1205,7 @@
       workspace.lossPage = 0;
       await refreshTrainings();
       await refreshJobs();
+      window.IRISTrainingNavigation?.open("runs", { focus: true });
       notify(`Continuation queued from saved step ${approved.checkpoint_step}. Follow progress or cancel in Processing jobs.`);
     } catch (error) {
       if (request === workspace.resumeRequest && workspace.trainingId === detail.id && workspace.visible) {
@@ -1184,7 +1234,7 @@
         (item) => item.id === detail.dataset_id,
       );
       $("#training-detail-context").textContent =
-        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope, detail.parent_model_id)} · ${recoveryTools.deviceLabel(detail.config.device)} · ${detail.history.at(-1)?.step || 0}/${detail.config.steps} optimizer steps · seed ${detail.config.seed}`;
+        `${dataset?.name || detail.dataset_id} · ${scopeLabel(detail.config.scope, detail.parent_model_id)} · ${recoveryTools.deviceLabel(detail.config.device)}`;
       const trained = detail.metadata?.trainable_parameters;
       const total = detail.metadata?.total_parameters;
       const modules =
@@ -1202,6 +1252,7 @@
       const badge = $("#training-detail-status");
       badge.textContent = detail.job?.status || "Unknown status";
       badge.className = `job-status ${detail.job?.status || ""}`;
+      $("#training-detail-job").hidden = !detail.job?.id;
       $("#training-detail-message").textContent = detail.job?.message || "";
       showError(
         "#training-detail-error",
@@ -1209,11 +1260,21 @@
       );
       $("#training-checkpoint").hidden = !detail.checkpoint_id;
       $("#training-checkpoint-id").textContent = detail.checkpoint_id || "";
+      const latest = detail.history.at(-1);
+      const completed = latest?.step || 0;
+      const target = detail.config.steps;
+      $("#training-detail-steps").textContent = `${completed.toLocaleString()} / ${target.toLocaleString()}`;
+      const progress = $("#training-detail-progress");
+      progress.max = Math.max(1, target);
+      progress.value = Math.min(target, Math.max(0, completed));
+      progress.setAttribute("aria-valuetext", `${completed} of ${target} optimizer steps recorded`);
+      $("#training-detail-loss").textContent = Number.isFinite(latest?.loss) ? latest.loss.toFixed(5) : "Not recorded";
       const duration = recoveryTools.observedDuration(detail.history, detail.config.steps);
-      const elapsed = detail.history.at(-1)?.elapsed_seconds;
+      const elapsed = latest?.elapsed_seconds;
+      $("#training-detail-active-time").textContent = Number.isFinite(elapsed) ? recoveryTools.durationText(elapsed) : "Not recorded";
       const active = detail.job?.status === "running";
       $("#training-detail-duration").textContent =
-        (Number.isFinite(elapsed) ? `${recoveryTools.durationText(elapsed)} active time recorded; downtime excluded. ` : "") +
+        (Number.isFinite(elapsed) ? "Recorded active time excludes downtime. " : "") +
         (active && duration
           ? `About ${recoveryTools.durationText(duration.remainingSeconds)} remaining, based on the latest ${duration.observedSteps} observed steps. Saving and completion can add time; this estimate may change.`
           : active ? "A duration estimate appears after enough steps have been observed." : "");
@@ -1262,6 +1323,11 @@
     workspace.datasetId = event.target.value;
     loadDataset(workspace.datasetId);
   });
+  $("#training-history-refresh").addEventListener("click", refreshTrainings);
+  $("#training-detail-job").addEventListener("click", () => {
+    const id = workspace.trainingDetail?.job?.id;
+    if (id) window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: id } }));
+  });
   $("#training-history").addEventListener("change", (event) => {
     selectTraining(event.target.value);
   });
@@ -1280,6 +1346,17 @@
     renderLossHistory(workspace.trainingDetail?.history || []);
   });
   $("#training-form").addEventListener("input", invalidateTrainingPreview);
+  $("#dataset-use-training").addEventListener("click", () => {
+    if ($("#dataset-use-training").disabled) return;
+    $("#training-dataset").value = workspace.datasetDetail.id;
+    renderTrainingModels();
+    invalidateTrainingPreview();
+    window.IRISTrainingNavigation.open("plan", { focus: true });
+  });
+  $("#training-models-refresh").addEventListener("click", refreshTrainingModels);
+  $("#training-models-open").addEventListener("click", () => {
+    if (window.IRISNavigation.open("comparison")) $("#main").focus();
+  });
   $("#training-dataset").addEventListener("change", renderTrainingModels);
   $("#training-parent").addEventListener("change", renderTrainingScopes);
   $("#training-form").addEventListener("change", invalidateTrainingPreview);
@@ -1373,6 +1450,7 @@
       notify(
         `Training “${detail.name}” queued for ${payload.steps} ${recoveryTools.deviceLabel(payload.device)} steps. Follow progress or cancel in Processing jobs.`,
       );
+      window.IRISTrainingNavigation.open("runs", { focus: true });
     } catch (error) {
       if (request === workspace.trainingPreviewRequest && workspace.visible) {
         invalidateTrainingPreview();

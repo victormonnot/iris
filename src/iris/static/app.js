@@ -1234,6 +1234,10 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
   }
   $("#job-detail-dialog").close();
   $(`#workspace-${detail.next_action.workspace}`)?.click();
+  if (detail.next_action.workspace === "training" && !$("#training-workspace").hidden) {
+    const view = context.target_type === "model_exports" ? "exports" : results ? "runs" : "plan";
+    window.IRISTrainingNavigation.open(view, { focus: true });
+  }
   $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
   if (batch && context.batch_id) {
     window.dispatchEvent(new CustomEvent("iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));

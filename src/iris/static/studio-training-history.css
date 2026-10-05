@@ -1,0 +1,308 @@
+/* Studio run monitoring: outcome and recorded progress before diagnostics. */
+#training-pane-runs .panel-heading p {
+  max-width: 620px;
+}
+
+#training-pane-runs .dataset-panel-body > label {
+  margin-top: 0;
+}
+
+#training-history {
+  width: 100%;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+#training-detail {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+}
+
+.training-run-heading {
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.training-run-heading > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.training-run-heading h3 {
+  margin: 0;
+  font: 400 24px/1.25 var(--font-display);
+}
+
+#training-detail-status {
+  flex-shrink: 0;
+  text-transform: capitalize;
+}
+
+#training-detail-message {
+  overflow-wrap: anywhere;
+}
+
+#training-detail-message:empty,
+#training-detail-duration:empty,
+#training-history-status:empty,
+#training-recovery-lineage:empty {
+  display: none;
+}
+
+.training-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.training-run-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.training-run-actions .button {
+  font-size: 11px;
+}
+
+.training-run-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  margin-top: 20px;
+}
+
+.training-run-metrics > div {
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.training-run-metrics > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.training-metric-label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+
+.training-run-metrics strong {
+  display: block;
+  color: var(--ink);
+  font: 400 20px/1.3 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+#training-detail-progress {
+  display: block;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  margin-top: 13px;
+  border: 0;
+  border-radius: 0;
+  background: var(--line);
+  color: var(--accent);
+  accent-color: var(--accent);
+}
+
+#training-detail-progress::-webkit-progress-bar {
+  background: var(--line);
+}
+
+#training-detail-progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+#training-detail-progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+#training-detail-duration {
+  margin: 10px 0 22px;
+}
+
+#training-checkpoint {
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+  padding: 20px;
+}
+
+#training-checkpoint strong {
+  color: var(--success);
+  font-weight: 500;
+}
+
+#training-checkpoint .field-hint {
+  margin: 6px 0 0;
+}
+
+#training-recovery {
+  padding: 20px;
+  margin: 22px 0;
+}
+
+.training-recovery-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.training-recovery-heading > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.training-recovery-heading h3 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+}
+
+#training-recovery-status {
+  margin: 6px 0 0;
+}
+
+.training-recovery-heading .training-recovery-actions {
+  margin-top: 0;
+}
+
+#training-recovery-checkpoints {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+#training-recovery-checkpoints:empty {
+  display: none;
+}
+
+.training-recovery-state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border-left: 2px solid var(--accent);
+}
+
+.training-recovery-state strong {
+  font: 400 12px var(--font-mono);
+}
+
+.training-recovery-state .field-hint {
+  margin: 0;
+}
+
+.training-recovery-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 14px 0 0;
+}
+
+#training-resume-plan {
+  margin-bottom: 0;
+}
+
+#training-pane-runs :is(.training-loss-disclosure, .dataset-provenance) {
+  border-top: 1px solid var(--line);
+  margin-top: 0;
+  padding: 16px 0;
+}
+
+#training-pane-runs :is(.training-loss-disclosure, .dataset-provenance) > summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#training-loss-count {
+  margin-left: 10px;
+  font: 400 10px var(--font-mono);
+}
+
+.training-loss-note {
+  margin: 14px 0;
+}
+
+@media (max-width: 1050px) {
+  .training-recovery-heading {
+    flex-wrap: wrap;
+  }
+
+  .training-recovery-heading > div:first-child {
+    flex-basis: 100%;
+  }
+
+  .training-run-metrics > div {
+    padding: 15px;
+  }
+
+  .training-run-metrics strong {
+    font-size: 17px;
+  }
+}
+
+@media (max-width: 600px) {
+  .training-run-heading {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .training-run-actions {
+    align-items: flex-start;
+  }
+
+  .training-run-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .training-run-metrics .training-step-metric {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .training-run-metrics > div:nth-child(2) {
+    border-left: 0;
+  }
+
+  #training-checkpoint,
+  #training-recovery {
+    padding: 15px;
+  }
+
+  #training-checkpoint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #training-recovery-checkpoints {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .training-recovery-actions,
+  .training-recovery-actions .button,
+  #training-resume-start {
+    width: 100%;
+  }
+
+  #training-loss-count {
+    display: block;
+    margin: 5px 0 0;
+  }
+
+  .training-loss-history :is(th, td) {
+    padding: 8px;
+    font-size: 11px;
+  }
+}

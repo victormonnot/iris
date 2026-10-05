@@ -154,6 +154,19 @@ assign whole scene groups, then freeze a named release. A suggested split must b
 previewed and applied explicitly; freezing is a separate action. Saved releases
 retain their export actions and expandable class and provenance details.
 
+**Dataset & Training** has separate **Datasets**, **New training**, **Run history**
+and **Model exports** views. Switching between these views preserves entered
+settings and valid previews. Use **Train from this release** on a saved dataset
+to choose it explicitly in the training form. Configure the starting checkpoint,
+CPU/CUDA device, training depth and step/recovery budget, then preview the plan
+before starting. A queued run opens its history, with recorded progress, loss,
+active time and saved recovery states. Continuation still requires its own preview
+and explicit start; optimization history and full provenance are expandable.
+
+In **Model comparison**, the model library distinguishes official weights from
+trained checkpoints and shows local availability. Expand a model's details to
+inspect its architecture, output classes and saved provenance before selecting it.
+
 ## Projects
 
 Use the **Project** selector in the sidebar to switch projects, or **New project**
