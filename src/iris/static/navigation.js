@@ -60,8 +60,14 @@
 
   function syncSession() {
     const sessionView = sessionWorkspaces.has(current);
-    $("#session-workspace").hidden = !state.sessionId || !sessionView;
-    $("#welcome").hidden = Boolean(state.sessionId) || !sessionView;
+    for (const [selector, hidden] of [
+      ["#session-workspace", !state.sessionId || !sessionView],
+      ["#welcome", Boolean(state.sessionId) || !sessionView],
+    ]) {
+      const panel = $(selector);
+      if (hidden && panel.contains(document.activeElement)) $("#main").focus();
+      panel.hidden = hidden;
+    }
   }
 
   function open(name) {
@@ -71,6 +77,10 @@
       cancelable: true, detail: { name },
     }))) return false;
 
+    // A programmatic handoff may start inside the panel about to disappear.
+    // Keep keyboard navigation in the destination instead of resetting to body.
+    const leavingPanel = current !== name
+      && $(`#${current}-workspace`).contains(document.activeElement);
     current = name;
     for (const workspace of Object.keys(workspaces)) {
       const active = workspace === name;
@@ -87,6 +97,7 @@
     );
     $("#workspace-title").textContent = info[2];
     $("#workspace-description").textContent = info[3];
+    if (leavingPanel) $("#main").focus();
     syncSession();
     compactOpen = false;
     renderSidebar();

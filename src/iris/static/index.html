@@ -26,6 +26,8 @@
     <link rel="stylesheet" href="/static/studio-evaluation.css" />
     <link rel="stylesheet" href="/static/studio-reports.css" />
     <link rel="stylesheet" href="/static/studio-exports.css" />
+    <link rel="stylesheet" href="/static/studio-dialogs.css" />
+    <link rel="stylesheet" href="/static/studio-benchmark.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -56,6 +58,7 @@
     <script src="/static/benchmark-combined-tools.js" defer></script>
     <script src="/static/benchmark-report-tools.js" defer></script>
     <script src="/static/benchmark-report.js" defer></script>
+    <script src="/static/benchmark-navigation.js" defer></script>
     <script src="/static/benchmark.js" defer></script>
     <script src="/static/benchmark-editor.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
@@ -229,7 +232,7 @@
           <span id="workspace-backup-open-state" role="status"></span>
         </div>
       </aside>
-      <main id="main" tabindex="-1">
+      <main id="main" tabindex="-1" aria-labelledby="workspace-title">
         <div class="page-heading">
           <div>
             <div class="eyebrow" id="workspace-step">
@@ -1457,7 +1460,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <p id="dataset-plan-error" class="inline-error" role="alert" hidden></p>
                   <div id="dataset-plan-result" hidden>
                     <div id="dataset-plan-summary" class="dataset-counts"></div>
-                    <div class="dataset-class-table-wrap"><table class="dataset-class-table"><caption>Proposed coverage: boxes per class and negative images</caption><thead><tr><th scope="col">Class / negative images</th><th scope="col">Train</th><th scope="col">Validation</th><th scope="col">Test</th></tr></thead><tbody id="dataset-plan-coverage"></tbody></table></div>
+                    <div class="dataset-class-table-wrap" tabindex="0" role="region" aria-label="Proposed class coverage"><table class="dataset-class-table"><caption>Proposed coverage: boxes per class and negative images</caption><thead><tr><th scope="col">Class / negative images</th><th scope="col">Train</th><th scope="col">Validation</th><th scope="col">Test</th></tr></thead><tbody id="dataset-plan-coverage"></tbody></table></div>
                     <div id="dataset-plan-warnings" class="dataset-warnings"></div>
                     <div id="dataset-plan-blockers" class="inline-error" role="alert"></div>
                     <details><summary>Inspect proposed groups and similarity warnings</summary><div id="dataset-plan-groups"></div><div id="dataset-plan-related"></div></details>
@@ -1555,7 +1558,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <p id="dataset-detail-classes" class="field-hint"></p>
                     <details class="dataset-saved-classes"><summary>Inspect frozen classes and identifiers</summary>
                     <p id="dataset-detail-taxonomy" class="field-hint"></p>
-                    <div class="dataset-class-table-wrap"><table class="dataset-class-table">
+                    <div class="dataset-class-table-wrap" tabindex="0" role="region" aria-label="Frozen class identifiers and counts"><table class="dataset-class-table">
                       <caption>Frozen class identifiers and counts</caption>
                       <thead><tr><th scope="col">Class</th><th scope="col">Boxes</th><th scope="col">IRIS class ID</th><th scope="col">Export category ID</th><th scope="col">Official COCO source ID</th></tr></thead>
                       <tbody id="dataset-detail-class-rows"></tbody>
@@ -1937,8 +1940,8 @@ ollama pull qwen3-vl:4b-instruct</pre
                   ></div>
                   <div class="training-loss-pagination">
                     <p id="training-loss-page" class="field-hint" role="status"></p>
-                    <button id="training-loss-earlier" type="button" class="button button-quiet" disabled>Earlier steps</button>
-                    <button id="training-loss-later" type="button" class="button button-quiet" disabled>Later steps</button>
+                    <button id="training-loss-earlier" type="button" class="button button-secondary" disabled>Earlier steps</button>
+                    <button id="training-loss-later" type="button" class="button button-secondary" disabled>Later steps</button>
                   </div>
                   </details>
                   <details class="dataset-provenance">
@@ -2020,7 +2023,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <div id="model-export-ready" hidden>
                       <details class="model-export-runner"><summary>Run &amp; measure on the destination</summary>
                         <p class="field-hint">Unzip on the target machine and follow README.md to install the pinned runtime. From the package directory:</p>
-                      <pre class="model-export-commands">python run.py inspect
+                      <pre class="model-export-commands" tabindex="0" role="region" aria-label="Target package commands">python run.py inspect
 python run.py predict image.png --output ../prediction.json
 python run.py measure --output ../measurement.json --repeats 3</pre>
                         <p class="field-hint">Measure runs the detector on the bundled images. One warm-up is excluded. Recorded prediction time excludes image decoding, model loading and package verification; inspect the report for separate timings. Exact output parity is distinct from detection quality and speed.</p>
@@ -2294,6 +2297,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   <div
                     id="evaluation-metrics"
                     class="evaluation-table-scroll"
+                    tabindex="0" role="region" aria-label="Quality metrics and timing by pipeline"
                   ></div>
                   <p class="field-hint">
                     Tiled forward times sum all tile passes. Total includes
@@ -2306,6 +2310,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                   <div
                     id="evaluation-class-metrics"
                     class="evaluation-table-scroll"
+                    tabindex="0" role="region" aria-label="Quality and labeled support by class"
                   ></div>
                   <p class="field-hint">
                     AP and mAP are shown as percentages. A class without labeled
@@ -2559,7 +2564,8 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             </section>
           </section>
           <section id="benchmark-workspace" hidden aria-label="Preannotation benchmark">
-            <details id="benchmark-prepare" class="panel benchmark-prepare" open>
+            <div class="benchmark-intro"><div class="eyebrow">Independent evidence</div><p>Freeze a reviewed reference, tune candidate approaches, then compare their saved results.</p></div>
+            <details id="benchmark-prepare" class="panel benchmark-prepare">
               <summary>Create an independent reference</summary>
               <div class="benchmark-body">
                 <p class="field-hint">Freeze reviewed labels and separate scene groups for tuning and evaluation. Candidate inputs contain the image and class definitions; reference boxes remain separate. Only validated manual or reviewed imported labels are eligible.</p>
@@ -2582,9 +2588,17 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             </details>
             <section class="panel benchmark-library">
               <div class="panel-heading"><div><h2>Saved benchmarks</h2><p>Reopen the frozen protocol, candidate configurations and measured results.</p></div><button id="benchmark-refresh" type="button" class="text-button">Refresh</button></div>
-              <div class="benchmark-body"><label for="benchmark-history">Independent reference</label><select id="benchmark-history"><option value="">No saved benchmarks</option></select><p id="benchmark-history-error" class="inline-error" role="alert" hidden></p>
+              <div class="benchmark-body"><label for="benchmark-history">Independent reference</label><select id="benchmark-history" aria-describedby="benchmark-history-status"><option value="">No saved benchmarks</option></select><p id="benchmark-history-error" class="inline-error" role="alert" hidden></p><p id="benchmark-history-status" class="field-hint" role="status"></p>
                 <div id="benchmark-detail" hidden>
                   <p id="benchmark-reference-summary" class="benchmark-summary"></p><div class="benchmark-actions"><button id="benchmark-protocol" type="button" class="text-button">Inspect frozen reference and protocol</button></div>
+                  <p id="benchmark-action-error" class="inline-error" role="alert" hidden></p>
+                  <div class="benchmark-navigation" role="tablist" aria-label="Benchmark views">
+                    <button id="benchmark-tab-candidates" type="button" role="tab" aria-selected="true" aria-controls="benchmark-pane-candidates">01 <span>Candidates</span></button>
+                    <button id="benchmark-tab-trials" type="button" role="tab" aria-selected="false" aria-controls="benchmark-pane-trials" tabindex="-1">02 <span>Trials</span></button>
+                    <button id="benchmark-tab-reports" type="button" role="tab" aria-selected="false" aria-controls="benchmark-pane-reports" tabindex="-1">03 <span>Reports</span></button>
+                  </div>
+                  <section id="benchmark-pane-candidates" role="tabpanel" aria-labelledby="benchmark-tab-candidates">
+                  <div class="benchmark-pane-heading"><h3>Prepare your candidates</h3><p>Choose an approach and freeze its settings. Preview each trial before running it.</p></div>
                   <div class="benchmark-approaches" aria-label="Candidate approaches"><article><h3>A · Multimodal</h3><p>OpenAI · GPT-6 Astra</p><p id="benchmark-provider-status" role="status">Checking server configuration…</p></article><article><h3>B · Segmentation</h3><p>SAM 3 · local text-to-box</p><p id="benchmark-sam-provider-status" role="status">Checking local setup…</p></article><article><h3>C · Combined</h3><p>Astra → SAM 3 → Astra</p><p id="benchmark-combined-provider-status" role="status">Checking combined setup…</p></article></div>
                   <p class="field-hint">A uses an external multimodal API. B uses local SAM 3 with class prompts; this version produces boxes without masks. C uses Astra to prepare class prompts, SAM to generate boxes, then Astra to review the candidates. The local detector control stays available.</p>
                   <details id="benchmark-config-form" class="benchmark-config-form" open><summary>Add a frozen candidate configuration</summary><p class="field-hint">Prepare up to 8 configurations during tuning. Preparing or saving settings sends no image to a provider.</p>
@@ -2604,12 +2618,17 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <p id="benchmark-config-preview-summary" class="field-hint" role="status"></p><div class="benchmark-actions"><button id="benchmark-config-preview" type="button" class="button button-secondary">Preview configuration</button><button id="benchmark-config-create" type="button" class="button" disabled>Save frozen configuration</button></div>
                   </details>
                   <div id="benchmark-configs" class="benchmark-configs"></div><p id="benchmark-lock-status" class="field-hint"></p><button id="benchmark-lock" type="button" class="button button-secondary">Lock configurations for evaluation</button>
+                  <div class="benchmark-next"><p class="field-hint">Use tuning trials to inspect candidates before locking the reference for evaluation.</p><button type="button" class="text-button" data-benchmark-open="trials">Open trials →</button></div>
+                  </section>
+                  <section id="benchmark-pane-trials" role="tabpanel" aria-labelledby="benchmark-tab-trials" hidden>
                   <section class="benchmark-trial-setup"><h3>Prepare an explicit trial</h3><div class="benchmark-fields"><div><label for="benchmark-trial-config">Frozen configuration</label><select id="benchmark-trial-config"><option value="">Save a configuration first</option></select></div><div><label for="benchmark-trial-role">Scene role</label><select id="benchmark-trial-role"><option value="tuning">Tuning scenes</option><option value="evaluation">Evaluation scenes · requires lock</option></select></div></div><p id="benchmark-trial-preview-summary" class="field-hint" role="status"></p>
                     <details id="benchmark-local-plan" class="benchmark-local-plan" hidden><summary>Inspect the frozen local work plan and runtime identity</summary><pre id="benchmark-local-plan-record"></pre></details>
                     <section id="benchmark-external-preview" class="benchmark-external-preview" aria-label="External request approval" hidden><h3>Review outgoing requests</h3><p id="benchmark-combined-disclosure" class="benchmark-combined-disclosure" hidden></p><p id="benchmark-external-provider" class="field-hint"></p><p id="benchmark-external-cost"></p><p id="benchmark-external-basis" class="field-hint"></p><p class="field-hint">This conservative estimate is a planning bound, not a guaranteed invoice cap. The provider's billing record is authoritative. Images leave this computer; the request does not establish a processing region or zero data retention.</p><div id="benchmark-external-images" class="benchmark-external-images"></div><p id="benchmark-external-image-status" class="field-hint" role="status"></p><label for="benchmark-external-budget">Approved trial budget · USD</label><input id="benchmark-external-budget" type="number" min="0" step="any" /><label class="benchmark-check"><input id="benchmark-external-consent" type="checkbox" /><span id="benchmark-external-consent-label">I approve this external request and budget.</span></label><p id="benchmark-external-status" class="field-hint" role="status"></p></section>
                     <div class="benchmark-actions"><button id="benchmark-trial-preview" type="button" class="button button-secondary">Preview trial</button><button id="benchmark-trial-create" type="button" class="button" disabled>Run checked trial</button></div></section>
-                  <p id="benchmark-action-error" class="inline-error" role="alert" hidden></p>
                   <section class="benchmark-results"><h3>Results by configuration and role</h3><p class="field-hint">Results compare candidate output with the frozen reference. Human corrections are separate records; they never replace the reference. Missing times and unavailable costs remain unmeasured.</p><div id="benchmark-results-table" class="benchmark-table-wrap"></div><label for="benchmark-trial-history">Saved trial</label><select id="benchmark-trial-history"><option value="">No saved trials</option></select><div id="benchmark-trial-detail" hidden><p id="benchmark-trial-summary" role="status"></p><div class="benchmark-actions"><button id="benchmark-trial-raw" type="button" class="text-button">Inspect trial inputs, outputs and protocol</button><button id="benchmark-trial-job" type="button" class="text-button">Job details and cancellation</button></div><div id="benchmark-outputs" class="benchmark-outputs"></div></div></section>
+                  <div class="benchmark-next"><p class="field-hint">Compare the saved evidence and record your interpretation.</p><button type="button" class="text-button" data-benchmark-open="reports">Open reports →</button></div>
+                  </section>
+                  <section id="benchmark-pane-reports" role="tabpanel" aria-labelledby="benchmark-tab-reports" hidden>
                   <section class="benchmark-report" aria-labelledby="benchmark-report-heading">
                     <div class="benchmark-actions"><h3 id="benchmark-report-heading">Compare approaches and keep a report</h3><button id="benchmark-report-refresh" type="button" class="text-button">Refresh comparison and reports</button></div>
                     <p class="field-hint">Compare every frozen configuration and every saved trial in one scene role. Failed and missing evidence stays visible. No trial is run and no winning approach is selected here.</p>
@@ -2629,6 +2648,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <section class="benchmark-report-library" aria-labelledby="benchmark-report-library-heading"><h4 id="benchmark-report-library-heading">Immutable reports</h4><label for="benchmark-report-history">Saved report</label><select id="benchmark-report-history" disabled><option value="">No saved reports</option></select>
                       <article id="benchmark-report-saved" class="benchmark-report-saved" hidden><h4 id="benchmark-report-saved-title"></h4><p id="benchmark-report-saved-context" class="field-hint"></p><h5>Objective</h5><p id="benchmark-report-saved-objective" class="benchmark-report-prose"></p><h5>Author conclusion</h5><p id="benchmark-report-saved-conclusion" class="benchmark-report-prose"></p><p id="benchmark-report-saved-hash" class="field-hint monospace"></p><p class="field-hint">This saved snapshot stays unchanged when live results or corrections change. The JSON contains full report evidence; the standalone HTML contains a readable summary without images or external resources.</p><div class="benchmark-actions"><a id="benchmark-report-export-json" class="text-button" download>Download JSON</a><a id="benchmark-report-export-html" class="text-button" download>Download standalone HTML</a><button id="benchmark-report-inspect" type="button" class="text-button">Inspect saved snapshot</button></div><details><summary>Evidence retained in this immutable report</summary><div id="benchmark-report-saved-comparison"></div></details></article>
                     </section>
+                  </section>
                   </section>
                 </div>
               </div>
@@ -2765,6 +2785,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <div
                       id="experiments-class-table"
                       class="experiments-table-wrap"
+                      tabindex="0" role="region" aria-label="Report quality by class and pipeline"
                     ></div>
                     <p id="experiments-timing" class="field-hint"></p>
                     <div id="experiments-warnings" class="experiments-warnings"></div>
@@ -2774,7 +2795,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                       <h3 id="experiments-scenes-title" tabindex="-1">Results by scene</h3>
                     </div>
                     <p id="experiments-scene-context" class="field-hint"></p>
-                    <div id="experiments-scenes" class="experiments-table-wrap"></div>
+                    <div id="experiments-scenes" class="experiments-table-wrap" tabindex="0" role="region" aria-label="Report results by scene"></div>
                     <div id="experiments-sampling" class="experiments-sampling"></div>
                   </section>
                   <section class="experiments-section" aria-labelledby="experiments-targets-title">
@@ -2914,12 +2935,12 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
       <p id="benchmark-editor-save-status" class="field-hint" role="status"></p><div class="benchmark-actions"><button id="benchmark-editor-save" type="button" class="button button-secondary" disabled>Save draft and pause</button><button id="benchmark-editor-complete" type="button" class="button" disabled>Complete human review and pause</button></div>
       <details id="benchmark-editor-history"><summary>Saved correction history</summary><div id="benchmark-editor-history-list"></div></details>
     </dialog>
-    <dialog id="job-detail-dialog" class="modal job-detail-modal" aria-labelledby="job-detail-title">
+    <dialog id="job-detail-dialog" class="modal job-detail-modal studio-dialog" aria-labelledby="job-detail-title">
       <div class="modal-heading"><div><div class="eyebrow">Saved task</div><h2 id="job-detail-title">Job details</h2></div><button class="icon-button" type="button" data-close="job-detail-dialog" aria-label="Close job details">×</button></div>
-      <p id="job-detail-loading" class="field-hint" role="status"></p>
+      <div class="job-detail-toolbar"><p id="job-detail-loading" class="field-hint" role="status"></p><button id="job-detail-refresh" class="text-button" type="button">Refresh details</button></div>
       <p id="job-detail-error" class="inline-error" role="alert" hidden></p>
       <div id="job-detail-content" hidden>
-        <div class="job-detail-heading"><span id="job-detail-status" class="job-status"></span><button id="job-detail-refresh" class="text-button" type="button">Refresh details</button></div>
+        <div class="job-detail-heading"><span id="job-detail-status" class="job-status"></span></div>
         <p id="job-detail-context" class="field-hint"></p><p id="job-detail-message"></p>
         <p id="job-detail-failure" class="inline-error" hidden></p>
         <dl id="job-detail-times" class="metadata-list"></dl>
@@ -2937,7 +2958,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
     </dialog>
     <dialog
       id="workspace-backup-dialog"
-      class="modal workspace-backup-modal"
+      class="modal workspace-backup-modal studio-dialog"
       aria-labelledby="workspace-backup-title"
     >
       <div class="modal-heading">
@@ -3232,7 +3253,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         aria-labelledby="workspace-backup-history-title"
       >
         <div class="workspace-backup-history-heading">
-          <h3 id="workspace-backup-history-title">Local operation history</h3>
+          <h3 id="workspace-backup-history-title" tabindex="-1">Local operation history</h3>
           <span id="workspace-backup-history-count" class="count">0</span>
         </div>
         <p class="field-hint">
@@ -3494,7 +3515,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
     </dialog>
     <dialog
       id="extract-dialog"
-      class="modal extract-modal"
+      class="modal extract-modal studio-dialog"
       aria-labelledby="extract-title"
     >
       <form id="extract-form">
@@ -3622,7 +3643,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         </div>
       </form>
     </dialog>
-    <dialog id="video-review-dialog" class="modal video-review-modal" aria-labelledby="video-review-title">
+    <dialog id="video-review-dialog" class="modal video-review-modal studio-dialog" aria-labelledby="video-review-title">
       <div class="modal-heading">
         <div><div class="eyebrow">Assisted video review</div><h2 id="video-review-title">Suggest passages</h2></div>
         <button id="video-review-close" class="icon-button" type="button" aria-label="Close passage review">×</button>
@@ -3697,7 +3718,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
     </dialog>
     <dialog
       id="frame-dialog"
-      class="modal frame-modal"
+      class="modal frame-modal studio-dialog"
       aria-labelledby="inspect-title"
     >
       <div class="modal-heading">
@@ -3774,7 +3795,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         </div>
       </div>
     </dialog>
-    <dialog id="dataset-import-dialog" class="modal dataset-import-modal" aria-labelledby="dataset-import-title">
+    <dialog id="dataset-import-dialog" class="modal dataset-import-modal studio-dialog" aria-labelledby="dataset-import-title">
       <div class="modal-heading">
         <div>
           <div class="eyebrow">Annotated data intake</div>
@@ -3857,9 +3878,9 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
         <details class="dataset-import-provenance"><summary>Archive provenance</summary><pre id="dataset-import-provenance"></pre></details>
       </div>
     </dialog>
-    <dialog id="taxonomy-dialog" class="modal taxonomy-modal" aria-labelledby="taxonomy-title">
+    <dialog id="taxonomy-dialog" class="modal taxonomy-modal studio-dialog" aria-labelledby="taxonomy-title">
       <div class="modal-heading">
-        <div><div class="eyebrow">Project classes</div><h2 id="taxonomy-title">Define what matters.</h2></div>
+        <div><div class="eyebrow">Project classes</div><h2 id="taxonomy-title" tabindex="-1">Define what matters.</h2></div>
         <button id="taxonomy-close" type="button" class="icon-button" aria-label="Close class editor">×</button>
       </div>
       <p class="small muted">Define each class once and refine its annotation rules in saved versions. Published class identifiers remain stable. Existing images and annotation revisions keep their original definitions.</p>

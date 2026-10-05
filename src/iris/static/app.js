@@ -82,6 +82,7 @@ function notify(message, isError = false) {
   const notice = $("#notice");
   notice.className = `notice${isError ? " error" : ""}`;
   notice.setAttribute("role", isError ? "alert" : "status");
+  notice.setAttribute("aria-live", isError ? "assertive" : "polite");
   notice.textContent = message;
   notice.hidden = false;
 }
@@ -1054,7 +1055,9 @@ function updateJobActions() {
   const detail = jobView.detail;
   const blocked = jobView.loading || jobView.busy;
   $("#job-detail-dialog [data-close]").disabled = jobView.busy;
-  for (const id of ["job-detail-refresh", "job-open-results", "job-check-continuation", "job-new-run", "job-open-batch"])
+  $("#job-detail-refresh").disabled = blocked || !jobView.detailId;
+  $("#job-detail-content").setAttribute("aria-busy", String(jobView.loading));
+  for (const id of ["job-open-results", "job-check-continuation", "job-new-run", "job-open-batch"])
     $(`#${id}`).disabled = blocked || !detail;
   $("#job-confirm-continuation").disabled = blocked || !jobTools.canContinue(detail, jobView.recovery);
   $("#job-detail-cancel").disabled = blocked || Boolean(detail?.job.cancel_requested);
@@ -1233,13 +1236,17 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
     if (state.sessionId !== context.session_id) return;
   }
   $("#job-detail-dialog").close();
-  $(`#workspace-${detail.next_action.workspace}`)?.click();
+  if (!window.IRISNavigation.open(detail.next_action.workspace)) return;
   if (detail.next_action.workspace === "training" && !$("#training-workspace").hidden) {
     const view = context.target_type === "model_exports" ? "exports" : results ? "runs" : "plan";
     window.IRISTrainingNavigation.open(view, { focus: true });
   }
   if (detail.next_action.workspace === "evaluation" && !$("#evaluation-workspace").hidden)
     window.IRISEvaluationNavigation.open(results ? "results" : "plan", { focus: true });
+  if (detail.next_action.workspace === "benchmark" && !$("#benchmark-workspace").hidden && context.target_type === "benchmark_trials") {
+    const opened = await window.IRISBenchmarkNavigation.openTrial(context.target_id);
+    if (!opened) { notify("The saved benchmark trial could not be opened. Check the selected reference or use Refresh to try again.", true); return; }
+  }
   $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
   if (batch && context.batch_id) {
     window.dispatchEvent(new CustomEvent("iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));

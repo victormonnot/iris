@@ -1,0 +1,109 @@
+/* Support workflows share comfortable targets and fit short viewports. */
+dialog.studio-dialog {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overscroll-behavior: contain;
+  scroll-padding-block: 20px;
+}
+
+.studio-dialog .modal-heading > div,
+.studio-dialog .form-grid > div {
+  min-width: 0;
+}
+
+.studio-dialog :is(h2, h3, h4, .inline-error, .field-hint, .metadata-list dd) {
+  overflow-wrap: anywhere;
+}
+
+.studio-dialog :is(button, .button, a.text-button) {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.studio-dialog .icon-button {
+  min-width: 44px;
+  flex-shrink: 0;
+}
+
+.studio-dialog a.text-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.studio-dialog :is(.text-button, summary) {
+  padding-block: 10px;
+}
+
+.studio-dialog summary {
+  min-height: 44px;
+  line-height: 1.7;
+}
+
+.studio-dialog :is(input:not([type="checkbox"]), select, textarea) {
+  max-width: 100%;
+}
+
+.studio-dialog .modal-actions {
+  flex-wrap: wrap;
+}
+
+.job-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.job-detail-toolbar .field-hint {
+  margin: 0;
+}
+
+.job-detail-toolbar .text-button {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.studio-dialog .workspace-backup-command:focus-visible,
+.studio-dialog .workspace-backup-operation:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  dialog.studio-dialog {
+    width: calc(100vw - 24px);
+    padding: 20px 16px;
+  }
+
+  .studio-dialog .modal-heading {
+    gap: 12px;
+  }
+
+  .studio-dialog .modal-heading h2 {
+    font-size: 24px;
+  }
+
+  .studio-dialog .modal-actions > .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .workspace-backup-toolbar,
+  .workspace-backup-operation-heading,
+  .job-detail-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .workspace-backup-toolbar .text-button,
+  .job-detail-toolbar .text-button {
+    margin-left: 0;
+  }
+}
+
+@media (max-height: 500px) {
+  dialog.studio-dialog {
+    max-height: calc(100dvh - 16px);
+    padding-block: 16px;
+  }
+}

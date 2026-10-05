@@ -10,6 +10,47 @@ EVIDENCE_LABELS = {
     "real_data": "Real data declared by the report author",
 }
 
+STYLES = """
+:root { color-scheme: light; --page: #f4f2eb; --surface: #fcfbf7; --field: #eae6da;
+  --ink: #29352d; --muted: #5e685e; --line: #cbcfc3; --accent: #74634c;
+  --notice: #eae3d6; }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --page: #1c1e1c; --surface: #252923; --field: #32372e;
+    --ink: #eeeae0; --muted: #b0b9ab; --line: #434b40; --accent: #e2c280;
+    --notice: #3b3629; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.7 system-ui, sans-serif; }
+main { max-width: 1440px; margin: auto; padding: 40px 24px; }
+h1 { font: 400 clamp(28px, 4vw, 44px)/1.2 Georgia, serif; }
+h2, h3, h4 { font-weight: 500; } h2 { margin-top: 2rem; } h4 { margin-bottom: .5rem; }
+h1, h2, h3, h4, p, li, td, pre { overflow-wrap: anywhere; }
+section { border-top: 1px solid var(--line); margin-top: 2rem; padding-top: 1rem; }
+.eyebrow { color: var(--accent); font: 12px/1.6 ui-monospace, monospace;
+  letter-spacing: .08em; }
+.notice { padding: 14px 16px; background: var(--notice); border-left: 2px solid var(--accent); }
+.prose { white-space: pre-wrap; }
+.checksum { font: 12px/1.7 ui-monospace, monospace; color: var(--muted); }
+.scroll { overflow: auto; margin: 16px 0; border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; min-width: 640px;
+  background: var(--surface); font-size: 13px; }
+th, td { padding: 12px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th { background: var(--field); font-weight: 500; }
+pre { white-space: pre-wrap; font-size: 12px; background: var(--surface); padding: 12px; }
+details { margin: 12px 0; }
+summary { cursor: pointer; min-height: 44px; padding: 10px 0; color: var(--accent); }
+:is(summary, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 600px) { main { padding: 24px 14px; } th, td { padding: 8px; } }
+@media print {
+  :root { color-scheme: light; --page: #fff; --surface: #fff; --field: #eae6da;
+    --ink: #29352d; --muted: #5e685e; --line: #cbcfc3; --accent: #74634c; --notice: #eae3d6; }
+  main { padding: 0; } .scroll { overflow: visible; } table { font-size: 8pt; min-width: 0; }
+  th, td { padding: 4px; } section { break-before: auto; } tr { break-inside: avoid; }
+}
+"""
+
 
 def export_json(report):
     return json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
@@ -37,7 +78,8 @@ def _money(value):
 
 def _table(headers, rows):
     return (
-        '<div class="scroll"><table><thead><tr>'
+        '<div class="scroll" tabindex="0" role="region" '
+        f'aria-label="{_text(headers[0])} comparison"><table><thead><tr>'
         + "".join(f'<th scope="col">{_text(h)}</th>' for h in headers)
         + "</tr></thead><tbody>"
         + "".join(
@@ -252,20 +294,7 @@ def export_html(report):
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
         "style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\">"
-        f"<title>{_text(snapshot['title'])} · IRIS</title><style>"
-        "*{box-sizing:border-box}body{margin:0;background:#f5f7f3;color:#183b3e;"
-        "font:16px/1.55 system-ui,sans-serif}main{max-width:1440px;margin:auto;padding:40px 24px}"
-        "h1{font-size:2.3rem;line-height:1.2}h2{margin-top:2rem}h4{margin-bottom:.5rem}"
-        "section{border-top:1px solid #cad8d2;margin-top:2rem;padding-top:1rem}"
-        ".eyebrow{color:#426e65}.notice{padding:14px;background:#e5edde;"
-        "border-left:4px solid #54765c}"
-        ".prose{white-space:pre-wrap}.checksum,td,pre{overflow-wrap:anywhere}"
-        ".checksum{font-size:.85rem}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;"
-        "background:white;font-size:.85rem}th,td{padding:10px;text-align:left;vertical-align:top;"
-        "border-bottom:1px solid #dae4dd}th{background:#eaf0e9}pre{white-space:pre-wrap;"
-        "font-size:.8rem;background:white;padding:12px}details{margin:12px 0}"
-        "@media print{body{background:white}main{padding:0}.scroll{overflow:visible}"
-        "table{font-size:8pt}th,td{padding:4px}section{break-before:auto}}"
+        f"<title>{_text(snapshot['title'])} · IRIS</title><style>{STYLES}"
         "</style></head><body><main>" + body + "</main></body></html>"
     )
     return document.encode("utf-8")

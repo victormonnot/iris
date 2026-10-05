@@ -85,10 +85,13 @@
       if (!published(category.id)) {
         const remove = node("button", "text-button taxonomy-remove", "Remove class");
         remove.type = "button";
+        remove.setAttribute("aria-label", `Remove class ${index + 1}`);
         remove.addEventListener("click", () => {
           editor.classes.splice(index, 1);
           editor.dirty = true;
           renderRows();
+          const next = field("rows").children[Math.min(index, editor.classes.length - 1)];
+          (next?.querySelector("input") || field("add")).focus();
         });
         row.append(remove);
       }
@@ -135,6 +138,7 @@
 
   $("#taxonomy-open").addEventListener("click", () => {
     dialog.showModal();
+    field("title").focus({ preventScroll: true });
     if (!editor.dirty) refresh();
   });
   field("close").addEventListener("click", () => { if (discardAllowed()) dialog.close(); });

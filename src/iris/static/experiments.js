@@ -588,6 +588,9 @@
       }
       table.append(head, body);
       const wrap = node("div", "experiments-table-wrap");
+      wrap.tabIndex = 0;
+      wrap.setAttribute("role", "region");
+      wrap.setAttribute("aria-label", `Imported timing for ${measurement.name || measurement.id}`);
       wrap.append(table);
       card.append(wrap);
       card.append(node("p", "experiments-caption",

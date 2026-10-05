@@ -38,6 +38,8 @@ window.IRISBenchmarkReport = (() => {
     }
     function table(headers, rows) {
       const wrap = node("div", "benchmark-table-wrap");
+      wrap.tabIndex = 0; wrap.setAttribute("role", "region");
+      wrap.setAttribute("aria-label", `${headers[0]} comparison, scroll horizontally for all measurements`);
       const result = node("table", "benchmark-results-table"), head = node("thead", ""), tr = node("tr", "");
       for (const text of headers) { const th = node("th", "", text); th.scope = "col"; tr.append(th); }
       head.append(tr); result.append(head); const body = node("tbody", "");

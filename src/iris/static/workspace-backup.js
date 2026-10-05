@@ -233,6 +233,11 @@
   function renderOperation(operation) {
     const card = node("article", "workspace-backup-operation");
     card.dataset.operationId = operation.id;
+    card.tabIndex = -1;
+    card.setAttribute(
+      "aria-label",
+      `${labels[operation.kind] || "Workspace operation"} · ${operation.status} · ${date(operation.created_at)}`,
+    );
     const heading = node("div", "workspace-backup-operation-heading");
     const title = node("div");
     title.append(
@@ -301,6 +306,7 @@
           : "Cancel operation",
       );
       cancel.type = "button";
+      cancel.dataset.operationAction = "cancel";
       cancel.disabled = view.mutation || view.cancelling.has(operation.id);
       cancel.addEventListener("click", () => cancelOperation(operation.id));
       actions.append(cancel);
@@ -312,6 +318,7 @@
         "Download archive ↓",
       );
       download.href = `/api/workspace/operations/${encodeURIComponent(operation.id)}/archive`;
+      download.dataset.operationAction = "download";
       download.download = operation.result?.filename || "iris-workspace.zip";
       download.addEventListener("click", () =>
         status(
@@ -334,6 +341,7 @@
         );
       const use = node("button", "button button-secondary", "Use for restore");
       use.type = "button";
+      use.dataset.operationAction = "restore";
       use.disabled = view.mutation || Boolean(view.upload);
       use.addEventListener("click", () => {
         setTab("restore");
@@ -364,9 +372,11 @@
           result.launch_command,
         );
         command.tabIndex = 0;
+        command.dataset.operationAction = "command";
         card.append(command);
         const copy = node("button", "text-button", "Copy launch command");
         copy.type = "button";
+        copy.dataset.operationAction = "copy";
         copy.addEventListener("click", async () => {
           try {
             await navigator.clipboard.writeText(result.launch_command);
@@ -394,6 +404,7 @@
         "Remove local archive",
       );
       remove.type = "button";
+      remove.dataset.operationAction = "remove";
       remove.disabled =
         view.mutation ||
         Boolean(view.upload) ||
@@ -410,7 +421,8 @@
     const focus = focused
       ? {
           id: focused.dataset.operationId,
-          text: document.activeElement.textContent,
+          action: document.activeElement.dataset.operationAction,
+          index: Array.from(field("operations").children).indexOf(focused),
         }
       : null;
     field("operations").replaceChildren();
@@ -419,10 +431,17 @@
     for (const operation of view.operations.slice(0, view.limit)) {
       const card = renderOperation(operation);
       field("operations").append(card);
-      if (focus?.id === operation.id)
-        Array.from(card.querySelectorAll("button, a"))
-          .find((item) => item.textContent === focus.text)
-          ?.focus({ preventScroll: true });
+    }
+    if (focus) {
+      const cards = Array.from(field("operations").children);
+      const card = cards.find((item) => item.dataset.operationId === focus.id);
+      const action = card &&
+        Array.from(card.querySelectorAll("[data-operation-action]")).find(
+          (item) => item.dataset.operationAction === focus.action && !item.disabled,
+        );
+      const target = action || card ||
+        cards[Math.min(focus.index, cards.length - 1)] || field("history-title");
+      target.focus({ preventScroll: true });
     }
     field("more").hidden = view.operations.length <= view.limit;
     field("more").textContent =
@@ -729,6 +748,7 @@
   for (const tab of ["backup", "restore"])
     field(`tab-${tab}`).addEventListener("click", () => setTab(tab));
   field("tabs").addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     setTab(

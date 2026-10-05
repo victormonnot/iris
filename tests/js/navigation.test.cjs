@@ -120,3 +120,44 @@ test("compact sidebar moves focus before hiding and keeps unsubmitted input on r
   assert.equal(toggle.hidden, true);
   assert.equal(env.document.activeElement, env.$("#main"));
 });
+
+test("a programmatic workspace handoff moves focus out of the hidden source panel", () => {
+  const env = environment();
+  const source = env.$("#review-selection");
+  source.parent = env.$("#intake-workspace");
+  source.focus();
+  env.api.open("annotation");
+  assert.equal(env.document.activeElement, env.$("#main"));
+  assert.equal(env.$("#intake-workspace").hidden, true);
+});
+
+test("workspace navigation retains its button focus and rejected handoffs retain source focus", () => {
+  const env = environment();
+  const button = env.$("#workspace-training");
+  button.focus();
+  button.click();
+  assert.equal(env.document.activeElement, button);
+  const source = env.$("#training-open-models");
+  source.parent = env.$("#training-workspace");
+  source.focus();
+  env.window.addEventListener("iris:before-workspace", (event) => event.preventDefault());
+  assert.equal(env.api.open("comparison"), false);
+  assert.equal(env.document.activeElement, source);
+  assert.equal(env.$("#training-workspace").hidden, false);
+});
+
+test("session visibility changes keep focus in the workspace instead of a hidden ancestor", () => {
+  const env = environment({ sessionId: null });
+  const start = env.$("#start-session");
+  start.parent = env.$("#welcome");
+  start.focus();
+  env.state.sessionId = "first-session";
+  env.api.syncSession();
+  assert.equal(env.document.activeElement, env.$("#main"));
+  const field = env.$("#session-control");
+  field.parent = env.$("#session-workspace");
+  field.focus();
+  env.state.sessionId = null;
+  env.api.syncSession();
+  assert.equal(env.document.activeElement, env.$("#main"));
+});

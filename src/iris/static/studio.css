@@ -11,12 +11,21 @@ button, input, select, textarea {
   color: var(--ink);
 }
 
-button, input, select, textarea, summary, a {
+button, input, select, textarea, summary, a, [tabindex] {
   outline-offset: 3px;
 }
 
-:is(button, input, select, textarea, summary, a):focus-visible {
+:is(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
   outline: 2px solid var(--focus);
+}
+
+#main:focus-visible {
+  outline-offset: -3px;
+}
+
+summary {
+  min-height: 24px;
+  cursor: pointer;
 }
 
 input[type="checkbox"], input[type="radio"], input[type="range"] {
@@ -391,9 +400,10 @@ dialog::backdrop {
 
 @media (pointer: coarse) {
   .button, .text-button, .icon-button, .close-button,
-  #appearance-select, .filter-button { min-height: 44px; }
+  #appearance-select, .filter-button, summary { min-height: 44px; }
   .icon-button, .close-button { min-width: 44px; }
   input:not([type="checkbox"]):not([type="radio"]), select, textarea {
     font-size: 16px;
+    min-height: 44px;
   }
 }

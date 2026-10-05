@@ -11,7 +11,7 @@
     active: false, candidates: null, roles: new Map(), chosen: new Set(), models: [],
     referencePreview: null, configPreview: null, trialPreview: null,
     list: [], id: null, detail: null, trialId: null, trial: null,
-    busy: null, candidateLoading: false, loading: false, trialLoading: false,
+    busy: null, candidateLoading: false, listLoading: false, loading: false, trialLoading: false, openRequest: 0,
     generation: 0, candidateRequest: 0, listRequest: 0, detailRequest: 0, trialRequest: 0, catalogRequest: 0,
     jobsKey: "", loaded: false,
     providers: null, providerRequest: 0, externalImages: new Set(), externalExpiry: null,
@@ -20,9 +20,12 @@
   const reportView = window.IRISBenchmarkReport.create({ onBusy: () => update(), showRecord,
     onOpenTrial: (id) => {
       if (!view.detail?.trials.some((trial) => trial.id === id)) return;
+      view.openRequest++;
       view.trialId = id; view.trial = null; view.trialRequest++;
       field("trial-history").value = id; renderTrial(); loadTrial();
-      field("trial-history").scrollIntoView({ behavior: "smooth", block: "start" });
+      window.IRISBenchmarkNavigation.open("trials");
+      field("trial-history").focus();
+      field("trial-history").scrollIntoView({ block: "nearest" });
     },
   });
   const base = () => `/api/benchmarks/${encodeURIComponent(view.id)}`;
@@ -62,6 +65,7 @@
   function error(name, failure) {
     field(name).textContent = failure?.message || failure || "";
     field(name).hidden = !failure;
+    if (name === "error" && failure) field("prepare").open = true;
   }
   function invalidate(kind = "reference") {
     view.generation++;
@@ -83,8 +87,13 @@
     field("create").disabled = busy || !view.referencePreview || view.referencePreview.key !== tools.canonical(referenceOptions()) || !field("name").value.trim();
     field("preview").textContent = view.busy === "reference-preview" ? "Checking independent reference…" : "Preview reference";
     field("candidate-status").textContent = view.candidateLoading ? "Checking eligible human references…" : `${view.candidates?.groups.length || 0} scene groups · ${selected.counts.tuning} tuning images · ${selected.counts.evaluation} evaluation images`;
-    field("refresh").disabled = busy || view.loading;
-    field("history").disabled = busy || view.loading || !view.list.length;
+    field("refresh").disabled = busy || view.loading || view.listLoading;
+    field("history").disabled = busy || view.loading || view.listLoading || !view.list.length;
+    field("history").setAttribute("aria-busy", String(view.loading || view.listLoading));
+    field("history-status").textContent = view.listLoading ? "Reading saved benchmarks…" : view.loading ? "Reading the frozen reference…"
+      : !field("history-error").hidden ? "The saved reference could not be refreshed. Use Refresh to try again."
+        : !view.list.length ? "No saved benchmark yet. Create an independent reference above to prepare candidates, trials and reports."
+          : !view.detail ? "Choose a saved reference to open its candidates, trials and reports." : "";
     field("detail").hidden = !view.detail;
     const full = (view.detail?.configs.length || 0) >= 8;
     for (const input of field("config-form").querySelectorAll("input,select,textarea,button")) input.disabled = busy || view.loading || locked() || full || !view.detail;
@@ -338,7 +347,7 @@
     finally { view.busy = null; update(); }
   }
   function showRecord(title, record) {
-    const dialog = node("dialog", "annotation-record-dialog"); const heading = node("h2", "", title);
+    const dialog = node("dialog", "annotation-record-dialog benchmark-record-dialog"); const heading = node("h2", "", title);
     heading.id = "benchmark-record-title"; dialog.setAttribute("aria-labelledby", heading.id);
     const close = node("button", "button button-secondary", "Close"); close.type = "button"; close.addEventListener("click", () => dialog.close());
     dialog.append(heading, node("pre", "", JSON.stringify(record, null, 2)), close);
@@ -362,11 +371,13 @@
       view.id = detail.id; view.detail = detail; view.detailRequest++; view.loading = false;
       view.trialId = null; view.trial = null; view.trialRequest++; view.trialLoading = false;
       invalidate(); invalidate("config"); invalidate("trial"); renderTrial(); field("prepare").open = false;
-      renderDetail(); await loadList(false); notify("Independent benchmark reference frozen. Candidate configurations can now be prepared.");
+      renderDetail(); await loadList(false); window.IRISBenchmarkNavigation.open("candidates", { focus: true });
+      notify("Independent benchmark reference frozen. Candidate configurations can now be prepared.");
     }, "error");
   }
   async function loadList(refreshDetail = true) {
     const request = ++view.listRequest;
+    view.listLoading = true; error("history-error", null); update();
     try {
       const records = await api("/api/benchmarks"); if (request !== view.listRequest) return;
       view.list = records;
@@ -377,17 +388,18 @@
       if (view.id && refreshDetail) await loadDetail();
       update();
     } catch (failure) { if (request === view.listRequest) error("history-error", failure); }
+    finally { if (request === view.listRequest) { view.listLoading = false; update(); } }
   }
   async function loadDetail() {
     if (!view.id) return;
-    const id = view.id, request = ++view.detailRequest; view.loading = true; update();
+    const id = view.id, request = ++view.detailRequest; view.loading = true; error("history-error", null); update();
     try {
       const detail = await api(base()); if (request !== view.detailRequest || id !== view.id) return;
       const old = view.detail;
       view.detail = detail;
       if (old?.status !== detail.status || tools.canonical(old?.configs) !== tools.canonical(detail.configs)) invalidate("config");
       renderDetail();
-      if (view.trialId) loadTrial();
+      if (view.trialId) await loadTrial();
     } catch (failure) { if (request === view.detailRequest) error("history-error", failure); }
     finally { if (request === view.detailRequest) { view.loading = false; update(); } }
   }
@@ -433,9 +445,11 @@
   }
   function renderResults() {
     const container = field("results-table"); container.replaceChildren();
+    container.removeAttribute("tabindex"); container.removeAttribute("role"); container.removeAttribute("aria-label");
     if (!view.detail.trials.length) { container.append(node("p", "field-hint", "No measured trial yet. Preview and run a tuning trial with a frozen configuration.")); return; }
     const table = node("table", "benchmark-results-table"), head = node("thead", ""), row = node("tr", "");
-    for (const label of ["Configuration / role", "Job / coverage", "Extra / missed boxes", "Class conflicts", "Precision / recall", "Matched IoU", "Processing / API time", "Usage cost estimate", "Human corrections"]) row.append(node("th", "", label));
+    container.tabIndex = 0; container.setAttribute("role", "region"); container.setAttribute("aria-label", "Saved trial results, scroll horizontally for all measurements");
+    for (const label of ["Configuration / role", "Job / coverage", "Extra / missed boxes", "Class conflicts", "Precision / recall", "Matched IoU", "Processing / API time", "Usage cost estimate", "Human corrections"]) { const th = node("th", "", label); th.scope = "col"; row.append(th); }
     head.append(row); table.append(head); const body = node("tbody", "");
     for (const trial of view.detail.trials) {
       const metrics = trial.quality?.metrics?.summary, corrections = trial.corrections;
@@ -637,16 +651,18 @@
   field("external-consent").addEventListener("change", update);
   for (const name of ["trial-config", "trial-role"]) field(name).addEventListener("change", () => invalidate("trial"));
   field("history").addEventListener("change", () => {
+    view.openRequest++;
     view.id = field("history").value || null; view.detail = null; view.trialId = null; view.trial = null;
     reportView.setContext(null);
     view.detailRequest++; view.trialRequest++; view.loading = false; view.trialLoading = false; invalidate("config"); invalidate("trial"); renderTrial();
     if (view.id) loadDetail();
   });
-  field("trial-history").addEventListener("change", () => { view.trialId = field("trial-history").value || null; view.trial = null; view.trialRequest++; renderTrial(); if (view.trialId) loadTrial(); });
+  field("trial-history").addEventListener("change", () => { view.openRequest++; view.trialId = field("trial-history").value || null; view.trial = null; view.trialRequest++; renderTrial(); if (view.trialId) loadTrial(); });
   field("protocol").addEventListener("click", () => showRecord("Frozen independent reference and benchmark protocol", view.detail));
   field("trial-raw").addEventListener("click", () => showRecord("Saved trial protocol, model inputs and raw outputs", view.trial));
   field("trial-job").addEventListener("click", () => window.dispatchEvent(new CustomEvent("iris:job-open", { detail: { job_id: view.trial?.job_id } })));
   window.addEventListener("iris:workspace", (event) => {
+    view.openRequest++;
     view.active = event.detail.name === "benchmark";
     if (!view.active) { invalidate("trial"); return; }
     if (!view.loaded) { view.loaded = true; loadCandidates(); loadModels(); loadProviders(); }
@@ -664,5 +680,29 @@
     const key = tools.canonical(state.jobs.filter((job) => job.kind === "benchmark").map((job) => [job.id, job.status, job.progress]));
     if (key !== view.jobsKey) { view.jobsKey = key; loadDetail(); }
   });
+  async function openTrial(id) {
+    if (!id || !view.active || view.busy || reportView.busy()) return false;
+    const request = ++view.openRequest;
+    let trial;
+    try { trial = await api(`/api/benchmark-trials/${encodeURIComponent(id)}`); }
+    catch (failure) {
+      if (request === view.openRequest && view.active) { error("history-error", failure); update(); }
+      return false;
+    }
+    if (request !== view.openRequest || !view.active || view.busy || reportView.busy()) return false;
+    view.listRequest++; view.detailRequest++; view.trialRequest++;
+    view.id = trial.benchmark_id; view.detail = null; view.trialId = id; view.trial = null;
+    view.loading = false; view.trialLoading = false;
+    reportView.setContext(null); invalidate("config"); invalidate("trial"); renderTrial();
+    await loadList(false);
+    if (request !== view.openRequest || !view.active || view.id !== trial.benchmark_id || !view.list.some((item) => item.id === trial.benchmark_id)) return false;
+    await loadDetail();
+    if (request !== view.openRequest || !view.active || !tools.currentTrial(view.trial, trial.benchmark_id, id)) return false;
+    field("prepare").open = false;
+    window.IRISBenchmarkNavigation.open("trials");
+    field("trial-history").focus(); field("trial-history").scrollIntoView({ block: "nearest" });
+    return true;
+  }
+  window.IRISBenchmark = Object.freeze({ openTrial });
   update();
 })();

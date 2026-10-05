@@ -181,6 +181,20 @@ access. **Model exports** separates package preparation from the saved package
 library and imported target measurements; package readiness and output parity
 remain distinct states.
 
+**Preannotation benchmark** keeps the independent reference selector above
+separate **Candidates**, **Trials** and **Reports** views. Candidate
+settings, explicit execution previews and saved reports remain attached to the
+selected reference. Opening a saved trial from Project jobs selects its reference
+and results without launching another trial. Standalone benchmark HTML reports
+also follow the system appearance and use a light palette for printing.
+
+Use **Skip to workspace** to reach the current view from the keyboard. Internal
+tabs support Left/Right arrows, Home and End; scrollable metric tables are named
+keyboard regions. Focus follows actions that hide their source panel and remains
+usable when operation history refreshes. Dialog controls accommodate touch input
+and short viewports, and disclosures have larger targets on touch devices.
+If task details fail to load, **Refresh details** remains available in the dialog.
+
 ## Projects
 
 Use the **Project** selector in the sidebar to switch projects, or **New project**

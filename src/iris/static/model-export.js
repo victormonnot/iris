@@ -156,6 +156,9 @@
     const milliseconds = (value) => typeof value === "number" && Number.isFinite(value) ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "Unavailable";
     if (summary?.timing_ms) {
       const wrap = node("div", "dataset-class-table-wrap"), table = node("table", "dataset-class-table");
+      wrap.tabIndex = 0;
+      wrap.setAttribute("role", "region");
+      wrap.setAttribute("aria-label", "Declared target-machine timings");
       table.append(node("caption", "", "Declared target-machine timings · milliseconds"));
       const head = node("thead"), headings = node("tr");
       for (const title of ["Stage", "Median", "Min–max"]) { const cell = node("th", "", title); cell.scope = "col"; headings.append(cell); }
