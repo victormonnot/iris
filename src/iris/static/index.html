@@ -17,6 +17,9 @@
     <link rel="stylesheet" href="/static/workspace-backup.css" />
     <link rel="stylesheet" href="/static/comparison-replay.css" />
     <link rel="stylesheet" href="/static/studio.css" />
+    <link rel="stylesheet" href="/static/studio-intake.css" />
+    <link rel="stylesheet" href="/static/studio-annotation.css" />
+    <link rel="stylesheet" href="/static/studio-datasets.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -299,10 +302,10 @@
             >
               <div class="panel-heading">
                 <div>
+                  <div class="eyebrow">Your sources</div>
                   <h2 id="sources-title">Source files</h2>
                   <p>
-                    Images become frames immediately. Sample video at your own
-                    pace.
+                    Import images or sample frames from video.
                   </p>
                 </div>
                 <label
@@ -316,8 +319,8 @@
                 /></label>
               </div>
               <div id="source-dropzone" class="source-dropzone" role="button" tabindex="0" aria-label="Choose or drop image and video files">
-                <strong>Drop images and videos here</strong>
-                <span>or click to choose files · originals stay on this computer</span>
+                <strong>Drop images or videos</strong>
+                <span>or choose files · originals stay local</span>
               </div>
               <section id="upload-queue" class="upload-queue" aria-label="File import queue" hidden>
                 <p id="upload-progress" class="field-hint" role="status" aria-live="polite"></p>
@@ -328,20 +331,28 @@
                 </div>
                 <p class="field-hint">Cancelling skips queued files. The active file finishes so its result stays clear. Keep this page open until it completes.</p>
               </section>
-              <div id="asset-list" class="asset-list"></div>
+              <details class="intake-source-library">
+                <summary>Source library <span id="intake-source-count" class="count">0</span></summary>
+                <div id="asset-list" class="asset-list"></div>
+              </details>
+              <p class="intake-source-hint">Images are ready immediately. Open the source library to extract frames or suggest passages from a video.</p>
             </section>
             <section class="frames-section" aria-labelledby="frames-title">
               <div class="frame-section-heading">
                 <div>
+                  <div class="eyebrow">Choose what to review</div>
                   <h2 id="frames-title">
                     Frame collection
                     <span class="count" id="visible-frame-count">0</span>
                   </h2>
                   <p class="muted small">
-                    Select frames to carry forward. Open any frame to inspect
-                    its source.
+                    Select images for annotation. Open a thumbnail to inspect its source.
                   </p>
                 </div>
+                <button id="intake-review-selection" class="button button-primary" type="button" disabled>Review selection <span id="intake-review-count">0</span><span aria-hidden="true">→</span></button>
+              </div>
+              <div class="intake-collection-context">
+                <p id="intake-collection-context" class="small muted">No frames in this session</p>
                 <div class="filter-group" aria-label="Frame filter">
                   <button
                     id="filter-all"
@@ -370,14 +381,15 @@
                   <option value="all">All frames</option><option value="low_confidence">Low confidence predictions</option><option value="no_detections">No saved target detections</option><option value="exact_duplicates">Identical pixels</option><option value="similar">Visually similar candidates</option>
                 </select></div>
               </div>
-              <div class="gallery-insights-heading"><p id="gallery-insights-status" class="field-hint" role="status"></p><button id="gallery-refresh" class="text-button" type="button">Refresh review signals</button><button id="gallery-reset" class="text-button" type="button">Reset filters</button></div>
-              <p class="field-hint gallery-signal-hint">Saved signals guide inspection. No detections does not mean a negative image.</p>
               <details class="gallery-explanation">
-                <summary>How review signals work</summary>
+                <summary>Review signals and inspection limits</summary>
+                <div class="gallery-insights-heading"><p id="gallery-insights-status" class="field-hint" role="status"></p><button id="gallery-refresh" class="text-button" type="button">Refresh review signals</button></div>
+                <p class="field-hint gallery-signal-hint">Saved signals guide inspection. No detections does not mean a negative image.</p>
                 <div id="gallery-warnings" class="gallery-explanation-body"></div>
               </details>
+              <div id="intake-load-status" class="intake-load-status" hidden><p id="intake-load-message" role="status"></p><button id="intake-load-retry" class="text-button" type="button">Try again</button></div>
               <div class="selection-toolbar">
-                <span id="selection-summary" class="small muted"
+                <span id="selection-summary" class="small muted" role="status"
                   >No frames selected</span
                 >
                 <div>
@@ -390,6 +402,7 @@
                   >
                     Clear visible selection
                   </button>
+                  <button id="gallery-reset" class="text-button" type="button">Reset filters</button>
                 </div>
               </div>
               <div id="frame-grid" class="frame-grid"></div>
@@ -640,92 +653,6 @@
             </section>
           </section>
           <section id="annotation-workspace" aria-label="Annotation" hidden>
-            <details id="preannotations" class="panel preannotations">
-              <summary>Generate proposals <span class="muted small">· Local detector, one image or a batch</span></summary>
-              <div class="preannotation-body">
-                <p class="field-hint">Generate new boxes with an available local detector. No model is downloaded here. Proposals never replace saved human labels or validate a frame.</p>
-                <div class="preannotation-setup">
-                  <fieldset class="preannotation-selection">
-                    <legend>Images to process</legend>
-                    <label for="preannotation-scope">Frame selection</label><select id="preannotation-scope"><option value="current">Open frame</option><option value="batch">Choose a batch</option></select>
-                    <p id="preannotation-current" class="field-hint" role="status"></p>
-                    <div id="preannotation-batch" hidden>
-                      <div class="preannotation-actions"><span id="preannotation-selection-count" class="small muted">0 chosen · maximum 25</span><button id="preannotation-select-all" type="button" class="text-button">Select all</button><button id="preannotation-clear" type="button" class="text-button">Clear</button></div>
-                      <p class="field-hint">Uses images selected in Data intake. This checklist does not change dataset selection.</p>
-                      <div id="preannotation-frames" class="assistance-batch-frames"></div>
-                    </div>
-                  </fieldset>
-                  <div class="preannotation-settings">
-                    <div><label for="preannotation-name">Run name</label><input id="preannotation-name" value="Detector proposals" maxlength="160" /></div>
-                    <div><label for="preannotation-model">Local detector</label><select id="preannotation-model"><option value="">Open this panel to check models</option></select><p id="preannotation-model-status" class="field-hint" role="status"></p><button id="preannotation-refresh-models" type="button" class="text-button">Refresh detectors</button></div>
-                    <div class="preannotation-inference-settings">
-                      <div><label for="preannotation-threshold">Proposal score ≥</label><input id="preannotation-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
-                      <div><label for="preannotation-mode">Inference mode</label><select id="preannotation-mode"><option value="full">Full image</option><option value="tiled">Overlapping tiles</option></select></div>
-                      <div><label for="preannotation-device">Device</label><select id="preannotation-device"><option value="cpu">CPU</option><option value="cuda">CUDA GPU</option></select></div>
-                    </div>
-                    <div id="preannotation-tiled" class="preannotation-inference-settings" hidden>
-                      <div><label for="preannotation-tile-size">Tile size · pixels</label><input id="preannotation-tile-size" type="number" min="128" max="2048" step="1" value="640" /></div>
-                      <div><label for="preannotation-overlap">Overlap · fraction</label><input id="preannotation-overlap" type="number" min="0" max="0.5" step="any" value="0.2" /></div>
-                    </div>
-                    <p class="field-hint">Scores depend on the detector and are not calibrated probabilities of correctness. Check the whole image for missed targets even when no box is returned.</p>
-                  </div>
-                </div>
-                <details class="preannotation-capabilities"><summary>Available operations and class support</summary><div id="preannotation-capabilities"></div></details>
-                <p id="preannotation-error" class="inline-error" role="alert" hidden></p>
-                <div class="preannotation-actions"><button id="preannotation-preview" type="button" class="button button-secondary" disabled>Preview proposals run</button><button id="preannotation-start" type="button" class="button" disabled>Create proposals</button></div>
-                <p class="field-hint">Preview checks saved inputs without inference. Creating runs the local detector and saves its raw output and separate proposals. Save or discard unsaved edits first.</p>
-                <div id="preannotation-preview-result" class="preannotation-preview-result" hidden><p id="preannotation-preview-summary" class="small" role="status"></p><p id="preannotation-preview-work" class="field-hint"></p><ul id="preannotation-preview-frames" class="assistance-batch-results"></ul><ul id="preannotation-preview-warnings" class="field-hint"></ul></div>
-                <section class="preannotation-history">
-                  <div class="preannotation-actions"><h3>Saved proposal runs</h3><button id="preannotation-refresh-history" type="button" class="text-button">Refresh history</button></div>
-                  <label class="sr-only" for="preannotation-history">Saved proposal run</label><select id="preannotation-history"><option value="">No proposal runs in this session</option></select>
-                  <p id="preannotation-history-error" class="inline-error" role="alert" hidden></p>
-                  <div id="preannotation-detail" hidden><p id="preannotation-detail-summary" class="small" role="status"></p><progress id="preannotation-progress" max="1" value="0" aria-label="Proposal run progress"></progress><p id="preannotation-detail-config" class="field-hint"></p><div class="preannotation-actions"><button id="preannotation-job" type="button" class="text-button">Job details and cancellation</button><button id="preannotation-raw" type="button" class="text-button">Inspect saved inputs and raw outputs</button></div><ul id="preannotation-detail-frames" class="assistance-batch-results"></ul></div>
-                </section>
-              </div>
-            </details>
-            <details id="assistance-batches" class="panel assistance-batches">
-              <summary>Local batch review <span class="muted small">· Prepare proposals for several frames</span></summary>
-              <div class="assistance-batch-body">
-                <p class="field-hint">Review 1–8 existing boxes per frame with a local vision model. Choose saved annotations or a saved detector run; this review classifies candidate boxes and does not discover new objects. Every proposal still needs your correction and validation.</p>
-                <div class="assistance-batch-setup">
-                  <fieldset class="assistance-batch-selection">
-                    <legend>Frames in this batch</legend>
-                    <div class="assistance-batch-selection-actions">
-                      <span id="assistance-batch-selection-count" class="small muted">0 chosen · maximum 25</span>
-                      <button id="assistance-batch-select-all" type="button" class="text-button">Select all</button>
-                      <button id="assistance-batch-clear" type="button" class="text-button">Clear</button>
-                    </div>
-                    <p class="field-hint">Choose from the frames selected in Data intake. This checklist does not change dataset selection.</p>
-                    <div id="assistance-batch-frames" class="assistance-batch-frames"></div>
-                  </fieldset>
-                  <div class="assistance-batch-settings">
-                    <div><label for="assistance-batch-name">Batch name</label><input id="assistance-batch-name" maxlength="160" value="Local review" /></div>
-                    <div><label for="assistance-batch-model">Local vision model · Ollama</label><select id="assistance-batch-model"><option value="">Loading models…</option></select>
-                      <div class="assistance-batch-provider"><p id="assistance-batch-provider-status" class="field-hint" role="status"></p><button id="assistance-batch-refresh-models" class="text-button" type="button">Refresh models</button></div>
-                    </div>
-                    <div><label for="assistance-batch-source">Candidate boxes</label><select id="assistance-batch-source"><option value="annotations">Saved annotations</option><option value="comparison">Saved detector comparison</option></select></div>
-                    <div id="assistance-batch-comparison-settings" class="assistance-batch-comparison-settings" hidden>
-                      <div><label for="assistance-batch-comparison">Successful comparison</label><select id="assistance-batch-comparison"><option value="">No successful comparisons</option></select></div>
-                      <div><label for="assistance-batch-detector">Detector / inference mode</label><select id="assistance-batch-detector"><option value="">Choose a comparison</option></select></div>
-                      <div><label for="assistance-batch-threshold">Detector confidence ≥</label><input id="assistance-batch-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
-                    </div>
-                    <div><label for="assistance-batch-instructions">Review instructions <span class="muted">(optional)</span></label><textarea id="assistance-batch-instructions" rows="3" maxlength="2000" placeholder="For example: take particular care with small distant people."></textarea></div>
-                  </div>
-                </div>
-                <p id="assistance-batch-error" class="inline-error" role="alert" hidden></p>
-                <div class="assistance-batch-actions"><button id="assistance-batch-preview" type="button" class="button button-secondary" disabled>Check eligible frames</button><button id="assistance-batch-start" type="button" class="button" disabled>Start local review</button></div>
-                <p class="field-hint">Checking eligibility runs no inference. Starting queues the eligible frames for local processing; images stay on this machine. Unsaved editor changes are never included.</p>
-                <div id="assistance-batch-preview-result" class="assistance-batch-preview-result" hidden><p id="assistance-batch-preview-summary" class="small" role="status"></p><ul id="assistance-batch-preview-frames" class="assistance-batch-results"></ul></div>
-                <div class="assistance-batch-history">
-                  <div class="assistance-batch-history-heading"><h3>Batch history</h3><button id="assistance-batch-refresh-history" type="button" class="text-button">Refresh history</button></div>
-                  <label class="sr-only" for="assistance-batch-history">Saved local review batch</label><select id="assistance-batch-history"><option value="">No batches in this session</option></select>
-                  <p id="assistance-batch-history-error" class="inline-error" role="alert" hidden></p>
-                  <div id="assistance-batch-detail" hidden><p id="assistance-batch-detail-summary" class="small" role="status"></p><progress id="assistance-batch-progress" max="1" value="0" aria-label="Batch progress"></progress><p id="assistance-batch-detail-config" class="field-hint"></p><button id="assistance-batch-cancel" type="button" class="button button-secondary" hidden>Cancel remaining frames</button><p id="assistance-batch-cancel-hint" class="field-hint" hidden></p><p id="assistance-batch-state-counts" class="field-hint"></p><p id="assistance-batch-lineage" class="field-hint"></p>
-                    <section class="batch-retry"><button id="assistance-batch-retry-preview" type="button" class="button button-secondary" hidden>Check unfinished frames</button><p id="assistance-batch-retry-error" class="inline-error" role="alert" hidden></p><div id="assistance-batch-retry-result" hidden><p id="assistance-batch-retry-summary" class="field-hint" role="status"></p><ul id="assistance-batch-retry-frames" class="assistance-batch-results"></ul><label for="assistance-batch-retry-name">New batch name</label><input id="assistance-batch-retry-name" maxlength="160" /><p class="field-hint">Creates a new linked batch after checking current saved labels. Successful frames and existing proposals are kept; they are never replayed.</p><button id="assistance-batch-retry-confirm" type="button" class="button button-primary" disabled>Start checked frames in a new batch</button></div></section>
-                    <ul id="assistance-batch-detail-frames" class="assistance-batch-results"></ul><details id="assistance-batch-excluded" class="assistance-batch-excluded" hidden><summary id="assistance-batch-excluded-summary"></summary><ul id="assistance-batch-excluded-frames" class="assistance-batch-results"></ul></details></div>
-                </div>
-              </div>
-            </details>
             <section class="panel review-queue" aria-labelledby="review-queue-title">
               <div class="panel-heading">
                 <div>
@@ -736,6 +663,8 @@
               </div>
               <div id="review-queue-counts" class="review-queue-counts" aria-live="polite"></div>
               <progress id="review-queue-progress" max="1" value="0" aria-label="Human-validated frames"></progress>
+              <details id="review-queue-browser" class="review-queue-browser">
+                <summary>Browse and filter selected frames <span id="review-queue-overview" class="muted"></span></summary>
               <div class="review-queue-controls">
                 <div><label for="review-queue-filter">Review status</label><select id="review-queue-filter">
                   <option value="all">All selected frames</option>
@@ -767,6 +696,7 @@
               <p id="review-queue-empty" class="field-hint" hidden>No frames match this filter.</p>
               <div id="review-queue-list" class="review-queue-list" role="list" aria-label="Frames to review"></div>
               <p id="review-queue-current-hint" class="field-hint" hidden></p>
+              </details>
             </section>
             <div id="annotation-empty" class="panel comparison-empty">
               <strong>Build your ground truth.</strong>
@@ -774,6 +704,7 @@
                 Select images or extracted video frames in Data intake, then
                 open a frame in the review queue to annotate the project's classes.
               </p>
+              <button id="annotation-open-intake" type="button" class="button button-primary">Choose images in Data intake</button>
             </div>
             <p
               id="annotation-error"
@@ -827,6 +758,8 @@
                 >
                   Reload saved frame
                 </button>
+                <button id="annotation-focus-mode" type="button" class="button button-secondary"
+                  aria-pressed="false" aria-controls="annotation-editor">Focus view</button>
               </div>
               <p id="annotation-source" class="muted small"></p>
               <div class="annotation-layout">
@@ -835,7 +768,7 @@
                   aria-labelledby="annotation-canvas-title"
                 >
                   <div class="annotation-toolbar">
-                    <h2 id="annotation-canvas-title">Frame labels</h2>
+                    <h2 id="annotation-canvas-title">Image review</h2>
                     <div>
                       <button
                         id="annotation-select-tool"
@@ -987,6 +920,12 @@
                       <p class="field-hint">Shortcuts apply in the editor, outside text fields and dialogs. View changes do not modify labels. Up to 100 local edits can be undone; saving, reloading or changing frames starts a new history. Human validation remains explicit.</p>
                     </details>
                   </div>
+                </section>
+                <aside
+                  class="annotation-review-column"
+                  aria-label="Review and save"
+                >
+                  <section class="panel annotation-object-panel" aria-label="Objects in this image">
                   <div
                     id="annotation-box-properties"
                     class="annotation-box-properties"
@@ -1063,11 +1002,7 @@
                       + Add box using coordinates
                     </button>
                   </div>
-                </section>
-                <aside
-                  class="annotation-review-column"
-                  aria-label="Review and save"
-                >
+                  </section>
                   <section class="panel annotation-save-panel">
                     <h2>Human review</h2>
                     <p id="annotation-review-summary" class="small muted"></p>
@@ -1185,7 +1120,7 @@
                     id="annotation-proposals"
                     class="annotation-proposals"
                   ></div>
-                  <details class="annotation-assist" open>
+                  <details class="annotation-assist">
                     <summary>Multimodal review</summary>
                     <div class="annotation-provider-controls">
                       <label for="annotation-execution">Execution</label>
@@ -1350,6 +1285,92 @@ ollama pull qwen3-vl:4b-instruct</pre
                 <div id="annotation-history"></div>
               </details>
             </div>
+            <details id="preannotations" class="panel preannotations">
+              <summary>Generate proposals <span class="muted small">· Local detector, one image or a batch</span></summary>
+              <div class="preannotation-body">
+                <p class="field-hint">Generate new boxes with an available local detector. No model is downloaded here. Proposals never replace saved human labels or validate a frame.</p>
+                <div class="preannotation-setup">
+                  <fieldset class="preannotation-selection">
+                    <legend>Images to process</legend>
+                    <label for="preannotation-scope">Frame selection</label><select id="preannotation-scope"><option value="current">Open frame</option><option value="batch">Choose a batch</option></select>
+                    <p id="preannotation-current" class="field-hint" role="status"></p>
+                    <div id="preannotation-batch" hidden>
+                      <div class="preannotation-actions"><span id="preannotation-selection-count" class="small muted">0 chosen · maximum 25</span><button id="preannotation-select-all" type="button" class="text-button">Select all</button><button id="preannotation-clear" type="button" class="text-button">Clear</button></div>
+                      <p class="field-hint">Uses images selected in Data intake. This checklist does not change dataset selection.</p>
+                      <div id="preannotation-frames" class="assistance-batch-frames"></div>
+                    </div>
+                  </fieldset>
+                  <div class="preannotation-settings">
+                    <div><label for="preannotation-name">Run name</label><input id="preannotation-name" value="Detector proposals" maxlength="160" /></div>
+                    <div><label for="preannotation-model">Local detector</label><select id="preannotation-model"><option value="">Open this panel to check models</option></select><p id="preannotation-model-status" class="field-hint" role="status"></p><button id="preannotation-refresh-models" type="button" class="text-button">Refresh detectors</button></div>
+                    <div class="preannotation-inference-settings">
+                      <div><label for="preannotation-threshold">Proposal score ≥</label><input id="preannotation-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
+                      <div><label for="preannotation-mode">Inference mode</label><select id="preannotation-mode"><option value="full">Full image</option><option value="tiled">Overlapping tiles</option></select></div>
+                      <div><label for="preannotation-device">Device</label><select id="preannotation-device"><option value="cpu">CPU</option><option value="cuda">CUDA GPU</option></select></div>
+                    </div>
+                    <div id="preannotation-tiled" class="preannotation-inference-settings" hidden>
+                      <div><label for="preannotation-tile-size">Tile size · pixels</label><input id="preannotation-tile-size" type="number" min="128" max="2048" step="1" value="640" /></div>
+                      <div><label for="preannotation-overlap">Overlap · fraction</label><input id="preannotation-overlap" type="number" min="0" max="0.5" step="any" value="0.2" /></div>
+                    </div>
+                    <p class="field-hint">Scores depend on the detector and are not calibrated probabilities of correctness. Check the whole image for missed targets even when no box is returned.</p>
+                  </div>
+                </div>
+                <details class="preannotation-capabilities"><summary>Available operations and class support</summary><div id="preannotation-capabilities"></div></details>
+                <p id="preannotation-error" class="inline-error" role="alert" hidden></p>
+                <div class="preannotation-actions"><button id="preannotation-preview" type="button" class="button button-secondary" disabled>Preview proposals run</button><button id="preannotation-start" type="button" class="button" disabled>Create proposals</button></div>
+                <p class="field-hint">Preview checks saved inputs without inference. Creating runs the local detector and saves its raw output and separate proposals. Save or discard unsaved edits first.</p>
+                <div id="preannotation-preview-result" class="preannotation-preview-result" hidden><p id="preannotation-preview-summary" class="small" role="status"></p><p id="preannotation-preview-work" class="field-hint"></p><ul id="preannotation-preview-frames" class="assistance-batch-results"></ul><ul id="preannotation-preview-warnings" class="field-hint"></ul></div>
+                <section class="preannotation-history">
+                  <div class="preannotation-actions"><h3>Saved proposal runs</h3><button id="preannotation-refresh-history" type="button" class="text-button">Refresh history</button></div>
+                  <label class="sr-only" for="preannotation-history">Saved proposal run</label><select id="preannotation-history"><option value="">No proposal runs in this session</option></select>
+                  <p id="preannotation-history-error" class="inline-error" role="alert" hidden></p>
+                  <div id="preannotation-detail" hidden><p id="preannotation-detail-summary" class="small" role="status"></p><progress id="preannotation-progress" max="1" value="0" aria-label="Proposal run progress"></progress><p id="preannotation-detail-config" class="field-hint"></p><div class="preannotation-actions"><button id="preannotation-job" type="button" class="text-button">Job details and cancellation</button><button id="preannotation-raw" type="button" class="text-button">Inspect saved inputs and raw outputs</button></div><ul id="preannotation-detail-frames" class="assistance-batch-results"></ul></div>
+                </section>
+              </div>
+            </details>
+            <details id="assistance-batches" class="panel assistance-batches">
+              <summary>Local batch review <span class="muted small">· Prepare proposals for several frames</span></summary>
+              <div class="assistance-batch-body">
+                <p class="field-hint">Review 1–8 existing boxes per frame with a local vision model. Choose saved annotations or a saved detector run; this review classifies candidate boxes and does not discover new objects. Every proposal still needs your correction and validation.</p>
+                <div class="assistance-batch-setup">
+                  <fieldset class="assistance-batch-selection">
+                    <legend>Frames in this batch</legend>
+                    <div class="assistance-batch-selection-actions">
+                      <span id="assistance-batch-selection-count" class="small muted">0 chosen · maximum 25</span>
+                      <button id="assistance-batch-select-all" type="button" class="text-button">Select all</button>
+                      <button id="assistance-batch-clear" type="button" class="text-button">Clear</button>
+                    </div>
+                    <p class="field-hint">Choose from the frames selected in Data intake. This checklist does not change dataset selection.</p>
+                    <div id="assistance-batch-frames" class="assistance-batch-frames"></div>
+                  </fieldset>
+                  <div class="assistance-batch-settings">
+                    <div><label for="assistance-batch-name">Batch name</label><input id="assistance-batch-name" maxlength="160" value="Local review" /></div>
+                    <div><label for="assistance-batch-model">Local vision model · Ollama</label><select id="assistance-batch-model"><option value="">Loading models…</option></select>
+                      <div class="assistance-batch-provider"><p id="assistance-batch-provider-status" class="field-hint" role="status"></p><button id="assistance-batch-refresh-models" class="text-button" type="button">Refresh models</button></div>
+                    </div>
+                    <div><label for="assistance-batch-source">Candidate boxes</label><select id="assistance-batch-source"><option value="annotations">Saved annotations</option><option value="comparison">Saved detector comparison</option></select></div>
+                    <div id="assistance-batch-comparison-settings" class="assistance-batch-comparison-settings" hidden>
+                      <div><label for="assistance-batch-comparison">Successful comparison</label><select id="assistance-batch-comparison"><option value="">No successful comparisons</option></select></div>
+                      <div><label for="assistance-batch-detector">Detector / inference mode</label><select id="assistance-batch-detector"><option value="">Choose a comparison</option></select></div>
+                      <div><label for="assistance-batch-threshold">Detector confidence ≥</label><input id="assistance-batch-threshold" type="number" min="0" max="1" step="any" value="0.5" /></div>
+                    </div>
+                    <div><label for="assistance-batch-instructions">Review instructions <span class="muted">(optional)</span></label><textarea id="assistance-batch-instructions" rows="3" maxlength="2000" placeholder="For example: take particular care with small distant people."></textarea></div>
+                  </div>
+                </div>
+                <p id="assistance-batch-error" class="inline-error" role="alert" hidden></p>
+                <div class="assistance-batch-actions"><button id="assistance-batch-preview" type="button" class="button button-secondary" disabled>Check eligible frames</button><button id="assistance-batch-start" type="button" class="button" disabled>Start local review</button></div>
+                <p class="field-hint">Checking eligibility runs no inference. Starting queues the eligible frames for local processing; images stay on this machine. Unsaved editor changes are never included.</p>
+                <div id="assistance-batch-preview-result" class="assistance-batch-preview-result" hidden><p id="assistance-batch-preview-summary" class="small" role="status"></p><ul id="assistance-batch-preview-frames" class="assistance-batch-results"></ul></div>
+                <div class="assistance-batch-history">
+                  <div class="assistance-batch-history-heading"><h3>Batch history</h3><button id="assistance-batch-refresh-history" type="button" class="text-button">Refresh history</button></div>
+                  <label class="sr-only" for="assistance-batch-history">Saved local review batch</label><select id="assistance-batch-history"><option value="">No batches in this session</option></select>
+                  <p id="assistance-batch-history-error" class="inline-error" role="alert" hidden></p>
+                  <div id="assistance-batch-detail" hidden><p id="assistance-batch-detail-summary" class="small" role="status"></p><progress id="assistance-batch-progress" max="1" value="0" aria-label="Batch progress"></progress><p id="assistance-batch-detail-config" class="field-hint"></p><button id="assistance-batch-cancel" type="button" class="button button-secondary" hidden>Cancel remaining frames</button><p id="assistance-batch-cancel-hint" class="field-hint" hidden></p><p id="assistance-batch-state-counts" class="field-hint"></p><p id="assistance-batch-lineage" class="field-hint"></p>
+                    <section class="batch-retry"><button id="assistance-batch-retry-preview" type="button" class="button button-secondary" hidden>Check unfinished frames</button><p id="assistance-batch-retry-error" class="inline-error" role="alert" hidden></p><div id="assistance-batch-retry-result" hidden><p id="assistance-batch-retry-summary" class="field-hint" role="status"></p><ul id="assistance-batch-retry-frames" class="assistance-batch-results"></ul><label for="assistance-batch-retry-name">New batch name</label><input id="assistance-batch-retry-name" maxlength="160" /><p class="field-hint">Creates a new linked batch after checking current saved labels. Successful frames and existing proposals are kept; they are never replayed.</p><button id="assistance-batch-retry-confirm" type="button" class="button button-primary" disabled>Start checked frames in a new batch</button></div></section>
+                    <ul id="assistance-batch-detail-frames" class="assistance-batch-results"></ul><details id="assistance-batch-excluded" class="assistance-batch-excluded" hidden><summary id="assistance-batch-excluded-summary"></summary><ul id="assistance-batch-excluded-frames" class="assistance-batch-results"></ul></details></div>
+                </div>
+              </div>
+            </details>
           </section>
         </div>
           <section
@@ -1357,56 +1378,34 @@ ollama pull qwen3-vl:4b-instruct</pre
             aria-label="Dataset and training"
             hidden
           >
-            <p class="dataset-scope">
-              Project-wide: build releases from validated, selected frames
-              across all sessions in this project. Sessions in the same scene group stay
-              together in every release.
-            </p>
-            <p class="dataset-scope">Freeze, export and train with your project's classes. Saved definitions determine which checkpoints can be reused and compared in a quality evaluation.</p>
+            <div class="dataset-workspace-intro">
+              <p class="eyebrow">Validated data / Frozen versions</p>
+              <p class="dataset-scope">Build a release from reviewed images across your project, then use that exact version for training and evaluation.</p>
+            </div>
             <section
-              class="panel dataset-panel"
+              class="panel dataset-panel studio-dataset-builder"
               aria-labelledby="dataset-create-title"
             >
               <div class="panel-heading">
                 <div>
-                  <h2 id="dataset-create-title">Freeze a dataset release</h2>
+                  <h2 id="dataset-create-title">Prepare a dataset</h2>
                   <p>
-                    Save image pixels, reviewed labels and their provenance in
-                    an immutable version.
+                    Choose reviewed data, assign scene groups, then freeze a release.
                   </p>
                 </div>
                 <button id="dataset-refresh" type="button" class="text-button">
                   Refresh candidates
                 </button>
               </div>
-              <form id="dataset-form" class="dataset-panel-body">
+              <form id="dataset-form" class="dataset-panel-body dataset-builder-layout">
+                <section class="dataset-stage dataset-stage-source" aria-labelledby="dataset-source-title">
+                  <div class="dataset-stage-heading"><span class="dataset-stage-index" aria-hidden="true">01</span><div><h3 id="dataset-source-title">Choose reviewed data</h3><p>Only selected frames with a saved human validation are eligible.</p></div></div>
                 <div class="dataset-taxonomy-picker">
                   <label for="dataset-taxonomy">Class version for this release</label>
                   <select id="dataset-taxonomy" disabled><option value="">Loading class versions…</option></select>
                   <p id="dataset-taxonomy-context" class="field-hint"></p>
                   <details class="dataset-class-definitions"><summary>View class names and annotation rules</summary><div id="dataset-taxonomy-definitions"></div></details>
                   <p id="dataset-taxonomy-excluded" class="field-hint" role="status"></p>
-                </div>
-                <div class="training-form-grid">
-                  <div>
-                    <label for="dataset-name">Release name</label>
-                    <input
-                      id="dataset-name"
-                      required
-                      maxlength="160"
-                      placeholder="e.g. Field collection · v1"
-                      autocomplete="off"
-                    />
-                  </div>
-                  <div>
-                    <label for="dataset-parent"
-                      >Previous version (optional)</label
-                    >
-                    <select id="dataset-parent">
-                      <option value="">First / independent release</option>
-                    </select>
-                    <p id="dataset-parent-hint" class="field-hint">A previous release must use this exact class version. You can also create an independent release.</p>
-                  </div>
                 </div>
                 <p
                   id="dataset-candidate-status"
@@ -1415,8 +1414,11 @@ ollama pull qwen3-vl:4b-instruct</pre
                 >
                   Open this tab to load validated frames.
                 </p>
-                <details id="dataset-planner" class="dataset-planner">
-                  <summary>Suggest whole-group partitions</summary>
+                </section>
+                <section class="dataset-stage dataset-stage-splits" aria-labelledby="dataset-splits-title">
+                  <div class="dataset-stage-heading"><span class="dataset-stage-index" aria-hidden="true">02</span><div><h3 id="dataset-splits-title">Assign scene groups</h3><p>Keep related captures together to protect your evaluation.</p></div></div>
+                <details id="dataset-planner" class="dataset-planner" open>
+                  <summary>Preview a suggested split</summary>
                   <p class="field-hint">Preview a reproducible split of all eligible frames in this class version. Related video sources and identical images stay together; existing split reservations take priority. Applying fills the menus below for your review.</p>
                   <div class="partition-settings">
                     <div><label for="dataset-plan-train">Train · %</label><input id="dataset-plan-train" type="number" min="0" max="100" step="1" value="80" /></div>
@@ -1437,16 +1439,31 @@ ollama pull qwen3-vl:4b-instruct</pre
                     <p class="field-hint">This updates the split menus only. Freeze release is a separate action.</p>
                   </div>
                 </details>
+                <div class="dataset-groups-heading"><h4>Review group assignments</h4><p class="field-hint">Assign groups manually, or apply a preview and adjust it here.</p></div>
                 <div id="dataset-groups" class="dataset-groups"></div>
-                <p class="field-hint">
+                <details class="dataset-split-help"><summary>How train, validation and test work</summary><p class="field-hint">
                   Train updates model weights; validation is reserved for model
                   selection; test is optional and stays held out. Assign at
                   least one group to train and another to validation. Once used,
                   a group's split is reserved across releases. Put nearby scenes
                   and similar captures in the same group to avoid leakage.
-                </p>
+                </p></details>
                 <div id="dataset-warnings" class="dataset-warnings"></div>
-                <div class="comparison-launch">
+                </section>
+                <section class="dataset-stage dataset-stage-freeze" aria-labelledby="dataset-freeze-title">
+                  <div class="dataset-stage-heading"><span class="dataset-stage-index" aria-hidden="true">03</span><div><h3 id="dataset-freeze-title">Freeze a release</h3><p>Save the images, reviewed labels and provenance as an immutable version.</p></div></div>
+                  <div class="dataset-release-fields">
+                    <div>
+                      <label for="dataset-name">Release name</label>
+                      <input id="dataset-name" required maxlength="160" placeholder="e.g. Field collection · v1" autocomplete="off" />
+                    </div>
+                    <div>
+                      <label for="dataset-parent">Previous version (optional)</label>
+                      <select id="dataset-parent"><option value="">First / independent release</option></select>
+                      <p id="dataset-parent-hint" class="field-hint">A previous release must use this exact class version. You can also create an independent release.</p>
+                    </div>
+                  </div>
+                <div class="dataset-freeze-action">
                   <p
                     id="dataset-selection-summary"
                     class="selection-count"
@@ -1454,10 +1471,12 @@ ollama pull qwen3-vl:4b-instruct</pre
                   >
                     No groups included
                   </p>
+                  <p id="dataset-readiness" class="field-hint" role="status">Assign at least one group to train and another to validation.</p>
                   <button
                     id="dataset-create"
                     type="submit"
                     class="button button-primary"
+                    aria-describedby="dataset-readiness dataset-selection-summary"
                     disabled
                   >
                     Freeze release <span aria-hidden="true">→</span>
@@ -1469,16 +1488,17 @@ ollama pull qwen3-vl:4b-instruct</pre
                   role="alert"
                   hidden
                 ></p>
+                </section>
               </form>
             </section>
             <div class="training-columns">
               <section
-                class="panel dataset-panel"
+                class="panel dataset-panel studio-dataset-releases"
                 aria-labelledby="dataset-history-title"
               >
                 <div class="panel-heading">
                   <div>
-                    <h2 id="dataset-history-title">Dataset releases</h2>
+                    <h2 id="dataset-history-title">Saved releases</h2>
                     <p>
                       Saved versions remain unchanged as annotations evolve.
                     </p>
@@ -1508,6 +1528,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                       class="dataset-counts"
                     ></div>
                     <p id="dataset-detail-classes" class="field-hint"></p>
+                    <details class="dataset-saved-classes"><summary>Inspect frozen classes and identifiers</summary>
                     <p id="dataset-detail-taxonomy" class="field-hint"></p>
                     <div class="dataset-class-table-wrap"><table class="dataset-class-table">
                       <caption>Frozen class identifiers and counts</caption>
@@ -1516,6 +1537,7 @@ ollama pull qwen3-vl:4b-instruct</pre
                     </table></div>
                     <p class="field-hint">Export category IDs belong to this saved COCO-format dataset. They are independent of optional mappings to the official COCO detector categories.</p>
                     <details class="dataset-class-definitions"><summary>Saved class definitions</summary><div id="dataset-detail-definitions"></div></details>
+                    </details>
                     <p id="dataset-detail-ml" class="field-hint"></p>
                     <div
                       id="dataset-detail-warnings"

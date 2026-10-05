@@ -53,6 +53,23 @@
     timer: null,
     message: "",
   };
+  let focusMode = false;
+  function setFocusMode(enabled) {
+    focusMode = enabled && queue.active;
+    window.document.body.classList.toggle("annotation-focus", focusMode);
+    const button = $("#annotation-focus-mode");
+    button.setAttribute("aria-pressed", String(focusMode));
+    button.textContent = focusMode ? "Exit focus view" : "Focus view";
+  }
+  $("#annotation-focus-mode").addEventListener("click", () => {
+    if (actionBlocked()) return;
+    setFocusMode(!focusMode);
+    // ResizeObserver repaints at the new size without resetting geometry or history.
+    $("#annotation-editor").scrollIntoView({ block: "start" });
+  });
+  $("#annotation-open-intake").addEventListener("click", () => {
+    if (window.IRISNavigation.open("intake")) $("#main").focus();
+  });
   const reviewLabels = {
     unannotated: "Unannotated",
     draft: "Draft",
@@ -214,6 +231,7 @@
     $("#annotation-review-summary").textContent =
       `${editor.boxes.length} label${editor.boxes.length === 1 ? "" : "s"} · ${count} pending proposal${count === 1 ? "" : "s"}`;
     const blocked = actionBlocked();
+    $("#annotation-focus-mode").disabled = blocked;
     for (const button of window.document.querySelectorAll("#annotation-boxes button"))
       button.disabled = blocked;
     for (const button of window.document.querySelectorAll("#annotation-proposals button"))
@@ -431,6 +449,10 @@
     }
     const total = queue.data?.counts.total || 0;
     const validated = queue.data?.counts.validated || 0;
+    $("#review-queue-overview").textContent = queue.loading ? "Loading…"
+      : !$("#review-queue-error").hidden ? "Queue unavailable · retry with Refresh queue"
+        : `${validated} of ${total} validated`;
+    if (!$("#review-queue-error").hidden || queue.message) $("#review-queue-browser").open = true;
     $("#review-queue-progress").max = Math.max(total, 1);
     $("#review-queue-progress").value = validated;
     $("#review-queue-progress").setAttribute("aria-label", `${validated} of ${total} frames human-validated`);
@@ -596,6 +618,7 @@
       editor.request++;
       $("#annotation-editor").hidden = true;
       $("#annotation-empty").hidden = false;
+      setFocusMode(false);
     }
   }
 
@@ -617,7 +640,10 @@
       if (request !== editor.request) return;
       applyDocument(result);
     } catch (failure) {
-      if (request === editor.request) reportFailure(failure);
+      if (request === editor.request) {
+        setFocusMode(false);
+        reportFailure(failure);
+      }
     } finally {
       if (request === editor.request) {
         editor.loading = false;
@@ -2191,6 +2217,7 @@
   });
   window.addEventListener("iris:session", () => {
     if (editor.sessionId === state.sessionId) return;
+    setFocusMode(false);
     invalidatePreview();
     editor.sessionId = state.sessionId;
     editor.frameId = null;
@@ -2224,6 +2251,8 @@
   });
   window.addEventListener("iris:workspace", (event) => {
     queue.active = event.detail.name === "annotation";
+    window.document.body.classList.toggle("annotation-active", queue.active);
+    if (!queue.active) setFocusMode(false);
     if (queue.active) {
       if (queue.stale || !queue.data) scheduleQueue(true);
       else renderQueue();

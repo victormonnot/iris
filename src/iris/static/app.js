@@ -13,6 +13,8 @@ const state = {
   sessionId: null,
   assets: [],
   frames: [],
+  collectionLoading: false,
+  collectionError: "",
   jobs: [],
   filter: "all",
   galleryFilters: { source: "", search: "", review: "all", signal: "all" },
@@ -21,6 +23,7 @@ const state = {
   insightsLoading: false,
   insightsFrameKey: null,
   insightsMessage: "",
+  insightsError: false,
   insightsWarnings: [],
   inspecting: null,
   inspectionIds: [],
@@ -203,6 +206,8 @@ async function selectSession(id) {
   if ($("#extract-dialog").open) $("#extract-dialog").close();
   state.assets = [];
   state.frames = [];
+  state.collectionLoading = true;
+  state.collectionError = "";
   state.filter = "all";
   state.galleryFilters = { source: "", search: "", review: "all", signal: "all" };
   state.insights = new Map();
@@ -210,6 +215,7 @@ async function selectSession(id) {
   state.insightsLoading = false;
   state.insightsFrameKey = null;
   state.insightsMessage = "";
+  state.insightsError = false;
   state.insightsWarnings = [];
   if ($("#frame-dialog").open) $("#frame-dialog").close();
   state.inspecting = null;
@@ -227,9 +233,6 @@ async function selectSession(id) {
   renderAssets();
   renderFrames();
   window.dispatchEvent(new Event("iris:session"));
-  $("#asset-list").replaceChildren(
-    node("p", "empty-assets", "Loading source files…"),
-  );
   await refreshSession();
 }
 
@@ -237,19 +240,33 @@ async function refreshSession(forceInsights = false) {
   if (!state.sessionId) return;
   const id = state.sessionId;
   const request = ++state.frameFetch;
-  const [assets, frames] = await Promise.all([
-    api(`/api/sessions/${encodeURIComponent(id)}/assets`),
-    api(`/api/sessions/${encodeURIComponent(id)}/frames`),
-  ]);
+  let assets, frames;
+  try {
+    [assets, frames] = await Promise.all([
+      api(`/api/sessions/${encodeURIComponent(id)}/assets`),
+      api(`/api/sessions/${encodeURIComponent(id)}/frames`),
+    ]);
+  } catch (error) {
+    if (state.sessionId === id && request === state.frameFetch) {
+      state.collectionLoading = false;
+      state.collectionError = error.message;
+      renderAssets();
+      renderFrames();
+    }
+    throw error;
+  }
   if (state.sessionId !== id || request !== state.frameFetch) return;
   const assetsChanged = JSON.stringify(state.assets) !== JSON.stringify(assets);
+  const wasLoading = state.collectionLoading || Boolean(state.collectionError);
+  state.collectionLoading = false;
+  state.collectionError = "";
   state.assets = assets;
   state.frames = frames.map((frame) =>
     state.pendingSelections.has(frame.id)
       ? { ...frame, selected: state.pendingSelections.get(frame.id) }
       : frame,
   );
-  if (assetsChanged || !assets.length) renderAssets();
+  if (assetsChanged || wasLoading || !assets.length) renderAssets();
   renderGallerySources();
   renderFrames();
   const frameKey = frames.map((frame) => `${frame.id}:${frame.duplicate_count || 0}`).join("|");
@@ -264,6 +281,7 @@ async function refreshInsights() {
   if (!sessionId) return;
   const request = ++state.insightsRequest;
   state.insightsLoading = true;
+  state.insightsError = false;
   state.insightsMessage = "Refreshing saved review and similarity signals…";
   renderGalleryStatus();
   try {
@@ -280,6 +298,7 @@ async function refreshInsights() {
     if (request !== state.insightsRequest || sessionId !== state.sessionId) return;
     state.insights = new Map();
     state.insightsWarnings = [];
+    state.insightsError = true;
     state.insightsMessage = `Review signals unavailable: ${error.message} Use Refresh review signals to try again.`;
   } finally {
     if (request === state.insightsRequest && sessionId === state.sessionId) {
@@ -293,6 +312,7 @@ async function refreshInsights() {
 
 function renderGalleryStatus() {
   $("#gallery-insights-status").textContent = state.insightsMessage;
+  if (state.insightsError) $("#intake-workspace .gallery-explanation").open = true;
   $("#gallery-refresh").disabled = state.insightsLoading || !state.sessionId;
   $("#gallery-warnings").replaceChildren(...state.insightsWarnings.map((warning) => node("p", "field-hint", warning)));
 }
@@ -308,16 +328,17 @@ function renderGallerySources() {
 
 function renderAssets() {
   $("#asset-total").textContent = state.assets.length;
+  $("#intake-source-count").textContent = state.assets.length;
   const list = $("#asset-list");
   list.replaceChildren();
   if (!state.assets.length) {
     const empty = node("div", "empty-assets");
     empty.append(
-      node("strong", "", "Bring in your first source file"),
+      node("strong", "", state.collectionLoading ? "Loading source files…" : state.collectionError ? "Source files unavailable" : "Bring in your first source file"),
       node(
         "p",
         "",
-        "Import images or a video. Source files stay on this machine, with their original content preserved.",
+        state.collectionLoading ? "Opening the saved sources for this session." : state.collectionError ? "Use Try again in the collection to reload this session." : "Import images or a video. Source files stay on this machine, with their original content preserved.",
       ),
     );
     list.append(empty);
@@ -379,6 +400,9 @@ function renderFrames() {
   const focusedId = focusedCard?.dataset.frameId;
   const focusedControl = focused?.tagName === "INPUT" ? "input" : "button";
   const selected = state.frames.filter((frame) => frame.selected).length;
+  $("#intake-review-count").textContent = selected;
+  $("#intake-review-selection").disabled = !selected || state.bulkSelecting || state.pendingSelections.size > 0 || state.collectionLoading;
+  $("#intake-review-selection").setAttribute("aria-label", `Review selection · ${selected} selected frame${selected === 1 ? "" : "s"}`);
   $("#frame-total").textContent = state.frames.length;
   $("#selected-total").textContent = selected;
   $("#filter-selected-count").textContent = selected;
@@ -391,6 +415,11 @@ function renderFrames() {
     button.setAttribute("aria-pressed", String(state.filter === filter));
   }
   const frames = visibleFrames();
+  const sourceName = state.assets.find((asset) => asset.id === state.galleryFilters.source)?.filename;
+  $("#intake-collection-context").textContent = state.collectionLoading ? "Loading this session…" : `${frames.length} of ${state.frames.length} frames shown · ${sourceName || "All sources"}`;
+  $("#intake-load-status").hidden = !state.collectionError;
+  $("#intake-load-message").textContent = state.collectionError ? `Could not refresh this collection. ${state.collectionError}${state.frames.length ? " Previously loaded frames are still shown." : ""}` : "";
+  $("#frame-grid").setAttribute("aria-busy", String(state.collectionLoading));
   $("#visible-frame-count").textContent = frames.length;
   $("#select-visible").disabled =
     state.bulkSelecting || state.pendingSelections.size > 0 || !frames.some((frame) => !frame.selected);
@@ -405,14 +434,14 @@ function renderFrames() {
       node(
         "strong",
         "",
-        filtered ? "No frames match these filters" : onlySelected ? "Your selection is empty" : "No frames to review yet",
+        state.collectionLoading ? "Loading your collection…" : state.collectionError ? "Collection unavailable" : filtered ? "No frames match these filters" : onlySelected ? "Your selection is empty" : "No frames to review yet",
       ),
       node(
         "p",
         "",
-        filtered ? "Reset the filters or choose another source or review state. Frames remain saved in this session." : onlySelected
+        state.collectionLoading ? "Your saved sources and frame selection will appear here." : state.collectionError ? "Try loading the session again. No source files or selections have been changed." : filtered ? "Reset the filters or choose another source or review state. Frames remain saved in this session." : onlySelected
           ? "Choose frames from the collection using their checkboxes. Your selection is saved automatically."
-          : "Import an image, or extract frames from a video above. Each frame will retain its source and original timestamp.",
+          : "Import an image, or extract frames from a video in the source library. Each frame keeps its source and original timestamp.",
       ),
     );
     grid.append(empty);
@@ -1428,6 +1457,17 @@ for (const key of ["source", "search", "review", "signal"]) $(`#gallery-${key}`)
   renderFrames();
 });
 $("#gallery-refresh").addEventListener("click", () => refreshSession(true).catch((error) => notify(error.message, true)));
+$("#intake-load-retry").addEventListener("click", async () => {
+  const sessionId = state.sessionId;
+  $("#intake-load-retry").disabled = true;
+  try { await refreshSession(true); }
+  catch (error) { if (state.sessionId === sessionId) notify(error.message, true); }
+  finally { $("#intake-load-retry").disabled = false; }
+});
+$("#intake-review-selection").addEventListener("click", () => {
+  if (!state.sessionId || state.collectionLoading || state.bulkSelecting || state.pendingSelections.size || !state.frames.some((frame) => frame.selected)) return;
+  if (window.IRISNavigation.open("annotation")) $("#main").focus();
+});
 $("#gallery-reset").addEventListener("click", () => {
   state.filter = "all";
   state.galleryFilters = { source: "", search: "", review: "all", signal: "all" };

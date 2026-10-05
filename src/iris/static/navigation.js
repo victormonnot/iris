@@ -13,7 +13,7 @@
       "Run detectors on a shared selection, inspect their differences and keep a reproducible baseline.",
     ],
     annotation: [
-      "03", "Annotation", "Turn observations into labels.",
+      "03", "Annotation", "Review annotations.",
       "Review proposals, correct bounding boxes and validate each frame before it becomes training data.",
     ],
     training: [

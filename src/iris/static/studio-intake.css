@@ -1,0 +1,163 @@
+/* Studio collection: sources stay close while the gallery takes the main stage. */
+#intake-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+}
+
+#intake-workspace .sources-panel {
+  margin: 0;
+  min-width: 0;
+  background: var(--surface);
+}
+
+#intake-workspace .sources-panel .panel-heading {
+  display: grid;
+  gap: 16px;
+  padding: 20px 18px 16px;
+}
+
+#intake-workspace .eyebrow { margin-bottom: 7px; }
+#intake-workspace .sources-panel h2 { font-size: 17px; font-weight: 500; }
+#intake-workspace .sources-panel .panel-heading p { font-size: 12px; line-height: 1.6; }
+#intake-workspace .upload-trigger { width: 100%; justify-content: center; min-height: 42px; }
+
+#intake-workspace .source-dropzone {
+  margin: 0 18px 18px;
+  padding: 20px 10px;
+  gap: 6px;
+  border-color: var(--control-line);
+  background: var(--surface-raised);
+}
+
+#intake-workspace .source-dropzone strong { font-size: 12px; font-weight: 500; }
+#intake-workspace .source-dropzone span { font-size: 11px; line-height: 1.6; }
+#intake-workspace .source-dropzone.dragging { background: var(--accent-soft); }
+#intake-workspace .upload-queue { padding: 0 18px 18px; }
+#intake-workspace .upload-files { max-height: 290px; }
+#intake-workspace .upload-file-heading strong { font-size: 12px; }
+#intake-workspace .upload-actions { align-items: stretch; gap: 8px; }
+#intake-workspace .upload-actions .button { white-space: normal; }
+
+#intake-workspace .intake-source-library { border-top: 1px solid var(--line); }
+#intake-workspace .intake-source-library > summary {
+  padding: 14px 18px;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12px;
+}
+#intake-workspace .intake-source-library .count { margin-left: 5px; }
+#intake-workspace .intake-source-hint {
+  padding: 0 18px 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+#intake-workspace .asset-list { max-height: 600px; overflow-y: auto; }
+#intake-workspace .asset-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  padding: 14px 12px;
+}
+#intake-workspace .asset-icon { width: 30px; height: 34px; }
+#intake-workspace .asset-name { white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
+#intake-workspace .asset-meta { gap: 3px 6px; }
+#intake-workspace .asset-image-note,
+#intake-workspace .asset-video-actions { grid-column: 2; margin: 0; }
+#intake-workspace .asset-video-actions { display: grid; gap: 7px; }
+#intake-workspace .asset-action { min-width: 0; width: 100%; padding-inline: 8px; white-space: normal; }
+#intake-workspace .empty-assets { padding: 20px 14px; text-align: left; }
+
+#intake-workspace .frames-section { min-width: 0; }
+#intake-workspace .frame-section-heading {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+#intake-workspace .frame-section-heading h2 { font-size: 23px; font-weight: 400; gap: 12px; }
+#intake-workspace .frame-section-heading p { font-size: 12px; line-height: 1.6; max-width: 390px; }
+#intake-workspace #intake-review-selection { flex-shrink: 0; gap: 9px; min-height: 42px; }
+#intake-workspace #intake-review-count { font-family: var(--font-mono); }
+#intake-workspace .intake-collection-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#intake-workspace #intake-collection-context { min-width: 0; line-height: 1.6; overflow-wrap: anywhere; }
+#intake-workspace .filter-button { min-height: 34px; }
+#intake-workspace .gallery-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin: 18px 0 12px; }
+#intake-workspace .gallery-filters label { font-size: 11px; font-weight: 500; }
+#intake-workspace .gallery-filters input,
+#intake-workspace .gallery-filters select { min-height: 40px; background: var(--surface); }
+#intake-workspace .gallery-explanation { margin: 0 0 16px; }
+#intake-workspace .gallery-explanation > summary { font-size: 11px; padding: 12px 0; }
+#intake-workspace .gallery-explanation .field-hint { margin: 0 0 10px; }
+#intake-workspace .gallery-insights-heading { gap: 0 12px; padding-top: 4px; }
+#intake-workspace .gallery-insights-heading .text-button { margin-bottom: 8px; }
+#intake-workspace .selection-toolbar { align-items: flex-start; flex-direction: column; gap: 6px; padding-bottom: 15px; }
+#intake-workspace .selection-toolbar > div { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+#intake-workspace .selection-toolbar .text-button + .text-button { margin-left: 0; }
+#intake-workspace .selection-toolbar .text-button { min-height: 30px; }
+#intake-workspace .frame-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+#intake-workspace .frame-card { border-color: var(--line); }
+#intake-workspace .frame-card.selected { border-color: var(--accent); }
+#intake-workspace .frame-card.selected .frame-card-bottom { background: var(--accent-soft); }
+#intake-workspace .frame-open { aspect-ratio: 4 / 3; }
+#intake-workspace .frame-card-bottom { min-height: 65px; padding: 11px 12px; }
+#intake-workspace .frame-card-bottom label { min-height: 42px; }
+#intake-workspace .frame-card-bottom input { width: 17px; height: 17px; }
+#intake-workspace .frame-card-label strong { font-size: 12px; }
+#intake-workspace .frame-signals { padding-top: 10px; border-top: 1px solid var(--line); }
+#intake-workspace .empty-frames { min-height: 245px; border-style: solid; background: var(--surface-raised); padding: 30px 20px; }
+#intake-workspace .empty-frames strong { color: var(--ink); font-size: 17px; font-weight: 400; }
+#intake-workspace .empty-frames p { font-size: 12px; max-width: 370px; }
+#intake-workspace .intake-load-status { border-left: 2px solid var(--danger); background: var(--danger-soft); padding: 12px 14px; margin-bottom: 16px; }
+#intake-workspace .intake-load-status p { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+
+@media (max-width: 1250px) {
+  #intake-workspace { grid-template-columns: 220px minmax(0, 1fr); gap: 22px; }
+  #intake-workspace .frame-section-heading { flex-direction: column; gap: 12px; }
+  #intake-workspace .intake-collection-context { align-items: flex-start; flex-direction: column; }
+  #intake-workspace .frame-grid { grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); }
+}
+
+@media (max-width: 1000px) {
+  #intake-workspace { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  #intake-workspace .sources-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  #intake-workspace .sources-panel .panel-heading { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+  #intake-workspace .source-dropzone { margin: 18px 18px 18px 0; min-height: 130px; align-content: center; }
+  #intake-workspace .upload-queue,
+  #intake-workspace .intake-source-library,
+  #intake-workspace .intake-source-hint { grid-column: 1 / -1; }
+  #intake-workspace .intake-source-library[open] .asset-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #intake-workspace .asset-row + .asset-row { border-top: 0; }
+  #intake-workspace .asset-row { border-bottom: 1px solid var(--line); }
+  #intake-workspace .frame-section-heading { flex-direction: row; }
+  #intake-workspace .intake-collection-context { flex-direction: row; align-items: center; }
+}
+
+@media (max-width: 560px) {
+  #intake-workspace .sources-panel { display: block; }
+  #intake-workspace .sources-panel .panel-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 16px; }
+  #intake-workspace .sources-panel .panel-heading p { display: none; }
+  #intake-workspace .sources-panel h2 { font-size: 16px; }
+  #intake-workspace .upload-trigger { padding-inline: 11px; width: auto; font-size: 11px; }
+  #intake-workspace .source-dropzone { min-height: 0; margin: 0 16px 12px; padding: 13px 10px; }
+  #intake-workspace .intake-source-library[open] .asset-list { display: block; }
+  #intake-workspace .intake-source-library > summary { padding: 12px 16px; }
+  #intake-workspace .intake-source-hint { padding: 0 16px 14px; }
+  #intake-workspace .frame-section-heading { flex-direction: column; gap: 14px; }
+  #intake-workspace .frame-section-heading h2 { font-size: 21px; }
+  #intake-workspace #intake-review-selection { width: 100%; justify-content: center; }
+  #intake-workspace .intake-collection-context { flex-direction: column; align-items: flex-start; }
+  #intake-workspace .gallery-filters { grid-template-columns: minmax(0, 1fr); }
+  #intake-workspace .frame-grid { grid-template-columns: minmax(0, 1fr); }
+  #intake-workspace .frame-open { aspect-ratio: 4 / 3; }
+}
+
+@media (pointer: coarse) {
+  #intake-workspace .filter-button,
+  #intake-workspace .text-button,
+  #intake-workspace .intake-source-library > summary,
+  #intake-workspace .gallery-explanation > summary { min-height: 44px; }
+}

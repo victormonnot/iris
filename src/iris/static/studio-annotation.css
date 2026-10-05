@@ -1,0 +1,168 @@
+/* Image-first review, using the same editor nodes in both normal and focus views. */
+.annotation-active .session-summary {
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.annotation-active .session-summary .eyebrow { display: none; }
+.annotation-active .session-summary h2 { font-size: 15px; }
+.annotation-active .session-stats { gap: 22px; }
+.annotation-active .session-stats strong { font-size: 18px; }
+
+#annotation-workspace .review-queue {
+  margin-bottom: 20px;
+  background: var(--page);
+}
+#annotation-workspace .review-queue > .panel-heading { padding: 12px 16px 4px; }
+#annotation-workspace .review-queue > .panel-heading h2 { font-size: 13px; }
+#annotation-workspace .review-queue > .panel-heading p { display: none; }
+#annotation-workspace .review-queue-counts { padding: 6px 16px 10px; gap: 8px 16px; }
+#annotation-workspace #review-queue-progress { height: 3px; margin: 0; width: 100%; }
+.review-queue-browser > summary {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+#review-queue-overview { margin-left: 8px; font-size: 11px; }
+.review-queue-browser[open] > summary { border-bottom: 1px solid var(--line); }
+.review-queue-browser .review-queue-controls { margin-top: 14px; }
+.review-queue-browser .review-queue-list { max-height: 320px; }
+.review-queue-browser #review-queue-list strong { overflow-wrap: anywhere; }
+.review-queue-browser > .field-hint,
+.review-queue-browser > .inline-error,
+.review-queue-browser > .notice { margin: 12px 16px; }
+
+#annotation-workspace .annotation-topline { align-items: center; gap: 10px; }
+#annotation-workspace .annotation-status {
+  font: 400 11px/1.5 var(--font-mono);
+  white-space: normal;
+}
+#annotation-workspace .annotation-navigation select { max-width: none; }
+#annotation-workspace #annotation-source {
+  margin-top: 10px;
+  font: 400 11px/1.6 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+#annotation-focus-mode { margin-left: auto; }
+#annotation-focus-mode[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+#annotation-workspace .annotation-layout {
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 0;
+  align-items: start;
+}
+#annotation-workspace .annotation-canvas-panel { border-right: 0; }
+#annotation-workspace .annotation-toolbar { padding: 12px 14px; gap: 8px; }
+#annotation-workspace .annotation-toolbar h2 { font-size: 13px; }
+#annotation-workspace .annotation-toolbar > div { display: flex; flex-wrap: wrap; }
+#annotation-workspace .annotation-toolbar select { min-width: 100px; }
+#annotation-workspace .annotation-view-toolbar { padding: 10px 14px; gap: 8px; }
+#annotation-workspace .annotation-view-toolbar .button { padding: 7px 9px; }
+#annotation-workspace #annotation-canvas { height: clamp(360px, 56dvh, 680px); }
+#annotation-workspace .annotation-review-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+#annotation-workspace .annotation-review-column > .panel {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+#annotation-workspace .annotation-review-column > .panel:last-child { border-bottom: 0; }
+#annotation-workspace .annotation-label-list { padding: 16px; }
+#annotation-workspace .annotation-label-list h3 { font-size: 13px; }
+#annotation-workspace .annotation-box-item {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 11px;
+  gap: 4px;
+}
+#annotation-workspace .annotation-box-properties {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+#annotation-workspace .annotation-box-properties > div:first-child { width: 100%; }
+#annotation-workspace .annotation-coordinates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#annotation-workspace .annotation-save-panel,
+#annotation-workspace .annotation-taxonomy { padding: 16px; }
+#annotation-workspace .annotation-save-panel h2 { font-size: 15px; }
+#annotation-workspace .annotation-save-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+#annotation-workspace .annotation-save-actions .button { width: 100%; }
+#annotation-workspace .annotation-canvas-help { font-size: 11px; line-height: 1.65; }
+#annotation-workspace .annotation-edit-guidance { padding: 12px 16px; }
+#annotation-workspace .annotation-edit-guidance > .field-hint { margin-bottom: 8px; }
+#annotation-workspace .annotation-suggestions-panel { margin-top: 22px; }
+#annotation-workspace .annotation-suggestions-body { padding: 18px; }
+#annotation-workspace .annotation-proposals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+#annotation-workspace .annotation-proposals > .field-hint { grid-column: 1/-1; }
+#annotation-workspace .annotation-proposal { margin: 0; min-width: 0; }
+#annotation-workspace .annotation-proposal-heading { flex-wrap: wrap; }
+#annotation-workspace .annotation-assist { margin-top: 20px; padding-top: 16px; }
+#annotation-workspace #preannotations,
+#annotation-workspace #assistance-batches { margin-top: 16px; }
+#annotation-open-intake { margin-top: 20px; }
+
+body.annotation-focus .shell { grid-template-columns: minmax(0, 1fr); }
+body.annotation-focus #workspace-sidebar,
+body.annotation-focus #sidebar-toggle,
+body.annotation-focus .page-heading,
+body.annotation-focus .session-summary,
+body.annotation-focus #jobs-section,
+body.annotation-focus .page-footer,
+body.annotation-focus #annotation-workspace > .review-queue,
+body.annotation-focus #preannotations,
+body.annotation-focus #assistance-batches,
+body.annotation-focus .annotation-history { display: none; }
+body.annotation-focus #main { max-width: 1920px; padding-top: 20px; }
+body.annotation-focus #annotation-workspace #annotation-canvas { height: clamp(420px, 72dvh, 960px); }
+
+@media (max-width: 1250px) {
+  #annotation-workspace .annotation-topline { flex-wrap: wrap; }
+  #annotation-workspace .annotation-navigation { flex-basis: 100%; }
+  #annotation-workspace .annotation-layout { grid-template-columns: minmax(0, 1fr) 256px; }
+}
+@media (max-width: 1050px) {
+  #annotation-workspace .annotation-layout { grid-template-columns: minmax(0, 1fr); }
+  #annotation-workspace .annotation-canvas-panel { border-right: 1px solid var(--line); }
+  #annotation-workspace .annotation-review-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #annotation-workspace .annotation-taxonomy { grid-column: 1/-1; }
+  #annotation-workspace .annotation-object-panel { border-right: 1px solid var(--line); }
+  body.annotation-focus #annotation-workspace .annotation-layout { grid-template-columns: minmax(0, 1fr) 256px; }
+  body.annotation-focus #annotation-workspace .annotation-review-column { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 740px) {
+  #annotation-workspace .annotation-layout,
+  body.annotation-focus #annotation-workspace .annotation-layout,
+  #annotation-workspace .annotation-review-column,
+  #annotation-workspace .annotation-proposals { grid-template-columns: minmax(0, 1fr); }
+  #annotation-workspace .annotation-object-panel { border-right: 0; }
+  #annotation-workspace .annotation-toolbar h2 { width: 100%; }
+  #annotation-workspace .annotation-canvas-panel { border-right: 1px solid var(--line); }
+  #annotation-workspace #annotation-canvas,
+  body.annotation-focus #annotation-workspace #annotation-canvas { height: clamp(280px, 52dvh, 520px); }
+  #annotation-workspace .annotation-navigation { gap: 8px; }
+  #annotation-workspace .annotation-view-toolbar { padding: 10px; }
+  #annotation-workspace .annotation-status { flex: 1 1 100%; }
+  #annotation-workspace .annotation-suggestions-body { padding: 14px; }
+  #review-queue-overview { display: block; margin: 5px 0 0 14px; }
+  #annotation-workspace .annotation-edit-guidance { padding: 12px; }
+  #annotation-workspace .annotation-keyboard-help dl { grid-template-columns: minmax(0, 1fr); }
+  #annotation-workspace .annotation-keyboard-help dd { margin-bottom: 8px; }
+}

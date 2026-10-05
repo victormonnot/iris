@@ -129,6 +129,21 @@
     $("#dataset-selection-summary").textContent = groups.length
       ? `${groups.length} scene groups · ${counts.train} train / ${counts.val} validation / ${counts.test} test frames`
       : "No groups included";
+    const readiness = $("#dataset-readiness");
+    if (workspace.datasetBusy)
+      readiness.textContent = "Saving the reviewed images and labels in a frozen version…";
+    else if (workspace.candidateLoading || workspace.partitionApplying)
+      readiness.textContent = "Checking the latest reviewed data…";
+    else if (workspace.candidateNeedsRefresh)
+      readiness.textContent = "Reviewed data changed. Refresh candidates before freezing.";
+    else if (!workspace.candidates)
+      readiness.textContent = "Refresh candidates to load the current reviewed data.";
+    else if (!workspace.candidates.groups?.length)
+      readiness.textContent = "Choose a class version with eligible frames, or validate selected images in Annotation.";
+    else if (!counts.train || !counts.val)
+      readiness.textContent = "Assign at least one group to train and another to validation.";
+    else
+      readiness.textContent = "Train and validation are assigned. Review the groups and name your release before freezing.";
     $("#dataset-create").disabled =
       workspace.datasetBusy ||
       workspace.partitionApplying ||
@@ -141,8 +156,10 @@
     $("#dataset-taxonomy").disabled =
       workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying || !workspace.taxonomies.length;
     $("#dataset-parent").disabled = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
-    for (const select of $("#dataset-groups").querySelectorAll("select"))
+    for (const select of $("#dataset-groups").querySelectorAll("select")) {
       select.disabled = workspace.datasetBusy || workspace.candidateLoading || workspace.partitionApplying;
+      select.closest(".dataset-group").dataset.included = String(Boolean(select.value));
+    }
     $("#dataset-create").textContent = workspace.datasetBusy
       ? "Freezing release…"
       : "Freeze release →";
@@ -342,7 +359,12 @@
     $("#dataset-plan-result").hidden = false;
     const summary = $("#dataset-plan-summary");
     summary.replaceChildren();
-    for (const [split, label] of Object.entries(splitNames)) summary.append(node("span", "", `${plan.summary.split_counts[split]} ${label.toLowerCase()} frames`));
+    for (const [split, label] of Object.entries(splitNames)) {
+      const item = node("div");
+      item.append(node("strong", "", String(plan.summary.split_counts[split])),
+        node("span", "", `${label} frames`));
+      summary.append(item);
+    }
     const body = $("#dataset-plan-coverage");
     body.replaceChildren();
     const rows = [

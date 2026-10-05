@@ -139,6 +139,21 @@ before the first session is created. On smaller screens, **Projects & sessions**
 opens the sidebar without discarding its forms. Existing unsaved-review guards
 still apply when switching workspaces.
 
+In **Data intake**, import sources beside the frame collection, expand the source
+library to extract video frames, then use **Review selection** to open annotation.
+The selected count includes frames hidden by filters; review opens once selection
+changes have finished saving.
+
+**Annotation** places the image beside object properties and human-review actions.
+Expand the review queue to browse or filter images. **Focus view** enlarges the
+editor while preserving unsaved edits, zoom and undo history; appearance changes
+also preserve this state. Proposal generation and batch review are below the editor.
+
+In **Dataset & Training**, preparation follows three steps: choose reviewed data,
+assign whole scene groups, then freeze a named release. A suggested split must be
+previewed and applied explicitly; freezing is a separate action. Saved releases
+retain their export actions and expandable class and provenance details.
+
 ## Projects
 
 Use the **Project** selector in the sidebar to switch projects, or **New project**
