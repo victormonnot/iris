@@ -2568,6 +2568,23 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                     <p id="experiments-timing" class="field-hint"></p>
                     <div id="experiments-warnings" class="experiments-warnings"></div>
                   </section>
+                  <section class="experiments-section" aria-labelledby="experiments-scenes-title">
+                    <div class="experiments-section-heading">
+                      <h3 id="experiments-scenes-title">Where the results change</h3>
+                    </div>
+                    <p id="experiments-scene-context" class="field-hint"></p>
+                    <div id="experiments-scenes" class="experiments-table-wrap"></div>
+                    <div id="experiments-sampling" class="experiments-sampling"></div>
+                  </section>
+                  <section class="experiments-section" aria-labelledby="experiments-targets-title">
+                    <div class="experiments-section-heading">
+                      <h3 id="experiments-targets-title">Measurements on deployment targets</h3>
+                      <span id="experiments-target-count" class="count"></span>
+                    </div>
+                    <p id="experiments-target-context" class="field-hint"></p>
+                    <div id="experiments-targets" class="experiments-targets"></div>
+                    <div id="experiments-target-limitations" class="experiments-warnings"></div>
+                  </section>
                   <section
                     class="experiments-section"
                     aria-labelledby="experiments-examples-title"
@@ -3069,6 +3086,9 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
           <option value="">Loading completed evaluations…</option>
         </select>
         <p id="experiments-evaluation-status" class="field-hint" role="status"></p>
+        <button id="experiments-preview-refresh" type="button" class="text-button" hidden>
+          Refresh report evidence
+        </button>
         <div id="experiments-compose-fields" hidden>
           <label for="experiments-title">Report title</label
           ><input
@@ -3094,6 +3114,26 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             rows="3"
             placeholder="What the evidence supports, what remains uncertain and what you would try next"
           ></textarea>
+          <div class="experiments-measurement-picker">
+            <div class="experiments-section-heading">
+              <h3>Include target measurements</h3>
+              <span id="experiments-measurement-count" class="count">0 / 4</span>
+            </div>
+            <p class="field-hint">
+              Optional · select up to four imported measurements tied to these evaluated
+              weights and pipelines. Nothing is selected automatically. Their declared
+              hardware and timing remain separate from the evaluation's quality scores.
+            </p>
+            <p class="field-hint">
+              Up to 100 recent saved measurements; missing or inconsistent evidence is omitted.
+            </p>
+            <p id="experiments-measurement-empty" class="field-hint" hidden>
+              No matching target measurements have been imported. Export an evaluated
+              checkpoint, measure it on the target, then import its result from Model exports.
+              You can save this report without one.
+            </p>
+            <div id="experiments-measurement-picker" class="experiments-targets"></div>
+          </div>
           <div class="experiments-example-picker">
             <div class="experiments-section-heading">
               <h3>Choose a few examples</h3>
@@ -3111,6 +3151,37 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
               type="search"
               placeholder="Filter by source file or scene group…"
             />
+            <div class="experiments-picker-filters">
+              <label for="experiments-example-change">Result
+                <select id="experiments-example-change">
+                  <option value="">All results</option>
+                  <option value="regressed">Regressions</option>
+                  <option value="improved">Improvements</option>
+                  <option value="mixed">Mixed changes</option>
+                  <option value="unchanged">Unchanged</option>
+                  <option value="negative">Negative images</option>
+                </select>
+              </label>
+              <label for="experiments-example-scene">Scene
+                <select id="experiments-example-scene"><option value="">All scenes</option></select>
+              </label>
+              <label for="experiments-example-time">Source timing
+                <select id="experiments-example-time">
+                  <option value="">All images</option>
+                  <option value="timestamped">With a saved timestamp</option>
+                  <option value="untimestamped">Without a saved timestamp</option>
+                </select>
+              </label>
+            </div>
+            <div class="experiments-picker-actions">
+              <button id="experiments-suggest-examples" type="button" class="text-button">
+                Add suggested examples
+              </button>
+              <button id="experiments-clear-examples" type="button" class="text-button">
+                Clear selected examples
+              </button>
+            </div>
+            <p id="experiments-suggestions-context" class="field-hint" role="status"></p>
             <div
               id="experiments-example-picker"
               class="experiments-picker-grid"

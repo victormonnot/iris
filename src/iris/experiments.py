@@ -14,15 +14,17 @@ from pathlib import PurePosixPath
 
 from PIL import Image
 
+from iris import experiment_deployments as deployments
 from iris.datasets import load_manifest
 from iris.evaluation import evaluation_detail
 from iris.evaluation_analysis import _analyze
+from iris.experiment_insights import build_insights
 from iris.store import Store, new_id, now
 from iris.training import _read_training_image
 
 MAX_EXAMPLES = 6
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 _SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _CONFIG_FIELDS = (
     "confidence_threshold",
@@ -245,8 +247,20 @@ def _lineage(store, recorded, expected_sha256):
 def _runtime(metadata):
     result = _pick(
         metadata,
-        ("device", "hardware", "precision", "torch_version", "torchvision_version", "threads"),
+        (
+            "device",
+            "hardware",
+            "precision",
+            "torch_version",
+            "torchvision_version",
+            "threads",
+            "interop_threads",
+            "architecture",
+            "platform",
+        ),
     )
+    if "cuda" in metadata:
+        result["cuda"] = _pick(metadata["cuda"], deployments.CUDA_FIELDS)
     if "input_transform" in metadata:
         result["input_transform"] = _pick(
             metadata["input_transform"],
@@ -534,6 +548,8 @@ def _prepare(store, evaluation_id, captured_at):
             }
             for frame in detail["frames"]
         ]
+        snapshot["insights"] = build_insights(snapshot, available, detail)
+        snapshot["deployments"] = deployments.snapshot()
         _canonical(snapshot)
         _canonical(available)
         return snapshot, available, detail
@@ -557,8 +573,20 @@ def _attribution(source):
 
 
 def preview_experiment(store: Store, evaluation_id: str) -> dict:
-    snapshot, examples, _ = _prepare(store, evaluation_id, now())
-    return {"snapshot": snapshot, "available_examples": examples}
+    snapshot, examples, detail = _prepare(store, evaluation_id, now())
+    return {
+        "snapshot": snapshot,
+        "available_examples": examples,
+        "available_measurements": deployments.available_measurements(store, snapshot, detail),
+        "source_fingerprint": _source_fingerprint(snapshot, detail),
+    }
+
+
+def _source_fingerprint(snapshot, detail):
+    stable = deepcopy(snapshot)
+    stable.pop("captured_at", None)
+    stable["reference_decisions"].pop("captured_at", None)
+    return _digest({"snapshot": stable, "evidence": detail})
 
 
 def _example(detail, frame, counts):
@@ -629,6 +657,8 @@ def create_experiment(
     objective="",
     conclusion="",
     example_frame_ids=None,
+    measurement_ids=None,
+    expected_source_fingerprint=None,
 ) -> dict:
     editorial = _editorial(title, objective, conclusion)
     frame_ids = [] if example_frame_ids is None else example_frame_ids
@@ -639,9 +669,32 @@ def create_experiment(
         or len(set(frame_ids)) != len(frame_ids)
     ):
         raise ValueError("Choose at most six distinct evaluated example frames")
+    measurement_ids = [] if measurement_ids is None else measurement_ids
+    if (
+        not isinstance(measurement_ids, list)
+        or len(measurement_ids) > deployments.MAX_MEASUREMENTS
+        or any(
+            not isinstance(value, str) or not _SAFE_ID.fullmatch(value) for value in measurement_ids
+        )
+        or len(set(measurement_ids)) != len(measurement_ids)
+    ):
+        raise ValueError("Choose at most four distinct saved standalone measurements")
+    if expected_source_fingerprint is not None and (
+        not isinstance(expected_source_fingerprint, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_source_fingerprint) is None
+    ):
+        raise ValueError("Expected source fingerprint must be a SHA-256 digest")
     captured = now()
     snapshot, available, detail = _prepare(store, evaluation_id, captured)
-    source_hash = _digest({"snapshot": snapshot, "evidence": detail})
+    if (
+        expected_source_fingerprint is not None
+        and _source_fingerprint(snapshot, detail) != expected_source_fingerprint
+    ):
+        raise ExperimentConflict("Evaluation evidence changed; refresh the preview before saving")
+    snapshot["deployments"] = deployments.snapshot(
+        deployments.available_measurements(store, snapshot, detail, selected_ids=measurement_ids)
+    )
+    source_hash = _source_fingerprint(snapshot, detail)
     candidates = {frame["frame_id"]: frame for frame in available}
     if not set(frame_ids) <= candidates.keys():
         raise ValueError("Examples must belong to this evaluated dataset split")
@@ -684,7 +737,12 @@ def create_experiment(
         with store.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current, _, current_detail = _prepare(store, evaluation_id, captured)
-            if _digest({"snapshot": current, "evidence": current_detail}) != source_hash:
+            current["deployments"] = deployments.snapshot(
+                deployments.available_measurements(
+                    store, current, current_detail, selected_ids=measurement_ids
+                )
+            )
+            if _source_fingerprint(current, current_detail) != source_hash:
                 raise ValueError(
                     "Evaluation evidence changed while preparing the report; try again"
                 )
@@ -723,7 +781,7 @@ def _verified_record(store, report_id):
     if (
         not isinstance(snapshot, dict)
         or type(snapshot.get("version")) is not int
-        or snapshot.get("version") != SNAPSHOT_VERSION
+        or snapshot.get("version") not in (1, SNAPSHOT_VERSION)
         or _digest(snapshot) != record["snapshot_sha256"]
     ):
         raise ValueError("Experiment evidence no longer matches its saved hash")

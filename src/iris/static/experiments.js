@@ -25,6 +25,7 @@
     request: 0,
     preview: null,
     selected: new Set(),
+    measurements: new Set(),
     limit: 12,
     busy: false,
     loading: false,
@@ -45,6 +46,17 @@
     Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "N/A";
   const number = (value) =>
     Number.isFinite(value) ? value.toLocaleString() : "N/A";
+  const milliseconds = (value) =>
+    Number.isFinite(value) ? `${value.toFixed(1)} ms` : "Not recorded";
+  const measurementHardware = (measurement) =>
+    measurement.environment?.cuda?.name ||
+    measurement.environment?.processor ||
+    measurement.environment?.machine ||
+    "Hardware not recorded";
+  const changeLabel = (value) => ({
+    improved: "Improved", regressed: "Regressed", mixed: "Mixed changes",
+    unchanged: "Unchanged", single: "Single pipeline",
+  })[value] || "Change unavailable";
   const mode = (value) => (value === "tiled" ? "Tiled" : "Full image");
   const date = (value) =>
     new Date(value).toLocaleDateString(undefined, {
@@ -97,13 +109,22 @@
       input.disabled = busy;
     for (const input of field("example-picker").querySelectorAll("input"))
       input.disabled = busy || (!input.checked && compose.selected.size >= 6);
+    for (const input of field("measurement-picker").querySelectorAll("input"))
+      input.disabled = busy || (!input.checked && compose.measurements.size >= 4);
     field("create").disabled =
-      busy || !compose.preview || compose.selected.size > 6;
+      busy || !compose.preview || compose.selected.size > 6 || compose.measurements.size > 4;
     field("create").textContent = compose.busy
       ? "Saving report…"
       : "Save experiment →";
     field("more-examples").disabled = busy;
+    field("preview-refresh").disabled = busy;
+    field("suggest-examples").disabled = busy || compose.selected.size >= 6 ||
+      !compose.preview?.snapshot.insights?.suggested_examples?.some(
+        (item) => !compose.selected.has(item.frame_id),
+      );
+    field("clear-examples").disabled = busy || !compose.selected.size;
     field("picked-count").textContent = `${compose.selected.size} / 6`;
+    field("measurement-count").textContent = `${compose.measurements.size} / 4`;
   }
 
   function renderList() {
@@ -321,8 +342,10 @@
     for (const [key, label] of [
       ["map", "mAP .50–.95"],
       ["map50", "AP50"],
+      ["map75", "AP75"],
       ["precision", "Precision"],
       ["recall", "Recall"],
+      ["f1", "F1"],
     ]) {
       const card = node("div", "experiments-metric");
       card.append(
@@ -416,10 +439,14 @@
       lanes
         .map(
           (lane, index) =>
-            `${lanes.length === 1 ? "Mean" : index ? "Candidate" : "Baseline"} total inference: ${Number.isFinite(lane.timing?.mean_total_ms) ? `${lane.timing.mean_total_ms.toFixed(1)} ms / image` : "not recorded"}`,
+            `${lanes.length === 1 ? "Evaluated pipeline" : index ? "Candidate" : "Baseline"} IRIS mean total: ${Number.isFinite(lane.timing?.mean_total_ms) ? `${lane.timing.mean_total_ms.toFixed(1)} ms / image` : "not recorded"}`,
         )
         .join(" · ") +
-      ". Saved device and timing protocol are recorded below; timing alone does not establish deployment performance.";
+      ". " + (snapshot.insights?.timing?.scope ||
+        "IRIS evaluation timing includes image decoding. The saved device and timing protocol are recorded below.") +
+      (snapshot.insights?.timing?.comparable === false
+        ? ` No direct timing comparison: ${(snapshot.insights.timing.reasons || []).join("; ") || "the saved protocols are not comparable"}.`
+        : " Timing alone does not establish deployment performance.");
     field("warnings").replaceChildren();
     const warnings = new Set([
       ...(config.warnings || []),
@@ -433,6 +460,133 @@
     ]);
     for (const warning of warnings)
       field("warnings").append(node("p", "field-hint", warning));
+  }
+
+  function renderScenes(snapshot, lanes) {
+    const insights = snapshot.insights;
+    field("scenes").replaceChildren();
+    field("sampling").replaceChildren();
+    if (!insights) {
+      field("scene-context").textContent =
+        "Scene comparisons and sampled-video context were not captured in this older report. Its saved results remain unchanged.";
+      return;
+    }
+    const changes = Object.values(insights.frame_changes || {});
+    field("scene-context").textContent = lanes.length > 1
+      ? ["regressed", "improved", "mixed", "unchanged"].map(
+          (kind) => `${changes.filter((value) => value === kind).length} ${changeLabel(kind).toLowerCase()}`,
+        ).join(" · ") + ". Image changes use matched labels and false positives at the saved thresholds; they are separate from dataset AP. Negative images have no evaluated ground-truth objects."
+      : "Saved per-scene counts for this single pipeline. Negative images have no evaluated ground-truth objects.";
+    if (insights.scenes?.length) {
+      const table = node("table"), head = node("thead"), heading = node("tr"), body = node("tbody");
+      table.append(node("caption", "sr-only", "Saved detection errors by scene and pipeline"));
+      for (const title of ["Scene / pipeline", "Images", "Negative", "TP / FP / FN", "Recovered / new misses", "FP change"]) {
+        const cell = node("th", "", title);
+        cell.scope = "col";
+        heading.append(cell);
+      }
+      head.append(heading);
+      for (const scene of insights.scenes) {
+        const counts = aggregateCounts(snapshot, scene.counts);
+        lanes.forEach((lane, index) => {
+          const row = node("tr");
+          const title = node("th", "", `${scene.scene_group} · ${lanes.length === 1 ? "evaluated" : index ? "candidate" : "baseline"}`);
+          title.scope = "row";
+          row.append(title);
+          const run = counts?.runs?.[lane.id];
+          for (const value of [
+            number(scene.frame_count), number(scene.negative_frame_count),
+            run ? `${number(run.tp)} / ${number(run.fp)} / ${number(run.fn)}` : "Not recorded",
+            index && counts?.changes ? `${number(counts.changes.recovered)} / ${number(counts.changes.new_misses)}` : "—",
+            index && Number.isFinite(counts?.changes?.fp_delta)
+              ? `${counts.changes.fp_delta >= 0 ? "+" : ""}${number(counts.changes.fp_delta)}` : "—",
+          ]) row.append(node("td", "", value));
+          body.append(row);
+        });
+      }
+      table.append(head, body);
+      field("scenes").append(table);
+    }
+    const sampling = insights.sampling;
+    if (!sampling) {
+      field("sampling").append(node("p", "field-hint", "Video sampling context was not captured in this report."));
+      return;
+    }
+    field("sampling").append(node("h4", "", "Image and sampled-video coverage"));
+    field("sampling").append(node("p", "field-hint",
+      `${number(sampling.still_image_count)} still images · ${number(sampling.unknown_source_count)} images with unknown source type. ${sampling.warning || "Video results cover sampled images, not continuous inference, tracking or video throughput."}`));
+    for (const source of sampling.video_sources || []) {
+      const range = Number.isFinite(source.first_timestamp_seconds) && Number.isFinite(source.last_timestamp_seconds)
+        ? `${timestamp(source.first_timestamp_seconds)}–${timestamp(source.last_timestamp_seconds)} (approximate)`
+        : "Timestamp range unavailable";
+      field("sampling").append(node("p", "experiments-caption",
+        `${source.filename || source.source_id} · ${number(source.frame_count)} sampled frames · ${number(source.timestamps_available)} saved timestamps · ${range}`));
+    }
+  }
+
+  function measurementHeading(measurement) {
+    return `${measurement.name || measurement.id} · ${(measurement.environment?.device || measurement.profile?.device || "Unknown device").toUpperCase()} · ${measurementHardware(measurement)}`;
+  }
+
+  function renderTargets(snapshot, lanes) {
+    field("targets").replaceChildren();
+    field("target-limitations").replaceChildren();
+    const deployment = snapshot.deployments;
+    const measurements = deployment?.measurements || [];
+    field("target-count").textContent = `${measurements.length}`;
+    field("target-context").textContent = !deployment
+      ? "Target measurements were not captured in this older report. Nothing has been inferred from the current workspace."
+      : !measurements.length
+        ? "No target measurements were selected when this report was saved. Evaluation quality above does not establish deployment speed."
+        : "Imported measurements describe the declared target and environment; IRIS has not verified their execution. Runner totals exclude image decoding, which is reported separately. IRIS evaluation totals include decoding. These timings do not establish a winner across different targets.";
+    for (const measurement of measurements) {
+      const card = node("article", "experiments-target");
+      card.append(node("h4", "", measurementHeading(measurement)));
+      const lane = lanes.find((item) => item.id === measurement.lane_id);
+      card.append(node("p", "experiments-caption",
+        `${lane ? laneTitle(lane) : measurement.model_id} · ${measurement.profile?.precision || "Precision not recorded"} · batch ${measurement.profile?.batch_size ?? "?"} · imported ${date(measurement.created_at)}`));
+      card.append(node("p", "experiments-caption", measurement.declaration === "simulation"
+        ? "Declared simulation — not measured hardware performance."
+        : "Declared external execution — execution and hardware are not independently verified."));
+      const summary = measurement.summary || {};
+      const mismatches = Array.isArray(summary.mismatched_samples) ? summary.mismatched_samples.length : null;
+      card.append(node("p", `experiments-parity${summary.parity_passed ? "" : " failed"}`,
+        summary.parity_passed
+          ? "Exact parity passed against the saved reference."
+          : `Exact parity failed · ${number(mismatches)} mismatched sample${mismatches === 1 ? "" : "s"}. Timing does not establish equivalent quality.`));
+      const table = node("table"), head = node("thead"), heading = node("tr"), body = node("tbody");
+      table.append(node("caption", "sr-only", `Imported timing for ${measurement.name || measurement.id}`));
+      for (const label of ["Runner stage", "Minimum", "Median", "Maximum"]) {
+        const cell = node("th", "", label);
+        cell.scope = "col";
+        heading.append(cell);
+      }
+      head.append(heading);
+      for (const [label, stats] of [
+        ["Preprocessing", summary.timing_ms?.preprocess_ms],
+        ["Inference", summary.timing_ms?.inference_ms],
+        ["Postprocessing", summary.timing_ms?.postprocess_ms],
+        ["Total (excludes decode)", summary.timing_ms?.total_ms],
+        ["Image decode (separate)", summary.decode_ms],
+      ]) {
+        const row = node("tr"), title = node("th", "", label);
+        title.scope = "row";
+        row.append(title);
+        for (const key of ["min", "median", "max"]) row.append(node("td", "", milliseconds(stats?.[key])));
+        body.append(row);
+      }
+      table.append(head, body);
+      const wrap = node("div", "experiments-table-wrap");
+      wrap.append(table);
+      card.append(wrap);
+      card.append(node("p", "experiments-caption",
+        `${number(summary.frames)} reference images × ${number(summary.repeats)} repeats · ${number(summary.sample_count)} samples. Model load ${milliseconds(summary.load_ms)}; warm-up ${milliseconds(summary.warmup_ms)} (excluded from repeated samples).`));
+      card.append(node("p", "experiments-caption",
+        `Reference evaluation: ${measurement.source?.evaluation_id || "Not recorded"} · reference device: ${measurement.source?.reference_device || "Not recorded"}. Exact parity covers the packaged reference images only.`));
+      field("targets").append(card);
+    }
+    for (const limitation of deployment?.limitations || [])
+      field("target-limitations").append(node("p", "field-hint", limitation));
   }
 
   function overlay(svg, box, caption, color, dashed, width, height) {
@@ -612,6 +766,8 @@
       "No conclusion recorded yet. Add your interpretation after reviewing the evidence below.";
     renderLineage(snapshot, lanes);
     renderMetrics(snapshot, lanes);
+    renderScenes(snapshot, lanes);
+    renderTargets(snapshot, lanes);
     renderExamples(record, lanes);
     field("reference-note").textContent =
       "Reference decisions below are a historical snapshot. Creating or editing this report does not promote a model or change today's reference.";
@@ -624,6 +780,8 @@
         dataset: snapshot.dataset,
         lanes: snapshot.lanes,
         error_analysis: snapshot.error_analysis,
+        insights: snapshot.insights,
+        deployments: snapshot.deployments,
         reference_decisions: snapshot.reference_decisions,
       },
       null,
@@ -635,11 +793,21 @@
 
   function renderPicker() {
     const query = field("example-filter").value.trim().toLocaleLowerCase();
+    const change = field("example-change").value;
+    const scene = field("example-scene").value;
+    const time = field("example-time").value;
     const candidates = (compose.preview?.available_examples || []).filter(
-      (item) =>
-        `${item.source_filename} ${item.scene_group}`
+      (item) => {
+        const hasTime = Number.isFinite(item.timestamp_seconds);
+        const counts = aggregateCounts(compose.preview.snapshot, item.counts);
+        return `${item.source_filename} ${item.scene_group} ${hasTime ? timestamp(item.timestamp_seconds) : ""}`
           .toLocaleLowerCase()
-          .includes(query),
+          .includes(query) &&
+          (!scene || item.scene_group === scene) &&
+          (!time || (time === "timestamped" ? hasTime : !hasTime)) &&
+          (!change || (change === "negative" ? counts?.ground_truth_count === 0 :
+            compose.preview.snapshot.insights?.frame_changes?.[item.frame_id] === change));
+      },
     );
     const focusedId =
       document.activeElement?.closest("[data-frame-id]")?.dataset.frameId;
@@ -679,9 +847,13 @@
         node(
           "span",
           "experiments-caption",
-          `${item.timestamp_seconds == null ? "Still image" : timestamp(item.timestamp_seconds)} · ${item.scene_group}`,
+          `${item.timestamp_seconds == null ? "Timestamp unavailable" : `${timestamp(item.timestamp_seconds)} (approx.)`} · ${item.scene_group}`,
         ),
       );
+      const frameChange = compose.preview.snapshot.insights?.frame_changes?.[item.frame_id];
+      if (frameChange) label.append(node("span", `experiments-change experiments-change-${frameChange}`, changeLabel(frameChange)));
+      const suggested = compose.preview.snapshot.insights?.suggested_examples?.find((entry) => entry.frame_id === item.frame_id);
+      if (suggested) label.append(node("span", "experiments-caption", `Suggested: ${suggested.reason}`));
       const counts = orderedLanes(compose.preview.snapshot)
         .map((lane) => aggregateCounts(compose.preview.snapshot, item.counts)?.runs?.[lane.id])
         .filter(Boolean);
@@ -716,15 +888,63 @@
     updateCompose();
   }
 
-  async function loadPreview() {
+  function renderMeasurementPicker() {
+    const measurements = compose.preview?.available_measurements || [];
+    field("measurement-picker").replaceChildren();
+    field("measurement-empty").hidden = Boolean(measurements.length);
+    for (const measurement of measurements) {
+      const label = node("label", "experiments-measurement-choice");
+      const input = node("input");
+      input.type = "checkbox";
+      input.checked = compose.measurements.has(measurement.id);
+      input.dataset.measurementId = measurement.id;
+      input.setAttribute("aria-label", `Include ${measurementHeading(measurement)}`);
+      input.addEventListener("change", () => {
+        if (input.checked) compose.measurements.add(measurement.id);
+        else compose.measurements.delete(measurement.id);
+        compose.dirty = true;
+        updateCompose();
+      });
+      const info = node("span");
+      info.append(node("strong", "", measurementHeading(measurement)));
+      info.append(node("span", "experiments-caption", measurement.declaration === "simulation"
+        ? "Declared simulation — not measured hardware performance"
+        : "Declared external execution — not independently verified"));
+      info.append(node("span", `experiments-parity${measurement.summary?.parity_passed ? "" : " failed"}`,
+        measurement.summary?.parity_passed ? "Exact parity passed" : "Exact parity failed — retained as failed evidence"));
+      info.append(node("span", "experiments-caption",
+        `${number(measurement.summary?.frames)} reference images · ${number(measurement.summary?.repeats)} repeats · median runner total ${milliseconds(measurement.summary?.timing_ms?.total_ms?.median)} (excludes decode) · imported ${date(measurement.created_at)}`));
+      label.append(input, info);
+      field("measurement-picker").append(label);
+    }
+  }
+
+  function configurePickerFilters() {
+    const previous = field("example-scene").value;
+    const scenes = [...new Set((compose.preview?.available_examples || []).map((item) => item.scene_group))].sort();
+    field("example-scene").replaceChildren(new Option("All scenes", ""));
+    for (const scene of scenes) field("example-scene").append(new Option(scene, scene));
+    if (scenes.includes(previous)) field("example-scene").value = previous;
+    const suggestions = compose.preview?.snapshot.insights?.suggested_examples || [];
+    field("suggestions-context").textContent = suggestions.length
+      ? "Suggestions include saved successes and failures. Add them explicitly, then review the selection; examples do not represent the whole dataset."
+      : "No example suggestions are available for this evaluation. You can choose images individually.";
+  }
+
+  async function loadPreview(preserveSelection = false) {
     const id = field("evaluation").value;
     const request = ++compose.request,
       context = compose.context;
     compose.preview = null;
-    compose.selected.clear();
+    if (!preserveSelection) {
+      compose.selected.clear();
+      compose.measurements.clear();
+      for (const name of ["example-filter", "example-change", "example-scene", "example-time"]) field(name).value = "";
+    }
     compose.limit = 12;
     compose.loading = Boolean(id);
     field("compose-fields").hidden = true;
+    field("preview-refresh").hidden = true;
     field("evaluation-status").textContent = id
       ? "Checking the completed evaluation…"
       : "Choose a completed evaluation to begin.";
@@ -737,6 +957,8 @@
       );
       if (!composeCurrent(context) || request !== compose.request) return;
       compose.preview = preview;
+      compose.selected = new Set([...compose.selected].filter((id) => preview.available_examples.some((item) => item.frame_id === id)));
+      compose.measurements = new Set([...compose.measurements].filter((id) => preview.available_measurements?.some((item) => item.id === id)));
       field("compose-fields").hidden = false;
       if (!field("title").value || field("title").value === compose.autoTitle)
         field("title").value = preview.snapshot.evaluation.name;
@@ -744,11 +966,14 @@
       const snapshot = preview.snapshot;
       field("evaluation-status").textContent =
         `${snapshot.dataset.name} · ${split(snapshot.evaluation.split)} · ${preview.available_examples.length} evaluated frames · ${snapshot.lanes.length} pipeline(s).${snapshot.evaluation.split === "test" ? " Reporting only: use validation evidence for model selection." : ""}`;
+      configurePickerFilters();
+      renderMeasurementPicker();
       renderPicker();
     } catch (failure) {
       if (composeCurrent(context) && request === compose.request) {
         field("evaluation-status").textContent =
           "Preview unavailable. Choose the evaluation again or reopen this form to retry.";
+        field("preview-refresh").hidden = false;
         error("compose-error", failure);
       }
     } finally {
@@ -765,11 +990,13 @@
     compose.context++;
     compose.preview = null;
     compose.selected.clear();
+    compose.measurements.clear();
     compose.dirty = false;
     compose.autoTitle = "";
     compose.loading = true;
     field("compose-form").reset();
     field("compose-fields").hidden = true;
+    field("preview-refresh").hidden = true;
     field("evaluation").replaceChildren(
       new Option("Loading completed evaluations…", ""),
     );
@@ -833,6 +1060,8 @@
       objective: field("objective-input").value.trim(),
       conclusion: field("conclusion-input").value.trim(),
       example_frame_ids: [...compose.selected],
+      measurement_ids: [...compose.measurements],
+      expected_source_fingerprint: compose.preview.source_fingerprint,
     };
     if (!payload.title) return field("title").focus();
     const context = compose.context;
@@ -855,7 +1084,15 @@
         `Experiment “${record.title}” saved with frozen evaluation results.`,
       );
     } catch (failure) {
-      if (composeCurrent(context)) error("compose-error", failure);
+      if (composeCurrent(context)) {
+        error("compose-error", failure);
+        if (failure.status === 409) {
+          field("preview-refresh").hidden = false;
+          field("evaluation-status").textContent =
+            "Saved evidence has changed. Your notes and selections are preserved. Refresh the evidence and review it before saving again.";
+          compose.preview = null;
+        }
+      }
     } finally {
       if (context === compose.context) {
         compose.busy = false;
@@ -1031,10 +1268,39 @@
     field(name).addEventListener("click", () => openCompose());
   field("refresh").addEventListener("click", () => refreshList());
   field("search").addEventListener("input", renderList);
-  field("evaluation").addEventListener("change", loadPreview);
+  field("evaluation").addEventListener("change", () => loadPreview());
+  field("preview-refresh").addEventListener("click", () => loadPreview(true));
   field("example-filter").addEventListener("input", () => {
     compose.limit = 12;
     renderPicker();
+  });
+  for (const name of ["example-change", "example-scene", "example-time"])
+    field(name).addEventListener("change", () => {
+      compose.limit = 12;
+      renderPicker();
+    });
+  field("suggest-examples").addEventListener("click", () => {
+    if (compose.busy || compose.loading || !compose.preview) return;
+    let added = 0;
+    for (const suggestion of compose.preview.snapshot.insights?.suggested_examples || []) {
+      if (compose.selected.size >= 6) break;
+      if (!compose.selected.has(suggestion.frame_id) &&
+          compose.preview.available_examples.some((item) => item.frame_id === suggestion.frame_id)) {
+        compose.selected.add(suggestion.frame_id);
+        added++;
+      }
+    }
+    if (added) compose.dirty = true;
+    field("suggestions-context").textContent =
+      `${added} suggested image${added === 1 ? "" : "s"} added. Existing selections were kept. Review successes and failures before saving; active filters may hide selected images.`;
+    renderPicker();
+  });
+  field("clear-examples").addEventListener("click", () => {
+    if (compose.busy || compose.loading) return;
+    compose.selected.clear();
+    compose.dirty = true;
+    renderPicker();
+    field("suggestions-context").textContent = "Example selection cleared. Nothing is selected automatically.";
   });
   field("more-examples").addEventListener("click", () => {
     compose.limit += 12;

@@ -751,11 +751,19 @@ Examples illustrate the results; scores still cover the entire evaluated split.
 One-model reports do not imply a before/after comparison. Full-image and tiled
 runs remain separate even when they use the same checkpoint.
 
+Scene tables and explicit example suggestions help locate recovered objects,
+new misses and false positives. Sampled-video summaries retain recorded timestamps
+without claiming continuous coverage. Optionally attach up to four already imported
+standalone target measurements linked to the exact evaluated checkpoint. Their
+declared CPU/CUDA environment, parity result and timings stay separate from local
+evaluation timing; simulations and failed parity remain visible.
+
 Results and selected examples are fixed when the report is created. You can
 revise the title, objective and conclusion; simultaneous edits are checked to
 avoid overwriting a newer revision. Selected images are saved as bounded JPEG
 copies, so an existing report remains readable independently of source images
-and model weights.
+and model weights. Selected target measurements are also frozen into the report;
+existing reports keep their original evidence without retrospective additions.
 
 Download a standalone **HTML report** to read offline or print. Images are
 excluded by default; explicitly include the selected examples when needed.

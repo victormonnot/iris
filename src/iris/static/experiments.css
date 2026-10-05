@@ -254,7 +254,7 @@
 }
 .experiments-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
   margin: 20px 0 15px;
 }
@@ -548,12 +548,14 @@
   background: #f2f5ee;
   color: #8a9682;
 }
-.experiments-example-picker {
+.experiments-example-picker,
+.experiments-measurement-picker {
   margin-top: 24px;
   border-top: 1px solid var(--line);
   padding-top: 22px;
 }
-.experiments-example-picker h3 {
+.experiments-example-picker h3,
+.experiments-measurement-picker h3 {
   font-size: 13px;
 }
 .experiments-example-picker > input {
@@ -611,6 +613,106 @@
   color: #7f8976;
   line-height: 1.5;
 }
+.experiments-picker-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.experiments-picker-filters label {
+  min-width: 0;
+  font-size: 11px;
+}
+.experiments-picker-filters select {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 11px;
+  padding-left: 10px;
+}
+.experiments-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 15px 0 8px;
+}
+.experiments-change {
+  font-size: 10px;
+  font-weight: 600;
+  color: #5d7055;
+}
+.experiments-change-regressed,
+.experiments-parity.failed {
+  color: #a13e36;
+}
+.experiments-change-mixed {
+  color: #856121;
+}
+.experiments-sampling {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+.experiments-sampling h4,
+.experiments-target h4 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.experiments-targets {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+.experiments-target {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e1e7da;
+  border-radius: 6px;
+}
+.experiments-target > p {
+  margin-top: 8px;
+}
+.experiments-parity {
+  display: block;
+  font-size: 11px;
+  color: #526b45;
+  line-height: 1.7;
+}
+.experiments-measurement-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #e1e7da;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+.experiments-measurement-choice:has(input:checked) {
+  border-color: #6b8d57;
+  background: #f3f7ed;
+}
+.experiments-measurement-choice input {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: var(--green);
+}
+.experiments-measurement-choice > span {
+  min-width: 0;
+}
+.experiments-measurement-choice strong {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.experiments-measurement-choice .experiments-caption {
+  margin-top: 5px;
+}
 .experiments-compose .modal-actions,
 .experiments-edit .modal-actions {
   margin-top: 25px;
@@ -645,7 +747,7 @@
     padding: 13px;
   }
   .experiments-metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 600px) {
@@ -708,6 +810,13 @@
   .experiments-picker-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 9px;
+  }
+  .experiments-picker-filters {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+  .experiments-target {
+    padding: 12px;
   }
   .experiments-empty {
     padding: 34px 20px;

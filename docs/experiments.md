@@ -22,6 +22,20 @@ the recorded confidence threshold; COCO AP continues to use all saved scores
 according to the original metric protocol. Selecting illustrative examples does
 not restrict or recalculate the aggregate metrics.
 
+The example picker filters saved images by scene, operating-point changes,
+negative images and recorded timestamps. **Use suggested examples** explicitly
+adds up to six diverse examples with recovered objects, new misses or false
+positives; it never saves a selection automatically. An improved or regressed
+image describes those counts at the saved threshold, not all aspects of box
+geometry or detector quality. A mixed image contains both gains and regressions.
+
+Scene tables show labeled objects, true positives, false positives and misses
+per class and pipeline. Recovered objects, new misses and false-positive changes
+use the original matching evidence. Scene AP is not recomputed. Video source
+summaries identify only the frozen sampled images and their approximate recorded
+timestamps; their first and last timestamps do not establish continuous coverage,
+tracking quality or live video performance.
+
 The report separates:
 
 - **Recorded evidence:** dataset identity, checkpoint hashes, available training
@@ -39,6 +53,32 @@ differences are percentage points, not relative percent improvements. Undefined
 metrics stay unavailable; they are not converted to zero. A single-model report
 has no before/after delta or automatic winner. Speed measurements retain their
 recorded environment and protocol and are not a general hardware benchmark.
+For new reports, a timing difference is shown only when complete measurements,
+hardware/runtime settings and compatible whole-pipeline timing protocols are
+recorded. Otherwise absolute recorded times remain available with the reason a
+comparison is unavailable.
+
+## Include saved target measurements
+
+Optionally select up to four measurements already imported through **Model
+exports**. Nothing is selected by default. The picker considers the 100 most
+recent saved measurements for this evaluation and omits missing or inconsistent
+evidence. Each selected measurement must match the exact full-image evaluation
+lane, checkpoint, class contract, dataset manifest and saved reference predictions.
+Measures from unrelated evaluations or a tiled pipeline cannot be attached.
+
+The report freezes the selected export and measurement identities, hashes,
+declared target environment, exact parity result, reference-image identities and
+timing summaries. Raw measurement detections, checkpoint paths and CUDA device
+UUIDs are excluded. Simulation is labeled explicitly. An external execution
+declaration is not authenticated by IRIS; a failed parity check remains visible.
+Parity only covers the exported reference images.
+
+Target processing time is displayed separately from decoding, model loading and
+warmup. Export processing time excludes those costs, whereas IRIS evaluation
+total time includes image decoding and verification. The report calculates no
+speedup between those contexts and does not rank devices. Different training and
+target devices remain independent, including CPU and NVIDIA CUDA targets.
 
 ## Persistence and edits
 
@@ -54,6 +94,14 @@ using another revision. Create another report to choose a different evaluation
 or different examples. A saved report can be reopened without the original
 dataset images, model weights or optional ML runtime. Its own snapshot and image
 checksums are still verified.
+Selected measurement summaries likewise remain readable without the original
+export archive, measurement row or detector runtime. New snapshots use version 2;
+existing version-1 reports retain their original evidence and do not acquire
+scene analyses or measurements retrospectively. No database migration is needed.
+
+The creation preview has a source fingerprint. If the evaluated evidence changes
+before saving, refresh the preview and review the selection again. Selected
+measurements are revalidated before publication; the saved report is immutable.
 
 ## Standalone export
 
@@ -77,7 +125,10 @@ no new job or model. Exporting does not publish a URL or send a document anywher
 
 Tests use synthetic reviewed images and saved evaluation fixtures to verify
 source consistency, paired and single-model semantics, frozen evidence, note-edit
-conflicts, image integrity, offline rendering and export escaping. Existing saved
-results can also be used to exercise the complete report workflow without new
+conflicts, image integrity, offline rendering and export escaping.
+Synthetic CPU/CUDA measurement declarations also verify precise source linkage,
+parity failures, explicit selection, scene counts, video sampling limits and old
+snapshot compatibility. These simulations do not run a detector or a GPU.
+Existing saved results can also be used to exercise the complete report workflow without new
 model execution. These checks establish report behavior; they do not establish
 detector quality on real flights.

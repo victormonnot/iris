@@ -204,7 +204,7 @@ def _metrics(snapshot):
     if paired:
         headings.append("Candidate − baseline")
     rows = []
-    for label, key, kind in (
+    metrics = [
         ("COCO mAP · IoU 0.50–0.95", "map", "rate"),
         ("AP50", "map50", "rate"),
         ("AP75", "map75", "rate"),
@@ -214,7 +214,10 @@ def _metrics(snapshot):
         ("False positives", "fp", "count"),
         ("Missed objects", "fn", "count"),
         ("Mean total processing time", "mean_total_ms", "time"),
-    ):
+    ]
+    if snapshot.get("version") == 2:
+        metrics.insert(5, ("F1", "f1", "rate"))
+    for label, key, kind in metrics:
         values = [
             (lane["timing"] if kind == "time" else lane["metrics"]["summary"]).get(key)
             for lane in lanes
@@ -222,7 +225,12 @@ def _metrics(snapshot):
         formatter = {"rate": _rate, "count": _count, "time": _milliseconds}[kind]
         row = [label, *[formatter(value) for value in values]]
         if paired:
-            row.append(_delta(*values, kind))
+            comparable = snapshot.get("insights", {}).get("timing", {}).get("comparable")
+            row.append(
+                "Not comparable"
+                if kind == "time" and comparable is False
+                else _delta(*values, kind)
+            )
         rows.append(row)
     return _table(
         headings,
@@ -230,6 +238,292 @@ def _metrics(snapshot):
         caption="Saved results from the same frozen evaluation",
         kind="metric-results",
     )
+
+
+def _scene_results(document, snapshot):
+    insights = snapshot.get("insights")
+    if insights is None:
+        return
+    document.add("<section><h2>Results by scene</h2>")
+    document.add(
+        '<p class="note">Counts use the saved confidence and IoU operating point. '
+        "These scene counts are not scene AP scores. Negative images contain no reviewed "
+        "objects from the evaluated classes; their false positives still count.</p>"
+    )
+    names = _class_names(snapshot)
+    aggregate = snapshot["error_analysis"].get("aggregate_filter", "all")
+    for scene in insights["scenes"]:
+        document.add(
+            "<h3>"
+            + _e(scene["scene_group"])
+            + '</h3><p class="note">Evaluated images: '
+            + _count(scene["frame_count"])
+            + " · Negative images: "
+            + _count(scene["negative_frame_count"])
+            + "</p>"
+        )
+        rows, changes = [], []
+        for label, counts in scene["counts"].items():
+            name = "All classes" if label == aggregate else names.get(label, label)
+            for lane in snapshot["lanes"]:
+                run = counts["runs"][lane["id"]]
+                rows.append(
+                    [
+                        name,
+                        _lane_name(lane),
+                        _count(counts.get("ground_truth_count")),
+                        *[_count(run.get(key)) for key in ("tp", "fp", "fn", "error_frames")],
+                    ]
+                )
+            delta = counts.get("changes")
+            if delta is not None and len(snapshot["lanes"]) == 2:
+                if type(delta["fp_delta"]) is not int:
+                    raise ValueError("The saved scene false-positive change must be an integer")
+                changes.append(
+                    [
+                        name,
+                        _count(delta["recovered"]),
+                        _count(delta["new_misses"]),
+                        f"{delta['fp_delta']:+d}",
+                    ]
+                )
+        document.add(
+            _table(
+                ["Class", "Run", "Labeled objects", "TP", "FP", "Missed", "Error images"],
+                rows,
+            )
+        )
+        if changes:
+            document.add(
+                _table(["Class", "Recovered by candidate", "Newly missed", "FP change"], changes)
+            )
+    if not insights["scenes"]:
+        document.add('<p class="empty">No scene counts were recorded.</p>')
+    document.add("</section>")
+
+
+def _sampling(document, snapshot):
+    insights = snapshot.get("insights")
+    if insights is None:
+        return
+    sampling = insights["sampling"]
+    document.add("<section><h2>Image and video sampling</h2>")
+    document.add(
+        '<p class="notice">This evaluation covers saved images and sampled video frames. '
+        "It does not establish continuous video coverage, live throughput, tracking quality "
+        "or performance on intervening frames.</p>"
+    )
+    document.add(
+        _details(
+            [
+                ("Still images", _count(sampling["still_image_count"])),
+                ("Images with unknown source type", _count(sampling["unknown_source_count"])),
+            ]
+        )
+    )
+    rows = []
+    for source in sampling["video_sources"]:
+        times = []
+        for key in ("first_timestamp_seconds", "last_timestamp_seconds"):
+            value = source.get(key)
+            times.append("N/A" if value is None else f"{_number(value, minimum=0):.3f} s")
+        rows.append(
+            [
+                source["filename"],
+                source["source_id"],
+                _count(source["frame_count"]),
+                _count(source["timestamps_available"]),
+                *times,
+            ]
+        )
+    if rows:
+        document.add(
+            _table(
+                ["Video", "Source ID", "Sampled frames", "Timed frames", "First", "Last"],
+                rows,
+                caption="Source timestamps are approximate, not a continuous measured duration.",
+            )
+        )
+    else:
+        document.add('<p class="empty">No video sources were recorded.</p>')
+    if sampling.get("warning"):
+        document.add('<p class="note">' + _e(sampling["warning"]) + "</p>")
+    document.add("</section>")
+
+
+def _timing_context(document, snapshot):
+    timing = snapshot.get("insights", {}).get("timing")
+    if timing is None:
+        return
+    if timing["comparable"] is False:
+        document.add(
+            '<p class="notice">Local timing differences are not compared because the saved '
+            "execution contexts are not comparable.</p>"
+        )
+    if timing.get("reasons"):
+        document.add("<ul>")
+        for reason in timing["reasons"]:
+            document.add("<li>" + _e(reason) + "</li>")
+        document.add("</ul>")
+    document.add('<p class="note">' + _e(timing["scope"]) + "</p>")
+
+
+_CUDA_DETAIL_FIELDS = (
+    ("GPU", "name"),
+    ("CUDA runtime", "runtime"),
+    ("cuDNN", "cudnn"),
+    ("GPU index", "index"),
+    ("Compute capability", "capability"),
+    ("GPU memory (bytes)", "total_memory"),
+    ("TF32 matrix multiplication", "tf32_matmul"),
+    ("TF32 cuDNN", "tf32_cudnn"),
+    ("cuDNN benchmarking", "cudnn_benchmark"),
+)
+
+
+def _deployment_environment(measurement):
+    profile, environment = measurement["profile"], measurement["environment"]
+    values = [("Profile", profile.get("id")), ("Architecture", profile.get("architecture"))]
+    values.extend(
+        (label, profile.get(key))
+        for label, key in (
+            ("Target device family", "device"),
+            ("Precision", "precision"),
+            ("Batch size", "batch_size"),
+        )
+    )
+    values.extend(
+        (label, environment.get(key))
+        for label, key in (
+            ("Measured device", "device"),
+            ("Processor", "processor"),
+            ("Platform", "platform"),
+            ("Machine", "machine"),
+            ("Python", "python"),
+            ("PyTorch", "torch"),
+            ("Torchvision", "torchvision"),
+            ("Pillow", "pillow"),
+            ("CPU threads", "threads"),
+            ("Interop threads", "interop_threads"),
+        )
+    )
+    cuda = environment.get("cuda")
+    if cuda is not None:
+        values.extend((label, cuda.get(key)) for label, key in _CUDA_DETAIL_FIELDS)
+    return _details(values)
+
+
+def _deployments(document, snapshot):
+    deployments = snapshot.get("deployments")
+    if deployments is None:
+        return
+    document.add("<section><h2>Declared target measurements</h2>")
+    document.add(
+        '<p class="notice">These imported measurements are producer declarations. '
+        "Checksums and consistency checks do not independently prove execution or authenticity. "
+        "Their timings are separate from IRIS evaluation timings; no cross-context speedup "
+        "or automatic winner is inferred.</p>"
+    )
+    measurements = deployments["measurements"]
+    if not measurements:
+        document.add('<p class="empty">No target measurement was selected for this report.</p>')
+    for measurement in measurements:
+        summary = measurement["summary"]
+        source = measurement["source"]
+        if type(summary["parity_passed"]) is not bool:
+            raise ValueError("The saved target parity result must be a boolean")
+        document.add('<article class="example"><h3>' + _e(measurement["name"]) + "</h3>")
+        declaration = measurement["declaration"]
+        document.add(
+            '<p class="notice">'
+            + (
+                "SIMULATION — synthetic fixture; this is not measured hardware performance."
+                if declaration == "simulation"
+                else "Producer declaration: " + _e(declaration)
+            )
+            + "</p>"
+        )
+        document.add(
+            '<p class="notice">Exact parity: '
+            + ("PASSED" if summary["parity_passed"] else "FAILED")
+            + " · Mismatched samples: "
+            + _count(len(summary["mismatched_samples"]))
+            + ". Execution has not been independently verified.</p>"
+        )
+        document.add(
+            _details(
+                [
+                    ("Measurement ID", measurement["id"]),
+                    ("Export ID", measurement["export_id"]),
+                    ("Checkpoint ID", measurement["model_id"]),
+                    ("Report run ID", measurement["lane_id"]),
+                    ("Imported", measurement["created_at"]),
+                    ("Measurement payload SHA-256", measurement["fingerprint"]),
+                    ("Export archive SHA-256", measurement["archive_sha256"]),
+                    ("Checkpoint SHA-256", measurement["model_sha256"]),
+                    ("Reference evaluation ID", source["evaluation_id"]),
+                    ("Reference evaluation run ID", source["evaluation_model_id"]),
+                    ("Reference dataset SHA-256", source["dataset_manifest_sha256"]),
+                    ("Reference device", source["reference_device"]),
+                    ("Reference frame IDs", ", ".join(source["frame_ids"])),
+                    ("Measured frames", _count(summary["frames"])),
+                    ("Repeats", _count(summary["repeats"])),
+                    ("Measured samples", _count(summary["sample_count"])),
+                ]
+            )
+        )
+        document.add("<details open><summary>Declared target environment</summary>")
+        document.add(_deployment_environment(measurement))
+        document.add("</details>")
+        rows = []
+        for label, key in (
+            ("Preprocessing", "preprocess_ms"),
+            ("Model forward", "inference_ms"),
+            ("Postprocessing", "postprocess_ms"),
+            ("Total processing", "total_ms"),
+        ):
+            distribution = summary["timing_ms"][key]
+            rows.append(
+                [label, *[_milliseconds(distribution[k]) for k in ("min", "median", "max")]]
+            )
+        document.add(
+            _table(["Target stage", "Minimum", "Median", "Maximum"], rows, kind="metric-results")
+        )
+        decode = summary["decode_ms"]
+        document.add(
+            _table(
+                ["Separate cost", "Minimum", "Median", "Maximum"],
+                [["Image decoding", *[_milliseconds(decode[k]) for k in ("min", "median", "max")]]],
+            )
+        )
+        document.add(
+            _details(
+                [
+                    ("Model loading (excluded from processing)", _milliseconds(summary["load_ms"])),
+                    ("Warmup (excluded from processing)", _milliseconds(summary["warmup_ms"])),
+                ]
+            )
+        )
+        timing = measurement["profile"].get("timing", {})
+        if isinstance(timing, dict):
+            document.add(
+                _details(
+                    [
+                        ("Target timing definition", timing.get("total_ms")),
+                        ("Image decoding definition", timing.get("decode_ms")),
+                        ("Model loading definition", timing.get("load_ms")),
+                        ("Warmup passes", timing.get("warmup_passes")),
+                        ("Target synchronization", timing.get("cuda_synchronization")),
+                    ]
+                )
+            )
+        document.add("</article>")
+    if deployments.get("limitations"):
+        document.add("<ul>")
+        for limitation in deployments["limitations"]:
+            document.add("<li>" + _e(limitation) + "</li>")
+        document.add("</ul>")
+    document.add("</section>")
 
 
 def _class_names(snapshot):
@@ -356,11 +650,18 @@ def _flow(snapshot):
             for label, key in (
                 ("Device", "device"),
                 ("Hardware", "hardware"),
+                ("Platform", "platform"),
+                ("Architecture", "architecture"),
                 ("Precision", "precision"),
                 ("PyTorch", "torch_version"),
                 ("Torchvision", "torchvision_version"),
+                ("CPU threads", "threads"),
+                ("Interop threads", "interop_threads"),
             )
         )
+        cuda = runtime.get("cuda")
+        if cuda is not None:
+            values.extend((label, cuda.get(key)) for label, key in _CUDA_DETAIL_FIELDS)
         output.extend([_details(values), "</div>"])
     return '<div class="columns">' + "".join(output) + "</div>"
 
@@ -429,9 +730,11 @@ def _protocol(snapshot):
                 [
                     ("Timing protocol", timing.get("version", timing.get("id"))),
                     ("Total processing time includes / excludes", timing.get("total_ms")),
+                    ("Image decoding", timing.get("decode_ms")),
                     ("Model forward time", timing.get("inference_ms")),
                     ("Warmup", timing.get("warmup_frames", timing.get("warmup"))),
                     ("Warmup iterations", timing.get("warmup_iterations")),
+                    ("Warmup included in timings", timing.get("warmup_in_timings")),
                     ("Batch size", timing.get("batch_size")),
                     (
                         "Device synchronization",
@@ -572,6 +875,18 @@ def _examples(document, store, report, include_images):
         seconds = example["source"].get("timestamp_seconds")
         if seconds is not None:
             document.add(f'<p class="note">Source time: {_number(seconds, minimum=0):.3f} s</p>')
+        insights = snapshot.get("insights")
+        if insights is not None:
+            change = insights["frame_changes"].get(example["frame_id"])
+            reason = next(
+                (
+                    item["reason"]
+                    for item in insights["suggested_examples"]
+                    if item["frame_id"] == example["frame_id"]
+                ),
+                None,
+            )
+            document.add(_details([("Saved frame change", change), ("Example suggestion", reason)]))
         uri = None
         if include_images:
             content = experiments.read_experiment_image(store, report["id"], example["frame_id"])
@@ -699,10 +1014,11 @@ def render_experiment_html(
         document.add(
             '<p class="note">The first run is the baseline; the second is the candidate. '
             "Changes are candidate minus baseline. Percentage metrics use percentage points "
-            "(pp), not relative percent change. Time includes its relative change when the "
-            "baseline is greater than zero.</p>"
+            "(pp), not relative percent change. Comparable local time includes its relative "
+            "change when the baseline is greater than zero.</p>"
         )
     document.add(_metrics(snapshot))
+    _timing_context(document, snapshot)
     document.add(
         '<p class="note">N/A means undefined or unavailable, never a perfect score. '
         "Classes without labeled objects are excluded from macro AP. Precision, recall and "
@@ -716,10 +1032,13 @@ def render_experiment_html(
         '<p class="note">Recoveries and new misses refer to the same frozen ground-truth '
         "objects. False-positive change compares counts, not object identities.</p></section>"
     )
+    _scene_results(document, snapshot)
+    _sampling(document, snapshot)
     document.add(
         "<section><h2>Dataset, training and checkpoints</h2>" + _flow(snapshot) + "</section>"
     )
     document.add("<section><h2>Evaluation protocol</h2>" + _protocol(snapshot) + "</section>")
+    _deployments(document, snapshot)
     _examples(document, store, report, include_images)
     document.add(
         "<section><h2>Recorded reference decisions</h2>" + _references(snapshot) + "</section>"

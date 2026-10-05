@@ -286,6 +286,8 @@ class ExperimentInput(BaseModel):
     objective: str = Field(default="", max_length=4000)
     conclusion: str = Field(default="", max_length=4000)
     example_frame_ids: list[str] = Field(default_factory=list, max_length=6)
+    measurement_ids: list[str] = Field(default_factory=list, max_length=4)
+    expected_source_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ExperimentUpdateInput(BaseModel):

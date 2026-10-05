@@ -341,6 +341,18 @@ checks. An additive SQLite table stores report metadata. Standalone HTML exports
 use explicit public fields, escaped text and embedded styles, with optional
 images and no scripts or network dependencies. See [experiment reports](experiments.md).
 
+Report snapshot v2 adds pure operating-point aggregation in `experiment_insights.py`:
+per-scene counts, frame changes, bounded example suggestions, sampled-video context
+and conservative timing comparability. `experiment_deployments.py` validates selected
+saved export measurements against the exact full-image lane, metadata, dataset,
+checkpoint and reference predictions. It freezes only explicitly selected summaries,
+without loading models or including raw measurement detections. Preview enumerates
+at most 100 recent measurements; creation reads only the zero to four selected IDs
+and rechecks evidence under the publication lock. The preview source fingerprint
+rejects stale evaluation evidence. Existing v1 snapshots remain unchanged and readable;
+schema 18 is unchanged. Local evaluation timing and declared target timing have
+different boundaries and are never combined into a cross-context speedup.
+
 Evaluations are separate from session-based visual comparisons. They consume the
 whole validation or test split of one immutable release, including frames from
 multiple sessions. They freeze checkpoint hashes, ancestry, dataset hash and
