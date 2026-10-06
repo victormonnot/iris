@@ -54,3 +54,31 @@ provider processing, including abuse monitoring and prompt caching.
 
 Protocol tests use synthetic transport fixtures only. They establish request and
 failure handling, not model availability, localization quality or actual billing.
+
+## Real acceptance trial
+
+An acceptance trial on 2026-10-06 exercised the normal benchmark worker with eight
+640 × 480 images, the `person` class, low reasoning effort and the default 4096-token
+output limit. All eight Responses requests completed successfully and returned the
+`gpt-6-astra` alias. Image dimensions were unchanged. Native responses, normalized
+boxes, usage, request identities and dispatch receipts were saved and inspected
+through the application after reloading the page. No request was retried.
+
+Against seven frozen human-reference boxes, one-to-one matching at IoU 0.5 found
+seven matches, no extra boxes and no misses. Mean matched IoU was 0.924669; the
+human-validated negative image returned no proposals. An independent calculation
+from native response coordinates reproduced the stored metrics. These eight images
+are a small tuning subset, not an independent quality estimate. Human correction
+time was not measured, and no reference annotation was changed.
+
+Reported usage totaled 5896 input and 517 output tokens, including 61 reasoning
+tokens already counted in output. At the frozen rates this gives **$0.08481** for
+the eight images, compared with the **$2.2956** planning allowance. The allowance
+reserved the full output limit for every image and conservatively estimated input
+tokens; actual responses were much shorter. This usage calculation is not a
+provider invoice or a forecast for other images or settings. Median observed
+request time was 4.263 seconds, including network and provider processing.
+
+This verifies one real account and run. The offline readiness indicator still
+checks configuration presence only; it does not authenticate the account or
+guarantee future model access, quality, latency or price.
