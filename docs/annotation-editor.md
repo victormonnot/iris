@@ -56,6 +56,11 @@ proposals and enter a reviewer name before validation. The proposal list can sho
 only pending decisions, low scores or uncertain recommendations; hidden pending
 proposals still prevent validation.
 
+The **Review pending proposals** button beside the save controls shows the total
+number of unresolved proposals. It switches the list to pending decisions and
+moves keyboard focus to the first available review action, including proposals
+hidden by another filter. Opening this list does not accept or validate anything.
+
 Each proposal has expandable provenance. **Inspect saved inputs and raw outputs**
 in the proposal run shows the original detector output, class mapping and input
 snapshots. The editor's revision history preserves saved boxes, decisions,

@@ -87,6 +87,14 @@ evidence declaration and your interpretation, then reopen it or download a JSON
 snapshot or standalone HTML summary. Later trials and corrections leave saved
 reports unchanged. Report preparation and export run locally without a model.
 
+The [R9 acceptance results](docs/acceptance-results.md) record a real 17-image
+person-annotation comparison, provider usage costs and its limits. DINO-X at a
+previously tuned 0.50 threshold and Astra alone found all 16 reference people
+without extra boxes on this lot; adding Astra review to DINO-X at 0.25 retained
+two false positives. The human correction-time comparison was discontinued
+because interface learning and sparse reviews made it uninterpretable. These
+results do not establish general model quality or annotation-time savings.
+
 The SAM path uses one short phrase per frozen class and an independent score
 threshold. Configurations can be saved before setup; execution requires the
 pinned checkpoint and a separate CUDA environment configured through

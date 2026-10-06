@@ -398,8 +398,12 @@
         status("The imported session is saved. Finish or save your current annotation before switching.");
         return;
       }
-      $("#workspace-annotation").click();
+      if (!window.IRISNavigation.open("annotation")) {
+        status("The imported session is saved. Finish or save your current annotation before switching.");
+        return;
+      }
       dialog.close();
+      $("#main").focus();
     } catch (error) {
       report(error.message);
     } finally {

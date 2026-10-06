@@ -245,6 +245,10 @@
       blocked || count > 0 || !$("#annotation-reviewer").value.trim();
     $("#annotation-validate-next").disabled =
       $("#annotation-validate").disabled || Boolean(editor.drag);
+    const reviewPending = $("#annotation-review-pending");
+    reviewPending.hidden = count === 0;
+    reviewPending.disabled = blocked || count === 0;
+    reviewPending.textContent = `Review ${count} pending proposal${count === 1 ? "" : "s"}`;
     $("#annotation-save-hint").textContent = count
       ? "Accept or reject every pending proposal before validation."
       : !$("#annotation-reviewer").value.trim()
@@ -1948,6 +1952,15 @@
       changeHistory(direction);
       $("#annotation-canvas").focus({ preventScroll: true });
     });
+  $("#annotation-review-pending").addEventListener("click", () => {
+    if (actionBlocked() || !pending().length) return;
+    $("#annotation-proposal-filter").value = "pending";
+    renderProposals();
+    const list = $("#annotation-proposals");
+    const target = list.querySelector(".annotation-proposal.pending button:not(:disabled)") || list;
+    target.scrollIntoView({ block: "center" });
+    target.focus({ preventScroll: true });
+  });
   $("#annotation-save").addEventListener("click", () => save("draft"));
   $("#annotation-validate").addEventListener("click", () => save("validated"));
   $("#annotation-validate-next").addEventListener("click", validateAndNext);

@@ -71,8 +71,8 @@ file lookup or a reason to put credentials in a workspace.
 
 The initial experiment reuses eight tuning images already inspected during
 the separate DINO-X and Astra trials. It is not an independent generalization
-test. The seventeen reserved evaluation images remain separate until the
-later comparison protocol is frozen.
+test. The seventeen reserved evaluation images were subsequently measured under
+a separate protocol frozen before inference; see the R9 comparison below.
 
 On this tuning set, the DINO-X false positive also has a lower score than every
 true positive. A detector threshold chosen after inspecting the results can
@@ -112,3 +112,27 @@ The comparison is available as a private, offline visual report; this initial
 experiment did not create an integrated Benchmark trial or establish a general
 quality or annotation-time improvement. Later recorded-evidence imports retain
 their own local import history and do not rewrite the earlier provider execution.
+
+## R9 evaluation comparison, 2026-10-06
+
+The later comparison used 17 courtyard images with 16 reference people. DINO-X
+at threshold 0.25 produced 16 true positives, two false positives and zero misses.
+Astra accepted all 18 candidates, preserving both false positives and all native
+boxes. Mean matched IoU remained 0.955487. Review therefore added no measured
+quality benefit on this lot. The DINO-X 0.50 threshold fixed from prior tuning
+retained all 16 true positives without either extra box; Astra alone also had
+16 true positives, no extras and no misses.
+
+The 17 review requests contributed $0.18790 of usage-priced OpenAI cost. The
+17 source DINO-X requests had a separate estimated cost of 2.55 CNY, shared by
+the two threshold variants and review variant rather than charged again on
+import. These are recorded usage calculations and estimates, not verified
+invoices. This result complements the earlier tuning result; it does not replace
+or rewrite it.
+
+The human correction-time comparison was discontinued as uninterpretable after
+interface-learning feedback and four unchanged reviews. No time-saving claim is
+made. These development-validation images came from one recording already used
+in earlier detector development, so this is not an independent final test. See
+the [full R9 acceptance summary](acceptance-results.md) for all configurations,
+cost accounting, evidence checks and remaining validation.

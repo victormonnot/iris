@@ -80,7 +80,11 @@ This checks that custom heads can be saved and reloaded without relying on curre
 project definitions. The [standalone model export workflow](model-export.md)
 packages a completed trained checkpoint, its frozen classes and inference recipe,
 an independent PyTorch CPU or CUDA runner, and saved evaluation examples for external parity checks.
-Real exported-model execution and target performance remain to be tested. No
+Real exports of the pilot's person-only custom head have run in separate CPU and
+CUDA environments on the same host. Same-device exact parity passed; cross-device
+exact parity failed despite unchanged detection counts at the measured operating
+point. See the [measured export matrix](model-export.md#what-is-verified).
+Other custom class sets and physical target machines still need their own checks. No
 ONNX or TensorRT conversion is provided. Use the PyTorch runner on an embedded
 target only when that target satisfies its runtime and operator requirements.
 Internal optimizer
@@ -107,6 +111,7 @@ termination on their original CPU or CUDA device and runtime.
 These short trials do not establish general quality gains. Full training is not
 necessarily better, and learning rates must be assessed for each architecture and
 depth. Longer runs, partial/full training on CPU, partial/full-scope recovery,
-server restart or power-loss recovery, other hardware, cross-device inference and
-exported-model parity remain to be tested. No model weights or datasets are
+server restart or power-loss recovery, other hardware and non-person custom-head
+exports remain to be tested. Cross-device execution and its exact-parity limits
+are recorded in the export matrix above. No model weights or datasets are
 downloaded automatically.

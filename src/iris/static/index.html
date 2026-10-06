@@ -1045,6 +1045,8 @@
                     ></textarea>
                     <p id="annotation-save-hint" class="field-hint"></p>
                     <div class="annotation-save-actions">
+                      <button id="annotation-review-pending" type="button" class="button button-secondary"
+                        aria-controls="annotation-proposals" hidden>Review pending proposals</button>
                       <button
                         id="annotation-save"
                         type="button"
@@ -1143,6 +1145,9 @@
                   <div
                     id="annotation-proposals"
                     class="annotation-proposals"
+                    tabindex="-1"
+                    role="region"
+                    aria-label="Annotation proposals"
                   ></div>
                   <details class="annotation-assist">
                     <summary>Multimodal review</summary>

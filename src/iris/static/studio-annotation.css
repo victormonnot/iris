@@ -112,6 +112,7 @@
   gap: 12px;
 }
 #annotation-workspace .annotation-proposals > .field-hint { grid-column: 1/-1; }
+#annotation-proposals:focus-visible { outline: 2px solid var(--primary); outline-offset: 6px; }
 #annotation-workspace .annotation-proposal { margin: 0; min-width: 0; }
 #annotation-workspace .annotation-proposal-heading { flex-wrap: wrap; }
 #annotation-workspace .annotation-assist { margin-top: 20px; padding-top: 16px; }
