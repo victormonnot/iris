@@ -84,7 +84,12 @@ Real exports of the pilot's person-only custom head have run in separate CPU and
 CUDA environments on the same host. Same-device exact parity passed; cross-device
 exact parity failed despite unchanged detection counts at the measured operating
 point. See the [measured export matrix](model-export.md#what-is-verified).
-Other custom class sets and physical target machines still need their own checks. No
+The later [street-vehicle acceptance](acceptance-results.md#r10-completed-street-vehicle-workflow-weak-detector-quality)
+also exercised a two-class SSDLite car/bus head on CUDA: real training, reload,
+evaluation and standalone export completed, with exact parity on six samples.
+Its detector quality remained poor; workflow completion is not a quality gain.
+Other class sets, architectures with those classes, and physical target machines
+still need their own checks. No
 ONNX or TensorRT conversion is provided. Use the PyTorch runner on an embedded
 target only when that target satisfies its runtime and operator requirements.
 Internal optimizer
@@ -111,7 +116,8 @@ termination on their original CPU or CUDA device and runtime.
 These short trials do not establish general quality gains. Full training is not
 necessarily better, and learning rates must be assessed for each architecture and
 depth. Longer runs, partial/full training on CPU, partial/full-scope recovery,
-server restart or power-loss recovery, other hardware and non-person custom-head
-exports remain to be tested. Cross-device execution and its exact-parity limits
+server restart or power-loss recovery, other hardware and custom-head exports
+beyond the measured person-only and CUDA SSDLite car/bus cases remain to be tested.
+Cross-device execution and its exact-parity limits
 are recorded in the export matrix above. No model weights or datasets are
 downloaded automatically.

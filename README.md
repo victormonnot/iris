@@ -57,6 +57,12 @@ quality gains or performance on other targets. Full training is not necessarily 
 and one learning rate is not suitable for every architecture and depth. See
 [model choices, training policies and validation limits](docs/trainable-models.md).
 
+A [second real acceptance case](docs/acceptance-results.md#r10-completed-street-vehicle-workflow-weak-detector-quality)
+completed human review, dataset export, CUDA training, evaluation and standalone
+export for a custom car/bus SSDLite head. Exact export parity passed, but the short
+run on four street photos did not improve detection on the two validation photos.
+The workflow result and the poor model-quality result are recorded separately.
+
 ## Annotation benchmark
 
 Open **Benchmark** to freeze an independent human reference and compare saved

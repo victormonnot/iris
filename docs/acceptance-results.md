@@ -122,28 +122,74 @@ remaining interface friction addressed through actual use. Difficult FPV quality
 validation remains a separate follow-up using newly collected scenes; it does not
 require restarting the abandoned timed-review schedule.
 
-## R10: second-use-case acceptance in progress
+## R10: completed street-vehicle workflow, weak detector quality
 
-The selected second use case is **cars and buses in street scenes**. Six public
-COCO photographs have been imported into a separate project with two explicitly
-mapped classes, four training images and two validation images. The 19 car and
-two bus source boxes are pending proposals, not newly validated annotations.
-The original COCO records, excluded categories, image authors/licenses and exact
-image identities are retained. Human review, the frozen release and the subsequent
-training/evaluation/export cycle remain outstanding; R10 is not complete.
+On 2026-10-06, the second use case completed the real **cars and buses in street
+scenes** workflow in a separate project. The participant validated all six photos:
+20 source proposals were accepted, one was corrected and four boxes were added,
+giving **23 cars and two buses**. The frozen release retains the exact saved human
+revisions, source annotations, excluded categories, authors/licenses and image
+identities. Four training photos contain 11 boxes; two validation photos contain
+14. Dataset COCO export preserved the images, reviewed boxes and split assignments,
+with custom export categories car=1 and bus=2 distinct from source COCO IDs 3 and 6.
+
+SSDLite320 MobileNetV3-Large completed **40 light-scope CUDA training steps** on an
+RTX 4060, using batch size one, float32, learning rate 0.001 and seed 42. Only the
+four training images appeared in its history, for ten complete passes. Training
+worker wall time was 8.128 seconds, including checkpoint loading and saving. The
+checkpoint was then reloaded by a separate evaluation worker and compared with
+its official pretrained parent on both validation photos, using full images,
+confidence 0.5 and matching IoU 0.5. Settings were fixed before these outcomes.
+
+| SSDLite configuration | Correct detections | Extra boxes | Missed objects | AP@[.50:.95] |
+| --- | ---: | ---: | ---: | ---: |
+| Official pretrained parent | 0 | 0 | 14 | 0.902% |
+| Custom car/bus head after 40 steps | 0 | 0 | 14 | 0.519% |
+
+Neither model retained a car/bus prediction at confidence 0.5. Precision is
+undefined when no predictions remain, not 100%. AP uses the saved scores across
+the confidence ranking, so low-score detections can yield a nonzero AP while the
+chosen operating point retains nothing. This run **did not improve quality** and
+does not provide a satisfactory street-vehicle detector. The before/after change
+includes replacing the original COCO head with background/car/bus as well as
+optimization; it does not isolate the effect of the 40 steps. No threshold was
+retuned from these results and no new reference model was promoted.
+
+The trained two-class checkpoint was exported and executed outside IRIS, using a
+copied runner in a separate dependency-only CUDA environment, isolated Python and
+disabled networking on the same physical host. Both validation images were run
+three times: **all six samples passed strict exact parity** with the saved CUDA
+reference. The comparison included all 100 native detections per image, including
+low-score boxes; it was not a comparison of two empty thresholded lists. The real
+measurement was imported into IRIS and attached to a saved experiment report,
+which was also exported as standalone HTML. There were no cloud requests or new
+API charges for this cycle.
+
+### Reference and generalization limits
 
 These photos come from the original COCO validation set, regrouped into a small
 derived split solely to test the application workflow. This is not an official
 COCO evaluation or evidence of unseen-image performance for pretrained models.
-The source bus/truck overlap on one photo is flagged for review. New difficult
-FPV footage remains a separate later evaluation.
+There are only two validation images and no validated negatives in this release.
+The participant's added light van is treated as a car, whereas the original COCO
+annotation calls it a truck: compatibility with the original category convention
+is approximate for this instance. Two tiny, overlapping manual boxes in one
+validation photo cannot reliably be resolved as distinct cars or a duplicate
+from the available pixels. These limitations were recorded before training;
+the original human decisions were preserved rather than changed after inference.
+The scores describe this frozen reference, not a certified annotation standard.
+
+The earlier R9 workspace backup/restoration check remains evidence for its original
+snapshot; it was not repeated or relabeled as a backup of the new R10 project.
+New difficult FPV footage remains a separate later quality evaluation.
 
 Two interface fixes support this acceptance: an explicit shortcut from the save
 controls to pending proposals, including proposals hidden by a filter, and a
 guarded import-to-annotation handoff that restores keyboard focus to the workspace.
 Neither action accepts proposals or validates images automatically. Disposable
 browser checks covered filters, undo, loading, guarded navigation, and desktop and
-mobile layouts in both themes; these checks do not replace the user's real review.
+mobile layouts in both themes. The participant subsequently used the actual
+annotation workflow and completed all six reviews.
 
 ### Compatibility established so far
 
@@ -152,7 +198,7 @@ mobile layouts in both themes; these checks do not replace the user's real revie
 | CPU training | Both detector architectures, 40 light-scope steps, checkpoint reload and evaluation | Longer runs and partial/full CPU training remain unmeasured |
 | NVIDIA training | RTX 4060, both architectures, light/partial/full scopes, 40 steps | Other GPUs untested; successful execution does not imply better quality |
 | Interrupted training | Light-scope continuation after cancellation and forced worker termination on CPU/CUDA | Same runtime/device only; power loss and deeper-scope recovery untested |
-| Standalone inference | Both architectures, all four CPU/CUDA training-to-target paths | Same-device exact parity passed; the four original cross-device comparisons failed. Separate target-reference controls passed without replacing those failures |
+| Standalone inference | Both architectures, all four CPU/CUDA training-to-target paths; R10 also exercised a custom car/bus SSDLite head on CUDA | Same-device exact parity passed; the four original cross-device comparisons failed. Separate target-reference controls passed without replacing those failures |
 | DINO-X API | Integrated annotation worker and saved native Benchmark evidence | Small person-only quality pilot so far |
 | Astra API | Eight tuning images and seventeen development-validation images | No independent final test or measured human time saving |
 | DINO-X → Astra review | Real requests and imported Benchmark outputs | No incremental quality benefit in R9; no live combined Annotation option |

@@ -62,6 +62,14 @@ descriptive observations, not allocator peaks or a portable memory requirement.
 Other hardware, embedded systems, longer-trained models and other training scopes
 still need their own execution, parity and performance checks.
 
+The later [R10 street-vehicle trial](acceptance-results.md#r10-completed-street-vehicle-workflow-weak-detector-quality)
+also exported a two-class SSDLite car/bus head after 40 light-scope CUDA steps.
+The copied runner used the same isolated standalone CUDA environment and compared
+two saved validation images across three repetitions. All six samples passed
+strict parity for the complete native outputs, despite weak detector quality at
+the chosen confidence threshold. This extends the measured custom-class export
+coverage on that host; it does not establish accuracy or compatibility elsewhere.
+
 Every new package declares `real_execution: "not_run"` because packaging itself
 does not run inference. Subsequent measurements are separate records and do not
 rewrite that immutable manifest. Packaging and successful hash inspection alone
