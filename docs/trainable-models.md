@@ -110,9 +110,19 @@ checkpoints were reloaded and evaluated in separate workers. Light-scope runs
 also continued after cancellation and forced worker termination on CPU and CUDA,
 preserving the original device and runtime.
 
+Copied standalone bundles of the light-scope models completed all four CPU/CUDA
+training-to-inference paths on the same host, in separate environments without
+IRIS and with networking disabled. Three repetitions of eight saved validation
+images passed exact parity when the reference and target device matched.
+Cross-device references failed exact parity on small numerical differences,
+without changing detection counts or thresholded quality counts on this subset.
+Four separate controls using new references evaluated on their target device
+passed exact parity; original failures remain recorded.
+See [export validation evidence and timing limits](model-export.md#what-is-verified).
+
 This small pilot does not establish general quality gains. Full training is not
 necessarily better than lighter scopes; using the same learning rate across
 architectures and depths can cause regressions. Longer runs, partial/full training
-on CPU, partial/full-scope recovery, server restart or power-loss recovery, other
-hardware, cross-device inference, export parity and target latency/memory remain
-to be tested.
+on CPU, partial/full-scope recovery, server restart or power-loss recovery and
+other hardware remain to be tested. Export parity, latency and memory need fresh
+measurement for a different model or deployment environment.

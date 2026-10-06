@@ -25,11 +25,47 @@ evaluation; packaging does not run a detector or manufacture new predictions.
 The software tests cover manifest validation, class slots, coordinates, command
 execution with simulated detector outputs, file integrity, and the measurement
 protocol. A copied runner can inspect a bundle without IRIS or third-party
-packages installed. **Real exported-model execution, numerical parity, and target
-hardware performance are deferred until the planned real-model testing phase.**
-Every new package therefore declares `real_execution: "not_run"`. Packaging and
-successful hash inspection do not establish that a real checkpoint loads or
-performs well on another machine.
+packages installed. Real acceptance trials also executed copied bundles in
+separate CPU and CUDA environments with no IRIS installation and networking
+disabled, on the same CPU/RTX 4060 host used for the pilot.
+
+The trials covered both architectures after 40 light-scope training steps, each
+trained on CPU and CUDA, with PyTorch 2.10.0, Torchvision 0.25.0 and Pillow 12.3.0.
+Each of the four training-to-target paths used the same eight saved validation
+images and three measurement repetitions, for eight original-reference exports:
+
+| Training/reference device | Standalone target | Execution, both architectures | Exact parity |
+| --- | --- | --- | --- |
+| CPU | CPU | Completed | Passed |
+| CPU | CUDA | Completed | Failed |
+| CUDA | CPU | Completed | Failed |
+| CUDA | CUDA | Completed | Passed |
+
+The four cross-device failures affected all 24 samples per export. Native
+detection counts were unchanged; the largest observed coordinate difference was
+about 0.000214 pixels and the largest score difference was about 0.00000167.
+True positives, false positives and misses at confidence 0.5 and IoU 0.5 were
+unchanged on this subset. Predictions were identical across the three repetitions
+on each target. These observations do not change the zero-tolerance parity result
+or establish accuracy on an independent test set.
+
+Four additional control exports used new IRIS references evaluated on the
+respective target device, preserving the same checkpoints, images and strict
+comparison. All four passed exact parity. The eight original exports and their
+four failed measurements remain unchanged; new references do not turn a failed
+cross-device comparison into a pass. In total, the 12 measurements contain
+288 samples.
+
+Timing measurements describe these models, images and runtimes on this host.
+Separately sampled process resident memory and aggregate GPU memory use are
+descriptive observations, not allocator peaks or a portable memory requirement.
+Other hardware, embedded systems, longer-trained models and other training scopes
+still need their own execution, parity and performance checks.
+
+Every new package declares `real_execution: "not_run"` because packaging itself
+does not run inference. Subsequent measurements are separate records and do not
+rewrite that immutable manifest. Packaging and successful hash inspection alone
+do not establish that a checkpoint loads or performs well on another machine.
 
 ## Package contents
 

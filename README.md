@@ -27,9 +27,14 @@ independently of the training device. On the
 target computer, inspect the bundle, check its runtime, predict on a local image, or measure exact
 parity and inference time. Preview and import the generated measurement JSON back
 into IRIS. Failed parity remains visible, timings retain their scopes, and imported
-execution remains declared evidence. Real exported-model/parity/performance validation is
-deferred; software tests use synthetic data and mocked execution. A different
-device can produce different numerical results; parity mismatches remain visible.
+execution remains declared evidence. Real acceptance trials exercised both architectures
+across all four CPU/CUDA training-to-inference paths in separate environments
+without IRIS and with networking disabled, on one CPU/RTX 4060 host. The four
+exports using their reference device passed exact parity; the four crossing
+devices executed successfully but failed exact parity on small numerical differences.
+Four separate controls with new references evaluated on their target device passed;
+the original failures remain visible. These measurements do not certify other
+hardware or deployment performance.
 See [the export format, runner commands and limitations](docs/model-export.md).
 
 ## Trainable model choices
@@ -46,8 +51,9 @@ model. Smaller weights do not establish better latency, memory use or quality.
 Real 40-step trials covered both architectures with light training on CPU and all
 three depths on an RTX 4060, including checkpoint reload and held-out evaluation.
 Light-scope continuation was also checked after cancellation and forced worker
-termination on CPU and CUDA. These bounded trials do not establish general quality
-gains or exported-target performance. Full training is not necessarily better,
+termination on CPU and CUDA. Standalone exports of the light-scope models were
+then measured on CPU and CUDA. These bounded trials do not establish general
+quality gains or performance on other targets. Full training is not necessarily better,
 and one learning rate is not suitable for every architecture and depth. See
 [model choices, training policies and validation limits](docs/trainable-models.md).
 

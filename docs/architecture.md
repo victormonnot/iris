@@ -571,7 +571,14 @@ bundles record a separate reference device and target. CUDA measurements synchro
 the selected device and preserve hardware/runtime evidence. Class order,
 legacy native-to-output IDs, EXIF orientation, Torchvision transforms, native NMS
 and prediction order remain frozen. Exact parity does not silently widen numeric
-tolerances. Real inference and target timing validation remain deferred.
+tolerances. Real acceptance trials exercised both architectures' light-scope
+checkpoints across all four CPU/CUDA training-to-target paths in separate
+environments without IRIS and with networking disabled on one CPU/RTX 4060 host.
+Same-device references passed exact parity; cross-device references failed on
+small numerical differences. Four separate control bundles with new target-device
+references passed while preserving the original failures. These bounded
+measurements do not certify other models or hardware; see
+[the export validation evidence](model-export.md#what-is-verified).
 
 External measurement JSON is bounded, linked to its manifest, checked for complete
 ordered repeats and finite timings, and recomputed before saving. Results are

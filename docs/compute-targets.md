@@ -19,11 +19,20 @@ checkpoints were reloaded and evaluated on the corresponding execution device.
 Light-scope runs also continued after cancellation and forced worker termination
 on CPU and CUDA, preserving each attempt's device and runtime.
 
-These trials do not establish general quality gains or performance. Longer runs,
-partial/full training on CPU, partial/full-scope recovery, server restart or
-power-loss recovery, other hardware, cross-device inference, exported-model
-execution and numerical parity remain to be tested. The managed `ml` environment
-continues to use CPU wheels.
+Standalone exports of the light-scope models then completed all four paths for
+both architectures in separate CPU/CUDA environments without IRIS and with
+networking disabled, on that same host. Each export used eight saved validation
+images and three repetitions. Same-device references passed exact parity;
+cross-device references failed it on small numerical differences, with unchanged
+detection counts and thresholded quality counts on this subset. Four separate
+controls using new references from the target device passed exact parity while
+preserving the original failures. See the
+[export validation evidence](model-export.md#what-is-verified).
+
+These trials do not establish general quality gains or portable performance.
+Longer runs, partial/full training on CPU, partial/full-scope recovery, server
+restart or power-loss recovery, other hardware and embedded deployment remain
+to be tested. The managed `ml` environment continues to use CPU wheels.
 
 ## Select execution devices
 
