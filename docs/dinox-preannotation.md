@@ -1,5 +1,9 @@
 # DINO-X preannotation
 
+The standalone [DINO-X → Astra review adapter](dinox-astra-review.md) can evaluate
+saved detections in a separate experiment. It is not yet part of the Annotation
+workflow described below.
+
 ## Prepare, run and review
 
 In **Annotation → Cloud proposals · DINO-X**, configure a key with available

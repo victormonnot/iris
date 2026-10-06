@@ -1,5 +1,9 @@
 # Combined Astra + SAM 3 adapter
 
+The separate [DINO-X → Astra review experiment](dinox-astra-review.md) reuses
+completed detector boxes without a planning stage. It does not change or validate
+the SAM pipeline described here.
+
 Benchmark approach C uses a bounded, frozen three-stage protocol:
 
 1. **Planning:** GPT-6 Astra sees the prepared image and the frozen class names,
