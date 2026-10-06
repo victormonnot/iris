@@ -102,6 +102,11 @@ Software tests use synthetic datasets, fake detector engines, tiny CPU tensor
 fixtures and mocked CUDA interfaces. They cover class/anchor initialization,
 negative-image gradients, frozen normalization, training scopes, durable recovery,
 architecture identity, evaluation, export profiles and archive preservation.
-**Real SSDLite training, quality gains, GPU behavior, export parity and target
-latency/memory have not yet been measured for this integration.** These checks
-remain part of the final real-data acceptance phase.
+A real CPU acceptance run completed 40 light-scope optimizer steps for each
+architecture on the same 40 human-reviewed person images, including four
+negatives. Recovery states were saved at steps 20 and 40; the completed inference
+checkpoints were reloaded in separate workers and compared with their official
+parents on the same 17 validation images from a separate source context. This
+small pilot does not establish general quality gains. Real partial/full training,
+GPU execution, interruption/resume, export parity and target latency/memory
+remain to be tested.

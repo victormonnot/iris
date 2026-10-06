@@ -12,12 +12,14 @@ provided. Training on a GPU does not restrict the completed model to GPU
 inference: see [compute targets and CUDA setup](compute-targets.md).
 
 The software checks use synthetic data, tiny CPU PyTorch modules and mocked CUDA
-interfaces to exercise state persistence and continuation. **Real IRIS detector
-training, GPU execution, interruption,
-resume, training duration and resulting model quality have not been measured
-for this feature.** These trials remain part of the planned real-model testing
-phase. Passing a toy continuation test does not establish real-model performance
-or reproducibility on every CPU.
+interfaces to exercise state persistence and continuation. A real CPU acceptance
+run completed 40 light-scope optimizer steps for each architecture on a small
+human-reviewed person dataset, with recovery states saved at steps 20 and 40.
+The completed inference checkpoints were reloaded and evaluated in separate
+workers. This verifies short-run execution and state creation, not recovery after
+an interruption. Real longer runs, partial/full training, CUDA execution and
+interruption/resume remain to be tested. The pilot does not establish general
+quality gains or performance and reproducibility on other machines.
 
 ## Prepare a run
 

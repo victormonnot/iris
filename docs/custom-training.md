@@ -96,7 +96,13 @@ it cannot be used to transfer an in-progress run between CPU and GPU. See
 The existing scopes and step limits apply to custom classes. Multimodal
 candidate review retains its original Person / Car scope. Direct detector
 preannotation and disagreement review support compatible frozen custom classes.
-Synthetic fixtures verify the software path, including state continuation, not
-detector quality on real images. CUDA protocol tests use mocked interfaces;
-real detector training, GPU execution and resume trials remain
-deferred. No model weights or datasets are downloaded automatically.
+Synthetic fixtures verify the software path, including state continuation. A
+real CPU acceptance run completed 40 light-scope optimizer steps for each
+architecture on 40 human-reviewed person images, including four negatives. Both
+completed checkpoints were reloaded in separate evaluation workers and compared
+with their official parents on 17 validation images from a separate source
+context. This checks the short training and evaluation workflow; it does not
+establish general quality gains. Real partial/full training, CUDA execution,
+interruption/resume and exported-model trials remain pending. CUDA protocol
+tests use mocked interfaces. No model weights or datasets are downloaded
+automatically.
