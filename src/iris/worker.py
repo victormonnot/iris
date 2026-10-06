@@ -74,6 +74,10 @@ def run(root: Path, job_id: str, parent_pid: int):
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
+        elif job["kind"] == "dinox":
+            from iris.dinox_batches import run_batch
+
+            result = run_batch(store, job["params"]["batch_id"], progress, cancelled)
         elif job["kind"] == "train":
             result = run_training(store, job["params"]["training_id"], progress, cancelled)
         elif job["kind"] == "evaluate":
@@ -133,6 +137,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "extract": "Extraction complete",
                         "infer": "Comparison complete",
                         "assist": "Annotation proposals ready for human review",
+                        "dinox": "DINO-X proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
                         "evaluate": "Evaluation complete; metrics and predictions saved",
                         "model_export": "Model package saved; real execution is not validated",

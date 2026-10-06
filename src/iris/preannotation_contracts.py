@@ -31,18 +31,22 @@ OMISSION_WARNING = (
 
 def provider_capabilities(provider: str) -> dict:
     """Describe implemented operations only; this does not probe or load a provider."""
-    if provider not in {"local_detector", "ollama", "alibaba"}:
+    if provider not in {"local_detector", "ollama", "alibaba", "dinox"}:
         raise ValueError("Unknown implemented preannotation provider")
-    detector = provider == "local_detector"
+    detector = provider in {"local_detector", "dinox"}
     return {
         "protocol": CAPABILITIES_PROTOCOL,
         "provider": provider,
         "operations": ["propose_boxes" if detector else "review_candidates"],
-        "execution": "external" if provider == "alibaba" else "local",
+        "execution": "external" if provider in {"alibaba", "dinox"} else "local",
         "creates_boxes": detector,
         "requires_candidates": not detector,
         "custom_classes": detector,
-        "class_support": "checkpoint_or_explicit_mapping" if detector else "builtin_only",
+        "class_support": "explicit_text_prompts"
+        if provider == "dinox"
+        else "checkpoint_or_explicit_mapping"
+        if detector
+        else "builtin_only",
         "taxonomy_ids": None if detector else [TAXONOMY["id"]],
         "max_candidates": None if detector else 8,
         "max_proposals": 100 if detector else 8,

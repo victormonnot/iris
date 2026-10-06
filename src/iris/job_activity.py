@@ -7,6 +7,7 @@ WORKSPACES = {
     "extract": "intake",
     "infer": "comparison",
     "assist": "annotation",
+    "dinox": "annotation",
     "train": "training",
     "evaluate": "evaluation",
     "video_review": "intake",
@@ -17,6 +18,7 @@ NAMES = {
     "extract": "Frame extraction",
     "infer": "Model comparison",
     "assist": "Annotation assistance",
+    "dinox": "DINO-X cloud proposals",
     "train": "Detector training",
     "evaluate": "Quality evaluation",
     "video_review": "Video passage review",
@@ -47,7 +49,7 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         session_id = store.get("assets", target["asset_id"])["session_id"]
     session = store.get("sessions", session_id) if session_id else None
     batch_id = job["params"].get("batch_id")
-    if batch_id:
+    if batch_id and job["kind"] != "dinox":
         batch = store.get("assistance_batches", batch_id)
         if batch is None or record_project(store, "assistance_batches", batch) != project_id:
             batch_id = None
@@ -78,6 +80,23 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                 "raw_response",
                 "Saved provider response records",
                 int(target["raw_response"] is not None),
+            )
+        elif target and job["kind"] == "dinox":
+            add(
+                "suggestions",
+                "Proposals saved for human review",
+                len(store.list("annotation_suggestions", job_id=job_id)),
+                target["id"],
+            )
+            request_ids = {r["request_id"] for r in target["metadata"]["frames"]}
+            add(
+                "raw_response",
+                "Saved provider results",
+                sum(
+                    store.get("dinox_requests", rid)["raw_response"] is not None
+                    for rid in request_ids
+                ),
+                target["id"],
             )
         elif target and job["kind"] == "train":
             add(
@@ -180,6 +199,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         "assist": (
             "Prepare a fresh review and inspect its images. "
             "External processing requires new cost approval."
+        ),
+        "dinox": (
+            "Preview the selected images again to reuse saved results or poll known remote tasks. "
+            "Unknown submission outcomes are never resent automatically."
         ),
         "video_review": (
             "Prepare a new storyboard. External processing requires a fresh preview and approval."

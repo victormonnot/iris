@@ -187,6 +187,16 @@ future adapter shapes; they are not exposed as executable providers. Candidate
 reviewers declare their existing geometry and class limits. See
 [preannotation](preannotation.md). These records use schema 14 without migration.
 
+DINO-X cloud proposals use the same annotation editor and review decisions. Schema
+19 adds project-owned batches and request receipts, freezing image identity, taxonomy,
+prompts, settings and a CNY allowance before queueing. Workers record submission intent
+before sending pixels, persist the remote task ID before polling, and save native
+responses before normalization. Successful responses can be reused without another
+detection call; stable suggestion IDs preserve human decisions. Ambiguous submissions
+are never replayed automatically. Archives validate and preserve these records offline,
+with continued support for schemas 12–18. Credentials remain outside the workspace.
+See [DINO-X preparation, review and recovery](dinox-preannotation.md).
+
 Assisted annotation uses a configurable local Ollama endpoint, initially
 [Qwen3-VL 4B Instruct](https://ollama.com/library/qwen3-vl:4b-instruct). The
 published quantized artifact is approximately 3.3 GB and requires Ollama 0.12.7
@@ -350,7 +360,7 @@ without loading models or including raw measurement detections. Preview enumerat
 at most 100 recent measurements; creation reads only the zero to four selected IDs
 and rechecks evidence under the publication lock. The preview source fingerprint
 rejects stale evaluation evidence. Existing v1 snapshots remain unchanged and readable;
-schema 18 is unchanged. Local evaluation timing and declared target timing have
+this report format does not require a schema change. Local evaluation timing and declared target timing have
 different boundaries and are never combined into a cross-context speedup.
 
 Evaluations are separate from session-based visual comparisons. They consume the

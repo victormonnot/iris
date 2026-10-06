@@ -12,6 +12,7 @@ from iris.projects import create_project, project_records, record_project
 from iris.store import (
     BENCHMARK_TABLES,
     DEFAULT_PROJECT_ID,
+    DINOX_TABLES,
     MODEL_EXPORT_TABLES,
     SCHEMA_V14,
     SCHEMA_VERSION,
@@ -25,7 +26,9 @@ from iris.taxonomies import TAXONOMY, publish_taxonomy
 from iris.workspace_archive import create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
-SCHEMA14_TABLES = TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES
+SCHEMA14_TABLES = (
+    TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+)
 
 
 def rows(root, tables=SCHEMA14_TABLES):

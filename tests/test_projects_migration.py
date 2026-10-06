@@ -13,6 +13,7 @@ from iris import workspace_archive, workspace_restore
 from iris.store import (
     BENCHMARK_TABLES,
     DEFAULT_PROJECT_ID,
+    DINOX_TABLES,
     MODEL_EXPORT_TABLES,
     PROJECT_TABLES,
     SCHEMA_V12,
@@ -29,6 +30,7 @@ LEGACY_TABLES = (
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
     - {"projects", "taxonomy_versions"}
 )
 

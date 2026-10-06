@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from iris import __version__
 from iris.store import (
     BENCHMARK_TABLES,
+    DINOX_TABLES,
     JSON_FIELDS,
     MODEL_EXPORT_TABLES,
     SCHEMA,
@@ -30,6 +31,7 @@ from iris.store import (
     SCHEMA_V15,
     SCHEMA_V16,
     SCHEMA_V17,
+    SCHEMA_V18,
     SCHEMA_VERSION,
     TABLES,
     TRAINING_CHECKPOINT_TABLES,
@@ -46,6 +48,7 @@ SCHEMAS = {
     15: SCHEMA_V15,
     16: SCHEMA_V16,
     17: SCHEMA_V17,
+    18: SCHEMA_V18,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
@@ -53,16 +56,23 @@ SCHEMA_TABLES = {
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
     - {"projects", "taxonomy_versions"},
     13: TABLES
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
     - {"taxonomy_versions"},
-    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES,
-    15: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - {"benchmark_reports"},
-    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES,
-    17: TABLES - TRAINING_CHECKPOINT_TABLES,
+    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
+    15: TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - {"benchmark_reports"},
+    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
+    17: TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
+    18: TABLES - DINOX_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -799,6 +809,220 @@ def _validate_training_checkpoints(connection, root, require):
         raise ArchiveError("Training continuation lineage or source checkpoint is invalid") from exc
 
 
+def _validate_dinox(connection):
+    """Check saved receipts and local provenance without authenticating or making requests."""
+    from iris.store import _decode
+
+    batches = {row["id"]: _decode(row) for row in connection.execute("SELECT * FROM dinox_batches")}
+    requests = {
+        row["id"]: _decode(row) for row in connection.execute("SELECT * FROM dinox_requests")
+    }
+    suggestions = [
+        _decode(row)
+        for row in connection.execute(
+            "SELECT * FROM annotation_suggestions WHERE json_extract(metadata,'$.provider')='dinox'"
+        )
+    ]
+    if not batches and not requests and not suggestions:
+        return {}
+
+    from iris.dinox_provider import normalize, validate_frozen_config
+    from iris.taxonomies import _get as saved_taxonomy
+
+    frames = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM frames")}
+    jobs = {row["id"]: _decode(row) for row in connection.execute("SELECT * FROM jobs")}
+    sessions = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM sessions")}
+    by_job = {batch["job_id"]: batch for batch in batches.values()}
+    frame_fields = {
+        "id",
+        "session_id",
+        "asset_id",
+        "sha256",
+        "path",
+        "width",
+        "height",
+        "taxonomy_id",
+    }
+
+    def invalid(message):
+        raise ArchiveError(f"DINO-X {message}")
+
+    def profile(value, session_id):
+        try:
+            validate_frozen_config(value)
+            taxonomy = saved_taxonomy(
+                connection, value["taxonomy_id"], sessions[session_id]["project_id"]
+            )
+            if value["taxonomy"] != taxonomy:
+                raise ValueError("Frozen taxonomy differs from its saved definitions")
+        except (ValueError, TypeError, AttributeError, KeyError) as exc:
+            raise ArchiveError("DINO-X frozen provider configuration is invalid") from exc
+
+    def image_snapshot(value, frame_id):
+        frame = frames.get(frame_id)
+        if (
+            frame is None
+            or not isinstance(value, dict)
+            or not isinstance(value.get("frame"), dict)
+            or set(value["frame"]) != frame_fields
+            or any(value["frame"][key] != frame[key] for key in frame_fields)
+            or not isinstance(value.get("taxonomy_id"), str)
+            or not value["taxonomy_id"]
+        ):
+            invalid("image snapshot differs from its saved source")
+
+    for batch in batches.values():
+        frame_ids, config, metadata = batch["frame_ids"], batch["config"], batch["metadata"]
+        job = jobs.get(batch["job_id"])
+        if (
+            not isinstance(frame_ids, list)
+            or not frame_ids
+            or any(
+                not isinstance(identifier, str) or identifier not in frames
+                for identifier in frame_ids
+            )
+            or len(set(frame_ids)) != len(frame_ids)
+            or any(
+                frames[identifier]["session_id"] != batch["session_id"] for identifier in frame_ids
+            )
+            or job is None
+            or job["kind"] != "dinox"
+            or not isinstance(job["params"], dict)
+            or job["params"].get("batch_id") != batch["id"]
+        ):
+            invalid("batch has an invalid frame, session or job owner")
+        if (
+            not isinstance(config, dict)
+            or config.get("protocol") != "iris-dinox-batch-v1"
+            or not isinstance(metadata, dict)
+        ):
+            invalid("batch configuration or metadata is invalid")
+        profile(config.get("provider_config"), batch["session_id"])
+        snapshots = config.get("frames", [])
+        if not isinstance(snapshots, list):
+            invalid("batch image snapshots must be a list")
+        for item in snapshots:
+            if not isinstance(item, dict) or not isinstance(item.get("snapshot"), dict):
+                invalid("batch image snapshot is invalid")
+            frame_id = item["snapshot"].get("frame", {}).get("id")
+            if frame_id not in frame_ids:
+                invalid("batch snapshot refers to an image outside its batch")
+            image_snapshot(item["snapshot"], frame_id)
+            if item["snapshot"]["taxonomy_id"] != config["provider_config"]["taxonomy_id"]:
+                invalid("batch image taxonomy differs from its frozen provider configuration")
+
+    states = Counter()
+    for request in requests.values():
+        owner = by_job.get(request["job_id"])
+        if owner is None or request["frame_id"] not in owner["frame_ids"]:
+            invalid("request has an invalid image or executor job owner")
+        profile(request["config"], owner["session_id"])
+        if request["config"] != owner["config"]["provider_config"]:
+            invalid("request configuration differs from its executor batch")
+        image_snapshot(request["snapshot"], request["frame_id"])
+        if request["snapshot"]["taxonomy_id"] != request["config"]["taxonomy_id"]:
+            invalid("request image taxonomy differs from its frozen provider configuration")
+        digest = hashlib.sha256(
+            json.dumps(
+                {"snapshot": request["snapshot"], "config": request["config"]},
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode()
+        ).hexdigest()
+        if request["cache_key"] != digest or not isinstance(request["metadata"], dict):
+            invalid("request cache identity or metadata is invalid")
+        previous_id = request["metadata"].get("previous_request_id")
+        if previous_id is not None:
+            previous = requests.get(previous_id) if isinstance(previous_id, str) else None
+            if (
+                previous is None
+                or previous_id == request["id"]
+                or previous["frame_id"] != request["frame_id"]
+                or previous["cache_key"] != request["cache_key"]
+            ):
+                invalid("request retry provenance refers to an unrelated earlier request")
+        task_id, state = request["task_id"], request["state"]
+        if task_id is not None and (not isinstance(task_id, str) or not task_id.strip()):
+            invalid("request task identifier is invalid")
+        if state == "submitted" and task_id is None:
+            invalid("submitted request has no saved provider task identifier")
+        if request["raw_response"] is not None and not isinstance(request["raw_response"], dict):
+            invalid("provider response must be a finite JSON object")
+        if request["result"] is not None and not isinstance(request["result"], dict):
+            invalid("normalized result must be a finite JSON object")
+        if state in {"response_received", "succeeded"} and request["raw_response"] is None:
+            invalid("received request has no saved provider response")
+        if state == "succeeded" and request["result"] is None:
+            invalid("successful request has no normalized result")
+        if state == "succeeded":
+            frame = request["snapshot"]["frame"]
+            try:
+                normalized = normalize(
+                    request["raw_response"], request["config"], frame["width"], frame["height"]
+                )
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError("DINO-X saved provider output is invalid") from exc
+            if request["result"] != normalized:
+                invalid("normalized result differs from its saved provider response")
+        states[state] += 1
+
+    for batch in batches.values():
+        entries = batch["metadata"].get("frames", [])
+        if not isinstance(entries, list):
+            invalid("batch frame progress must be a list")
+        seen = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("frame_id"), str):
+                invalid("batch frame progress is invalid")
+            frame_id = entry["frame_id"]
+            if frame_id in seen or frame_id not in batch["frame_ids"]:
+                invalid("batch frame progress refers to a duplicate or unrelated image")
+            seen.add(frame_id)
+            request_id = entry.get("request_id")
+            if request_id is not None:
+                request = requests.get(request_id) if isinstance(request_id, str) else None
+                if (
+                    request is None
+                    or request["frame_id"] != frame_id
+                    or request["config"] != batch["config"]["provider_config"]
+                ):
+                    invalid("batch progress refers to an unrelated provider request")
+
+    for suggestion in suggestions:
+        metadata = suggestion["metadata"]
+        request = requests.get(metadata.get("dinox_request_id"))
+        batch = batches.get(metadata.get("batch_id"))
+        if (
+            suggestion["kind"] != "detector"
+            or request is None
+            or batch is None
+            or request["state"] != "succeeded"
+            or suggestion["frame_id"] != request["frame_id"]
+            or suggestion["frame_id"] not in batch["frame_ids"]
+            or suggestion["job_id"] != batch["job_id"]
+            or request["config"] != batch["config"]["provider_config"]
+            or metadata.get("frame_sha256") != request["snapshot"]["frame"]["sha256"]
+            or metadata.get("target_taxonomy") != request["snapshot"]["taxonomy_id"]
+        ):
+            invalid("suggestion provenance does not match its batch and provider request")
+        proposals = {
+            hashlib.sha256(f"dinox:{request['id']}:{proposal['id']}".encode()).hexdigest(): proposal
+            for proposal in request["result"]["proposals"]
+        }
+        proposal = proposals.get(suggestion["id"])
+        if (
+            proposal is None
+            or any(suggestion[field] != proposal[field] for field in ("label", "box"))
+            or any(
+                metadata.get(field) != proposal[field] for field in ("score", "source", "geometry")
+            )
+            or metadata.get("threshold") != request["config"]["settings"]["bbox_threshold"]
+        ):
+            invalid("suggestion differs from its recorded normalized proposal")
+    return dict(sorted(states.items()))
+
+
 def validate_database(
     root: Path, inventory: dict, *, verify_hashes=False, database_path=None
 ) -> dict:
@@ -945,6 +1169,7 @@ def validate_database(
                 _validate_model_exports(connection, root, require)
             if version >= 18:
                 _validate_training_checkpoints(connection, root, require)
+            dinox_states = _validate_dinox(connection) if version >= 19 else {}
             for table, prefix in (
                 ("assistance_previews", "assistance/previews"),
                 ("video_reviews", "video_reviews"),
@@ -1022,6 +1247,7 @@ def validate_database(
             "counts": counts,
             "expected_hashes": expected,
             "active_jobs": active,
+            "dinox_request_states": dinox_states,
         }
     except (
         sqlite3.Error,
@@ -1088,6 +1314,7 @@ def preview_workspace(root: Path) -> dict:
         result.update(
             schema_version=checked["schema_version"],
             counts=checked["counts"],
+            dinox_request_states=checked["dinox_request_states"],
             file_count=len(inventory),
             total_bytes=total,
             excluded=excluded,

@@ -115,6 +115,13 @@ See [the adapter contract and pricing sources](docs/openai-preannotation-adapter
 
 ## Run locally
 
+**Annotation → Cloud proposals · DINO-X** optionally generates boxes through
+DeepDataSpace. Configure a key in the panel, preview up to 25 images and their CNY
+cost, then explicitly start the batch. Saved responses are reusable, known remote
+tasks can be polled after interruption, and unknown submissions are never resent
+automatically. Accept, correct or reject proposals in the existing editor; human
+labels are never overwritten by inference. See [DINO-X setup and recovery](docs/dinox-preannotation.md).
+
 Requires Linux or WSL, Python 3.12 or 3.13, and [uv](https://docs.astral.sh/uv/).
 No GPU, model weights, API key, or external account is needed
 for data intake or manual annotation.

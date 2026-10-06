@@ -55,9 +55,11 @@ class JobManager:
                 (now(),),
             )
         from iris.benchmark_corrections import recover_timers
+        from iris.dinox_batches import reconcile_requests
         from iris.job_dispatch import reconcile_dispatches
 
         reconcile_dispatches(self.store)
+        reconcile_requests(self.store)
         recover_timers(self.store)
 
     def close(self):

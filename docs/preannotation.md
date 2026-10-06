@@ -5,6 +5,11 @@ without existing labels or an earlier comparison. It uses installed local
 detectors through the existing worker. Manual drawing, editing and validation
 remain available without model weights, a provider runtime or an API key.
 
+**Annotation → Cloud proposals · DINO-X** is an optional hosted alternative with
+explicit image selection, cost preview and CNY allowance. Saved replies can be
+reused without a second detection call. Proposals enter the same human editor.
+See [DINO-X setup, billing evidence and recovery](dinox-preannotation.md).
+
 ## Prepare and review
 
 1. Select images in Data intake. In Annotation, choose the current image or a
@@ -64,6 +69,7 @@ states rather than assuming that job completion validates or labels every image.
 | Implemented adapter | New geometry | Classes | Processing |
 | --- | --- | --- | --- |
 | Local detector | New bounding boxes from original images | Frozen checkpoint definitions or explicit COCO mapping | Local installed weights |
+| DINO-X | New bounding boxes from original images | Frozen class definitions and explicit text phrases | External, previewed CNY allowance; saved-response reuse |
 | Ollama candidate reviewer | Keeps existing candidate boxes | Original Person / Car definitions | Local installed vision model |
 | Alibaba candidate reviewer | Keeps existing candidate boxes | Original Person / Car definitions | External, separately previewed and approved |
 
@@ -94,5 +100,6 @@ available through this contract alone. Those integrations require separate work.
 - `GET /api/sessions/{id}/preannotations`: reopen saved requests.
 - `GET /api/preannotations/{id}`: inspect the job, frozen configuration, per-image states and raw outputs.
 
-These routes are project-scoped. Data uses existing schema-14 comparison, prediction
-and suggestion records, without a database migration or a new background service.
+These local-detector routes are project-scoped and use existing comparison,
+prediction and suggestion records. The optional DINO-X workflow adds separate
+batch/request records in schema 19 and shares the existing worker and editor.

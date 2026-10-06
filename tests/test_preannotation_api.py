@@ -137,13 +137,21 @@ def test_provider_catalog_only_advertises_implemented_capabilities(
 
     monkeypatch.setattr("iris.assistance_catalog.catalog", unexpected)
     monkeypatch.setattr("iris.assistance_provider._request", unexpected)
+    monkeypatch.setattr("iris.dinox_provider.provider_status", unexpected)
+    monkeypatch.setattr("iris.dinox_provider.submit", unexpected)
+    monkeypatch.setattr("iris.dinox_provider.poll", unexpected)
     providers = {
         row["id"]: row for row in client.get("/api/preannotation-providers").json()["providers"]
     }
-    assert set(providers) == {"local_detector", "ollama", "alibaba"}
+    assert set(providers) == {"local_detector", "ollama", "alibaba", "dinox"}
     assert providers["local_detector"]["models"][0]["id"] == MODEL
     assert providers["local_detector"]["capabilities"]["creates_boxes"] is True
     assert providers["ollama"]["capabilities"]["creates_boxes"] is False
     assert providers["ollama"]["capabilities"]["requires_candidates"] is True
     assert providers["alibaba"]["capabilities"]["execution"] == "external"
+    assert providers["dinox"]["local"] is False
+    assert providers["dinox"]["capabilities"]["execution"] == "external"
+    assert providers["dinox"]["capabilities"]["creates_boxes"] is True
+    assert providers["dinox"]["capabilities"]["requires_candidates"] is False
+    assert providers["dinox"]["capabilities"]["class_support"] == "explicit_text_prompts"
     assert all(not row["capabilities"]["automatic_validation"] for row in providers.values())

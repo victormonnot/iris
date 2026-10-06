@@ -13,6 +13,7 @@ from iris.projects import create_project
 from iris.store import (
     BENCHMARK_TABLES,
     DEFAULT_PROJECT_ID,
+    DINOX_TABLES,
     MODEL_EXPORT_TABLES,
     SCHEMA_V13,
     SCHEMA_VERSION,
@@ -29,6 +30,7 @@ SCHEMA13_TABLES = (
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
     - {"taxonomy_versions"}
 )
 

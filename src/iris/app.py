@@ -1305,7 +1305,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                 {
                     "id": provider,
                     "label": label,
-                    "local": provider != "alibaba",
+                    "local": provider not in {"alibaba", "dinox"},
                     "capabilities": provider_capabilities(provider),
                     "models": models() if provider == "local_detector" else [],
                 }
@@ -1313,6 +1313,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
                     ("local_detector", "Local detectors"),
                     ("ollama", "Local candidate review"),
                     ("alibaba", "API candidate review"),
+                    ("dinox", "DINO-X cloud proposals"),
                 )
             ]
         }
@@ -1676,6 +1677,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     from iris.benchmark_api import install_benchmark_routes
 
     install_benchmark_routes(app, store, jobs, require, active_project)
+    from iris.dinox_api import install_dinox_routes
+
+    install_dinox_routes(app, store, jobs, require)
     from iris.model_export_api import install_model_export_routes
 
     install_model_export_routes(app, store, require, active_project)

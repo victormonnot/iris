@@ -1248,8 +1248,8 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
     if (!opened) { notify("The saved benchmark trial could not be opened. Check the selected reference or use Refresh to try again.", true); return; }
   }
   $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
-  if (batch && context.batch_id) {
-    window.dispatchEvent(new CustomEvent("iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));
+  if ((batch || (results && detail.job.kind === "dinox")) && context.batch_id) {
+    window.dispatchEvent(new CustomEvent(detail.job.kind === "dinox" ? "iris:dinox-batch-open" : "iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));
     return;
   }
   let resultNotice = "Opened the saved results workspace. No task was launched.";
@@ -1322,7 +1322,7 @@ async function refreshJobs() {
   const changed = state.jobs.some(
     (job) => previousStatuses.get(job.id) !== job.status,
   );
-  const changedSignals = state.jobs.some((job) => ["infer", "assist", "extract"].includes(job.kind) && !isActive(job) && previousStatuses.get(job.id) !== job.status);
+  const changedSignals = state.jobs.some((job) => ["infer", "assist", "dinox", "extract"].includes(job.kind) && !isActive(job) && previousStatuses.get(job.id) !== job.status);
   if (previouslyActive || state.jobs.some(isActive) || changed)
     await refreshSession(changedSignals);
   schedulePolling();

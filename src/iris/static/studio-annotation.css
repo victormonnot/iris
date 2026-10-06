@@ -166,3 +166,44 @@ body.annotation-focus #annotation-workspace #annotation-canvas { height: clamp(4
   #annotation-workspace .annotation-keyboard-help dl { grid-template-columns: minmax(0, 1fr); }
   #annotation-workspace .annotation-keyboard-help dd { margin-bottom: 8px; }
 }
+
+/* Cloud proposals share the Studio surfaces and the existing annotation editor. */
+#annotation-workspace #dinox-preannotations { margin: 16px 0 22px; }
+.dinox-preannotations > summary { padding: 22px 24px; cursor: pointer; font-weight: 500; }
+.dinox-body { padding: 0 24px 24px; }
+.dinox-provider { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 12px 0; }
+.dinox-provider > p { flex: 1 1 260px; margin: 0; overflow-wrap: anywhere; }
+.dinox-key-settings { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px 0; }
+.dinox-key-settings > summary, .dinox-settings summary { cursor: pointer; font-size: 13px; }
+.dinox-key-settings[open] > summary { margin-bottom: 12px; }
+.dinox-key-input { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.dinox-key-input > input { flex: 1 1 220px; min-width: 0; }
+.dinox-setup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 22px; margin: 22px 0; }
+.dinox-selection { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.dinox-settings { display: grid; min-width: 0; align-content: start; gap: 14px; }
+.dinox-body label:not(.dinox-consent):not(.assistance-batch-frame) { display: block; margin-bottom: 6px; }
+.dinox-settings details > label { margin-top: 12px; }
+.dinox-setup input:not([type="checkbox"]), .dinox-setup select, .dinox-setup textarea, #dinox-history { width: 100%; min-width: 0; }
+.dinox-setup textarea { resize: vertical; padding: 10px; border: 1px solid var(--control-line); border-radius: var(--radius); color: var(--ink); background: var(--field); font: 12px/1.6 var(--font-mono); }
+.dinox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0; }
+.dinox-actions h3 { margin: 0 auto 0 0; font-size: 15px; }
+.dinox-preview-result { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); }
+.dinox-cost { font: 500 18px/1.5 var(--font-mono); color: var(--ink); margin: 12px 0; }
+.dinox-preview-result p, .dinox-frame-result { overflow-wrap: anywhere; }
+.dinox-approval { display: grid; align-items: start; gap: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.dinox-consent { display: flex; align-items: start; gap: 10px; font-size: 13px; line-height: 1.6; }
+.dinox-consent > input { flex: 0 0 auto; margin-top: 4px; accent-color: var(--primary); }
+#dinox-budget { width: min(100%, 240px); }
+.dinox-approval > .button { justify-self: start; }
+.dinox-history { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 8px; }
+#dinox-detail { margin-top: 18px; }
+#dinox-detail progress { width: 100%; height: 7px; accent-color: var(--green); }
+body.annotation-focus #dinox-preannotations { display: none; }
+@media (max-width: 800px) { .dinox-setup { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .dinox-preannotations > summary { padding: 18px 16px; }
+  .dinox-preannotations > summary .small { display: block; margin-top: 6px; }
+  .dinox-body { padding: 0 16px 18px; }
+  .dinox-selection, .dinox-preview-result { padding: 12px; }
+  .dinox-approval > .button { width: 100%; }
+}

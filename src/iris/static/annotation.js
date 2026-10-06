@@ -963,7 +963,7 @@
             ? "Multimodal proposal"
             : proposal.kind === "imported"
               ? "Imported annotation"
-              : "Detector proposal",
+              : proposal.metadata?.provider === "dinox" ? "DINO-X cloud proposal" : "Detector proposal",
         ),
         node(
           "span",
@@ -2270,12 +2270,12 @@
       if (
         old !== job.status &&
         !isActive(job) &&
-        (job.kind === "infer" ||
+        (["infer", "dinox"].includes(job.kind) ||
           (job.kind === "assist" && job.params?.frame_id === editor.frameId))
       )
         completed = true;
       if (old !== job.status && !isActive(job)) {
-        if (job.kind === "infer") {
+        if (["infer", "dinox"].includes(job.kind)) {
           refreshList = true;
           history = true;
         } else if (job.kind === "assist" && (queue.data?.frames || state.frames).some((frame) => frame.id === job.params?.frame_id)) {

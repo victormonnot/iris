@@ -44,6 +44,8 @@
     <script src="/static/preannotation-tools.js" defer></script>
     <script src="/static/annotation.js" defer></script>
     <script src="/static/preannotations.js" defer></script>
+    <script src="/static/dinox-tools.js" defer></script>
+    <script src="/static/dinox-preannotations.js" defer></script>
     <script src="/static/assistance-batches.js" defer></script>
     <script src="/static/training-recovery.js" defer></script>
     <script src="/static/training-navigation.js" defer></script>
@@ -1347,6 +1349,70 @@ ollama pull qwen3-vl:4b-instruct</pre
                   <label class="sr-only" for="preannotation-history">Saved proposal run</label><select id="preannotation-history"><option value="">No proposal runs in this session</option></select>
                   <p id="preannotation-history-error" class="inline-error" role="alert" hidden></p>
                   <div id="preannotation-detail" hidden><p id="preannotation-detail-summary" class="small" role="status"></p><progress id="preannotation-progress" max="1" value="0" aria-label="Proposal run progress"></progress><p id="preannotation-detail-config" class="field-hint"></p><div class="preannotation-actions"><button id="preannotation-job" type="button" class="text-button">Job details and cancellation</button><button id="preannotation-raw" type="button" class="text-button">Inspect saved inputs and raw outputs</button></div><ul id="preannotation-detail-frames" class="assistance-batch-results"></ul></div>
+                </section>
+              </div>
+            </details>
+            <details id="dinox-preannotations" class="panel dinox-preannotations">
+              <summary>Cloud proposals · DINO-X <span class="muted small">· Preview cost, then review every box</span></summary>
+              <div class="dinox-body">
+                <p class="field-hint">DINO-X-1.0 generates boxes from your saved images and class prompts. Images are sent to an external provider only after your approval. Proposals remain separate from human labels.</p>
+                <div class="dinox-provider">
+                  <p id="dinox-provider-status" class="small" role="status">Open this panel to check the provider.</p>
+                  <button id="dinox-refresh-provider" type="button" class="text-button">Refresh provider</button>
+                </div>
+                <details class="dinox-key-settings">
+                  <summary>Provider key</summary>
+                  <p id="dinox-key-source" class="field-hint">The key is stored by the local server. Its value is never returned to this page.</p>
+                  <form id="dinox-key-form" autocomplete="off">
+                    <label for="dinox-key">DINO-X API key</label>
+                    <div class="dinox-key-input"><input id="dinox-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="none" aria-describedby="dinox-key-source" /><button id="dinox-save-key" type="submit" class="button button-secondary">Save key</button><button id="dinox-delete-key" type="button" class="text-button">Remove saved key</button></div>
+                  </form>
+                  <p id="dinox-key-error" class="inline-error" role="alert" hidden></p>
+                </details>
+                <div class="dinox-setup">
+                  <fieldset class="dinox-selection">
+                    <legend>1 · Choose images</legend>
+                    <label for="dinox-scope">Images to process</label><select id="dinox-scope"><option value="current">Open image</option><option value="batch">Choose a batch</option></select>
+                    <p id="dinox-current" class="field-hint" role="status"></p>
+                    <div id="dinox-batch" hidden>
+                      <div class="dinox-actions"><span id="dinox-selection-count" class="small muted">0 chosen · maximum 25</span><button id="dinox-select-all" type="button" class="text-button">Select all</button><button id="dinox-clear" type="button" class="text-button">Clear</button></div>
+                      <p class="field-hint">Choose from images selected in Data intake.</p>
+                      <div id="dinox-frames" class="assistance-batch-frames"></div>
+                    </div>
+                  </fieldset>
+                  <div class="dinox-settings">
+                    <div><label for="dinox-name">Batch name</label><input id="dinox-name" value="DINO-X proposals" maxlength="160" /></div>
+                    <div><label for="dinox-threshold">Proposal score ≥</label><input id="dinox-threshold" type="number" min="0" max="1" step="any" value="0.25" /></div>
+                    <details><summary>Class prompts</summary><label for="dinox-prompts">Custom prompts · optional</label><textarea id="dinox-prompts" rows="3" spellcheck="false" placeholder='{"person":"person","car":"car"}'></textarea><p class="field-hint">Leave empty for saved taxonomy defaults. Custom prompts map exact class IDs to text. The preview shows the prompts that will be sent.</p></details>
+                    <p class="field-hint">Save or discard edits before previewing. Scores are not calibrated probabilities; inspect the whole image for missed objects, including empty results.</p>
+                  </div>
+                </div>
+                <p id="dinox-error" class="inline-error" role="alert" hidden></p>
+                <button id="dinox-preview" type="button" class="button button-secondary" disabled>2 · Preview images and cost</button>
+                <p class="field-hint">Preview is local and free. It checks saved inputs and identifies reusable or already submitted requests.</p>
+                <section id="dinox-preview-result" class="dinox-preview-result" hidden aria-label="DINO-X cost preview">
+                  <p id="dinox-preview-summary" class="small" role="status"></p>
+                  <p id="dinox-preview-cost" class="dinox-cost"></p>
+                  <p id="dinox-preview-settings" class="field-hint"></p>
+                  <ul id="dinox-preview-frames" class="assistance-batch-results"></ul>
+                  <ul id="dinox-preview-warnings" class="field-hint"></ul>
+                  <div class="dinox-approval">
+                    <label class="dinox-consent" for="dinox-consent"><input id="dinox-consent" type="checkbox" /><span id="dinox-consent-label">I approve external DINO-X processing for these eligible images and class prompts, with the estimated cost shown above.</span></label>
+                    <div><label for="dinox-budget">Maximum approved cost · CNY</label><input id="dinox-budget" type="number" min="0" step="0.01" placeholder="Enter a spending limit" /><p class="field-hint">Must cover the estimate. Reused results and polling do not submit another paid request.</p></div>
+                    <button id="dinox-start" type="button" class="button" disabled>3 · Create cloud proposals</button>
+                  </div>
+                </section>
+                <section class="dinox-history">
+                  <div class="dinox-actions"><h3>Saved DINO-X batches</h3><button id="dinox-refresh-history" type="button" class="text-button">Refresh history</button></div>
+                  <label class="sr-only" for="dinox-history">Saved DINO-X batch</label><select id="dinox-history"><option value="">No DINO-X batches in this session</option></select>
+                  <p id="dinox-history-error" class="inline-error" role="alert" hidden></p>
+                  <div id="dinox-detail" hidden>
+                    <p id="dinox-detail-summary" class="small" role="status"></p><progress id="dinox-progress" max="1" value="0" aria-label="DINO-X batch progress"></progress>
+                    <p id="dinox-detail-cost" class="field-hint"></p><p id="dinox-detail-config" class="field-hint"></p>
+                    <div class="dinox-actions"><button id="dinox-job" type="button" class="text-button">Job details and cancellation</button><button id="dinox-raw" type="button" class="text-button">Inspect saved requests and outputs</button><button id="dinox-prepare" type="button" class="text-button">Prepare remaining images</button></div>
+                    <p class="field-hint">Cancellation stops local work; a submitted request may still complete or incur a charge. Preparing remaining images restores the settings for a new preview. Saved successes are reused, submitted requests are polled, and unknown delivery outcomes are blocked.</p>
+                    <ul id="dinox-detail-frames" class="assistance-batch-results"></ul>
+                  </div>
                 </section>
               </div>
             </details>
@@ -2904,7 +2970,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
           </div>
           <div class="job-history-controls">
             <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
-            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="assist">Annotation assistance</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
             <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
             <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
           </div>

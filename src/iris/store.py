@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -295,7 +295,7 @@ CREATE INDEX IF NOT EXISTS model_export_measurements_export
 )
 
 TRAINING_CHECKPOINT_TABLES = {"training_checkpoints"}
-SCHEMA = (
+SCHEMA_V18 = (
     SCHEMA_V17
     + """
 CREATE TABLE IF NOT EXISTS training_checkpoints (
@@ -305,6 +305,31 @@ CREATE TABLE IF NOT EXISTS training_checkpoints (
     metadata TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(training_id,step)
 );
 CREATE INDEX IF NOT EXISTS training_checkpoints_training ON training_checkpoints(training_id);
+"""
+)
+
+DINOX_TABLES = {"dinox_batches", "dinox_requests"}
+SCHEMA = (
+    SCHEMA_V18
+    + """
+CREATE TABLE IF NOT EXISTS dinox_batches (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), name TEXT NOT NULL,
+    frame_ids TEXT NOT NULL, config TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}',
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS dinox_batches_session ON dinox_batches(session_id);
+CREATE TABLE IF NOT EXISTS dinox_requests (
+    id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(id),
+    job_id TEXT NOT NULL REFERENCES jobs(id), cache_key TEXT NOT NULL,
+    config TEXT NOT NULL, snapshot TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN
+      ('not_started','dispatching','submitted','response_received','succeeded','failed','outcome_unknown')),
+    task_id TEXT, raw_response TEXT, result TEXT, metadata TEXT NOT NULL DEFAULT '{}',
+    error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS dinox_requests_frame ON dinox_requests(frame_id);
+CREATE INDEX IF NOT EXISTS dinox_requests_job ON dinox_requests(job_id);
+CREATE INDEX IF NOT EXISTS dinox_requests_cache_key ON dinox_requests(cache_key);
 """
 )
 
@@ -381,6 +406,7 @@ TABLES = (
     BENCHMARK_TABLES
     | MODEL_EXPORT_TABLES
     | TRAINING_CHECKPOINT_TABLES
+    | DINOX_TABLES
     | {
         "projects",
         "taxonomy_versions",
