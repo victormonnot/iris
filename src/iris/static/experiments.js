@@ -196,6 +196,7 @@
 
   async function refreshList(preferredId = library.activeId) {
     const request = ++library.listRequest;
+    const detailRequest = library.detailRequest;
     library.listLoading = true;
     field("list").setAttribute("aria-busy", "true");
     field("refresh").disabled = true;
@@ -205,14 +206,21 @@
       const rows = await api("/api/experiments");
       if (request !== library.listRequest || !library.visible) return;
       library.rows = rows;
-      library.activeId = rows.some((item) => item.id === preferredId)
-        ? preferredId
+      // A report chosen while the list was loading takes priority over its old
+      // selection, including the preferred report from a completed save.
+      const selectedDuringLoad = detailRequest !== library.detailRequest;
+      const selectedId = selectedDuringLoad ? library.activeId : preferredId;
+      const activeId = rows.some((item) => item.id === selectedId)
+        ? selectedId
         : rows[0]?.id || null;
       field("status").textContent =
         `${rows.length} saved experiment${rows.length === 1 ? "" : "s"} · across the current project`;
-      if (library.activeId) await selectReport(library.activeId);
-      else {
+      if (activeId) {
+        if (!selectedDuringLoad || activeId !== library.activeId)
+          await selectReport(activeId);
+      } else {
         ++library.detailRequest;
+        library.activeId = null;
         library.detail = null;
         field("detail").hidden = true;
       }

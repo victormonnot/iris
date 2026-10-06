@@ -12,14 +12,19 @@ provided. Training on a GPU does not restrict the completed model to GPU
 inference: see [compute targets and CUDA setup](compute-targets.md).
 
 The software checks use synthetic data, tiny CPU PyTorch modules and mocked CUDA
-interfaces to exercise state persistence and continuation. A real CPU acceptance
-run completed 40 light-scope optimizer steps for each architecture on a small
-human-reviewed person dataset, with recovery states saved at steps 20 and 40.
-The completed inference checkpoints were reloaded and evaluated in separate
-workers. This verifies short-run execution and state creation, not recovery after
-an interruption. Real longer runs, partial/full training, CUDA execution and
-interruption/resume remain to be tested. The pilot does not establish general
-quality gains or performance and reproducibility on other machines.
+interfaces to exercise state persistence and continuation. Real 40-step acceptance
+trials covered both architectures with light training on CPU and all three depths
+on an RTX 4060 using PyTorch 2.10.0 / Torchvision 0.25.0 `cu128`. Completed inference
+checkpoints were reloaded and evaluated in separate workers.
+
+For light training on both architectures and devices, the trials separately
+cancelled or forcibly terminated the worker, then explicitly continued from a
+saved state on the original device and runtime. The resulting weights matched
+the corresponding uninterrupted run in these trials; this does not guarantee
+bit-for-bit CUDA reproducibility elsewhere. Longer runs, partial/full training on
+CPU, partial/full-scope recovery, server restart and power-loss recovery remain
+untested. The pilot does not establish general quality gains or performance on
+other machines.
 
 ## Prepare a run
 

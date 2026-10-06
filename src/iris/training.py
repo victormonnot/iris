@@ -267,7 +267,7 @@ def preview_training(
                     "After an interruption, explicitly preview a new attempt from the "
                     "latest durable state. "
                     "Recorded work after that state is recomputed. Float32, batch one; "
-                    "real resume tests are deferred.",
+                    "continuation requires the original runtime and training device.",
                 ]
                 if durable(config)
                 else [

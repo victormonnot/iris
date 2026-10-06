@@ -27,7 +27,7 @@ independently of the training device. On the
 target computer, inspect the bundle, check its runtime, predict on a local image, or measure exact
 parity and inference time. Preview and import the generated measurement JSON back
 into IRIS. Failed parity remains visible, timings retain their scopes, and imported
-execution remains declared evidence. Real model/parity/performance validation is
+execution remains declared evidence. Real exported-model/parity/performance validation is
 deferred; software tests use synthetic data and mocked execution. A different
 device can produce different numerical results; parity mismatches remain visible.
 See [the export format, runner commands and limitations](docs/model-export.md).
@@ -42,8 +42,13 @@ shows each model's actual training scope. SSDLite retains frozen normalization
 statistics and explicitly learns background on negative images.
 
 Compare held-out quality and exported target measurements before choosing a
-model. Smaller weights do not establish better latency, memory use or quality;
-real SSDLite/GPU trials remain deferred. See
+model. Smaller weights do not establish better latency, memory use or quality.
+Real 40-step trials covered both architectures with light training on CPU and all
+three depths on an RTX 4060, including checkpoint reload and held-out evaluation.
+Light-scope continuation was also checked after cancellation and forced worker
+termination on CPU and CUDA. These bounded trials do not establish general quality
+gains or exported-target performance. Full training is not necessarily better,
+and one learning rate is not suitable for every architecture and depth. See
 [model choices, training policies and validation limits](docs/trainable-models.md).
 
 ## Annotation benchmark
@@ -688,8 +693,12 @@ to 200 periodic saves. IRIS retains the latest two states per attempt, each up t
 attempts. They are separate from completed inference checkpoints. Every CUDA run
 saves durable state; legacy CPU API runs
 of at most 200 steps without a checkpoint interval retain their previous behavior
-and cannot be resumed. Real detector training and resume measurements remain
-deferred; software tests use synthetic fixtures and tiny modules.
+and cannot be resumed. Real light-scope trials on both architectures continued
+after cancellation and forced worker termination on CPU and CUDA, using each
+attempt's original device and runtime. Their completed weights matched the
+corresponding uninterrupted run in these trials. Longer runs, partial/full-scope
+recovery, server restarts and power loss remain untested; this observation is not
+a general CUDA reproducibility guarantee.
 
 Training uses float32 and one device at a time, without mixed precision or
 multi-GPU execution. A completed model trained on CPU or GPU can be used for

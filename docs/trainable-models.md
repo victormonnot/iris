@@ -102,11 +102,17 @@ Software tests use synthetic datasets, fake detector engines, tiny CPU tensor
 fixtures and mocked CUDA interfaces. They cover class/anchor initialization,
 negative-image gradients, frozen normalization, training scopes, durable recovery,
 architecture identity, evaluation, export profiles and archive preservation.
-A real CPU acceptance run completed 40 light-scope optimizer steps for each
-architecture on the same 40 human-reviewed person images, including four
-negatives. Recovery states were saved at steps 20 and 40; the completed inference
-checkpoints were reloaded in separate workers and compared with their official
-parents on the same 17 validation images from a separate source context. This
-small pilot does not establish general quality gains. Real partial/full training,
-GPU execution, interruption/resume, export parity and target latency/memory
-remain to be tested.
+Real 40-step acceptance trials covered both architectures with light training on
+CPU and all three depths on an RTX 4060 using PyTorch 2.10.0 / Torchvision 0.25.0
+`cu128`. The trials used a small human-reviewed person dataset with negative images
+and separate training and validation source contexts. Completed inference
+checkpoints were reloaded and evaluated in separate workers. Light-scope runs
+also continued after cancellation and forced worker termination on CPU and CUDA,
+preserving the original device and runtime.
+
+This small pilot does not establish general quality gains. Full training is not
+necessarily better than lighter scopes; using the same learning rate across
+architectures and depths can cause regressions. Longer runs, partial/full training
+on CPU, partial/full-scope recovery, server restart or power-loss recovery, other
+hardware, cross-device inference, export parity and target latency/memory remain
+to be tested.

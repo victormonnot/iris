@@ -11,12 +11,19 @@ choices are independent:
 | CPU | NVIDIA CUDA GPU | CPU training, CUDA inference/export |
 | NVIDIA CUDA GPU | NVIDIA CUDA GPU | GPU training and CUDA inference/export, including another compatible GPU |
 
-This table describes the implemented paths, not hardware certification. The
-current software checks use synthetic data, tiny CPU modules and mocked CUDA
-interfaces. Real detector training, CPU/GPU transfer, GPU continuation, exported
-inference, numerical parity, quality and performance remain part of the planned
-real-model acceptance tests. No CUDA environment was installed for those software
-checks; the development environment remains CPU-only.
+This table describes the implemented paths, not hardware certification. In
+addition to synthetic software checks, real 40-step acceptance trials covered
+both architectures with light training on CPU and all three depths on an RTX 4060
+using a separate PyTorch 2.10.0 / Torchvision 0.25.0 `cu128` environment. Completed
+checkpoints were reloaded and evaluated on the corresponding execution device.
+Light-scope runs also continued after cancellation and forced worker termination
+on CPU and CUDA, preserving each attempt's device and runtime.
+
+These trials do not establish general quality gains or performance. Longer runs,
+partial/full training on CPU, partial/full-scope recovery, server restart or
+power-loss recovery, other hardware, cross-device inference, exported-model
+execution and numerical parity remain to be tested. The managed `ml` environment
+continues to use CPU wheels.
 
 ## Select execution devices
 
