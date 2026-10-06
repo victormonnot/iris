@@ -14,6 +14,25 @@ from iris import multimodal_provider as provider
 from iris.taxonomies import TAXONOMY
 
 KEY = "sk-offline-fixture-only"
+
+
+def test_failed_second_image_does_not_inherit_first_receipt(transport):
+    adapter = provider.OpenAIPreannotator(provider.freeze_config(TAXONOMY))
+    adapter.propose(Image.new("RGB", (64, 64)))
+    assert adapter.metadata["http_status"] == 200
+    transport["error"] = OSError("Synthetic connection failure")
+    with pytest.raises(provider.ProviderResponseError) as raised:
+        adapter.propose(Image.new("RGB", (64, 64), "red"))
+    metadata = raised.value.metadata
+    assert metadata.get("http_status") is None
+    assert metadata.get("http_request_id") is None
+    assert metadata["request_id"] is None
+    assert metadata["returned_model"] is None
+    assert metadata["usage"] is None
+    assert metadata["usage_cost_usd"] is None
+    assert metadata["response_received"] is False
+
+
 PROPOSALS = {
     "coordinate_space": "normalized",
     "proposals": [

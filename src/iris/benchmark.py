@@ -510,6 +510,7 @@ def preview_benchmark_config(
     multimodal=None,
     segmentation=None,
     combined=None,
+    recorded=None,
 ):
     row = store.get("benchmarks", benchmark_id)
     if row is None:
@@ -522,6 +523,22 @@ def preview_benchmark_config(
         raise ValueError("Multimodal settings require the multimodal approach")
     if combined is not None and approach != "combined":
         raise ValueError("Combined settings require the combined approach")
+    if recorded is not None and approach != "recorded_proposals":
+        raise ValueError("Recorded settings require the recorded proposals approach")
+    if approach == "recorded_proposals":
+        from iris.benchmark_recorded import preview_config
+
+        if (threshold, device, inference_mode, tile_size, overlap) != (
+            0.5,
+            "cpu",
+            "full",
+            640,
+            0.2,
+        ):
+            raise ValueError(
+                "Use nested recorded settings; detector execution settings do not apply"
+            )
+        return preview_config(store, benchmark_id, model_id=model_id, recorded=recorded)
     if approach == "combined":
         from iris.benchmark_combined import preview_config
 
@@ -664,7 +681,8 @@ def validate_benchmark_config(row, benchmark, manifest):
     config = row["config"]
     if (
         row["benchmark_id"] != benchmark["id"]
-        or row["approach"] not in {"local_detector", "multimodal", "segmentation", "combined"}
+        or row["approach"]
+        not in {"local_detector", "multimodal", "segmentation", "combined", "recorded_proposals"}
         or config.get("protocol") != PROTOCOL
         or config.get("approach") != row["approach"]
         or _digest(config) != row["fingerprint"]
@@ -681,6 +699,10 @@ def validate_benchmark_config(row, benchmark, manifest):
         return validate_config(config, manifest)
     if row["approach"] == "combined":
         from iris.benchmark_combined import validate_config
+
+        return validate_config(config, manifest)
+    if row["approach"] == "recorded_proposals":
+        from iris.benchmark_recorded import validate_config
 
         return validate_config(config, manifest)
     if config.get("scoring") != SCORING:

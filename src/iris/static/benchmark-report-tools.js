@@ -8,7 +8,7 @@
   const finite = (value) => typeof value === "number" && Number.isFinite(value);
   const number = (value) => finite(value) ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "N/A";
   const percentage = (value) => finite(value) ? `${(value * 100).toFixed(1)}%` : "N/A";
-  const approach = (value) => ({ multimodal: "A · Astra", segmentation: "B · SAM 3", combined: "C · Astra + SAM 3", local_detector: "Local detector control" })[value] || value || "Unknown approach";
+  const approach = (value) => ({ multimodal: "A · Astra", segmentation: "B · SAM 3", combined: "C · Astra + SAM 3", local_detector: "Local detector control", recorded_proposals: "Recorded proposals · offline import" })[value] || value || "Unknown approach";
   const evidence = (value) => ({ not_declared: "Evidence origin not declared", simulation: "Simulated evidence · does not measure real model performance", real_data: "Real data declared by the author · not independently verified" })[value] || "Evidence origin unavailable";
   const validComparison = (value, benchmarkId, role) => Boolean(value && value.protocol === "iris-benchmark-comparison-v1" &&
     value.benchmark?.id === benchmarkId && ["tuning", "evaluation"].includes(value.role) && (!role || value.role === role) &&

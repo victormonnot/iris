@@ -61,4 +61,5 @@ test("evidence declarations distinguish simulation from verified model performan
   assert.match(tools.evidence("real_data"), /declared by the author.*not independently verified/);
   assert.match(tools.evidence("unexpected"), /unavailable/);
   assert.equal(tools.approach("local_detector"), "Local detector control");
+  assert.equal(tools.approach("recorded_proposals"), "Recorded proposals · offline import");
 });

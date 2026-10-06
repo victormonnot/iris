@@ -44,6 +44,9 @@ LATENCY_SCOPES = {
     "combined": "end-to-end planning, local grounding and review; includes first model "
     "loading and cold prediction; no warmup",
     "local_detector": "image decode and local inference; successful outputs exclude warmup",
+    "recorded_proposals": "per-image saved-output validation, normalization and hashing; "
+    "excludes preflight image verification and database writes; "
+    "not provider inference or full import duration",
 }
 
 
@@ -158,12 +161,37 @@ def _cost(view, trial, approach):
         "reserved_microusd",
         "estimated_ceiling_microusd",
     )
-    return {
+    result = {
         "external": summary is not None,
         **{key: summary[key] if summary else None for key in fields},
         "request_counts": summary["counts"] if summary else None,
         "note": summary["message"] if summary else "Local monetary cost is unmeasured, not zero.",
     }
+    if approach == "recorded_proposals":
+        frames = trial["config"]["recorded_bundle"]["frames"]
+        detector = [frame["dinox"]["receipt"]["estimated_cost_cny"] for frame in frames]
+        reviewer = [
+            frame["review"]["receipt"]["usage_cost_usd"] for frame in frames if "review" in frame
+        ]
+        result.update(
+            recorded=True,
+            source_costs={
+                "dinox_estimate_cny": sum(detector)
+                if all(v is not None for v in detector)
+                else None,
+                "review_usage_cost_usd": sum(reviewer)
+                if reviewer and all(v is not None for v in reviewer)
+                else None,
+                "detector_receipt_count": len(detector),
+                "review_receipt_count": len(reviewer),
+                "missing_value_count": sum(v is None for v in detector + reviewer),
+            },
+            note="No provider request was made by this import. Source costs are submitted "
+            "historical estimates, not new charges or authenticated invoices. Shared source "
+            "calls across configurations must not be summed as separate spending. "
+            "Local import execution cost is unmeasured.",
+        )
+    return result
 
 
 def _identity(trial, outputs, config):
@@ -177,6 +205,8 @@ def _identity(trial, outputs, config):
             if config["approach"] == "multimodal"
             else [raw.get(stage) for stage in ("planning", "review")]
             if config["approach"] == "combined"
+            else [raw.get("review", {}).get("raw_response")]
+            if config["approach"] == "recorded_proposals"
             else []
         )
         for response in responses:
@@ -236,6 +266,31 @@ def _trial_snapshot(view, trial, job, config, benchmark, manifest, outputs, corr
                 frame=frame,
                 plan=plan,
                 attempt=(job["result"] or {}).get("benchmark_attempt_id"),
+            )
+    if config["approach"] == "recorded_proposals":
+        from iris.benchmark_recorded import validate_output_row, validate_trial
+
+        job_result = {} if job["result"] is None else job["result"]
+        if (
+            job["params"] != {"trial_id": trial["id"], "operation": "import_recorded_proposals"}
+            or not isinstance(job_result, dict)
+            or job_result
+            and (
+                job_result.get("trial_id") != trial["id"]
+                or job_result.get("operation") != "import_recorded_proposals"
+            )
+        ):
+            raise ValueError("Recorded comparison import job ownership is inconsistent")
+        attempt = job_result.get("benchmark_attempt_id")
+        if outputs and (not isinstance(attempt, str) or not attempt):
+            raise ValueError("Recorded comparison outputs have no owning import attempt")
+        bundle = validate_trial(trial["config"], config["config"], reference)
+        for output in outputs:
+            validate_output_row(
+                output,
+                trial,
+                validated_bundle=bundle,
+                attempt=attempt,
             )
     frames = []
     for frame in reference:
@@ -307,7 +362,7 @@ def _trial_snapshot(view, trial, job, config, benchmark, manifest, outputs, corr
     }
 
 
-def _repeatability(trials):
+def _repeatability(trials, *, recorded=False):
     complete = [trial for trial in trials if trial["quality"]["complete"]]
     geometries = {
         _digest(
@@ -334,7 +389,7 @@ def _repeatability(trials):
             "mean": sum(values) / len(values) if values else None,
             "max": max(values) if values else None,
         }
-    measured = len(complete) >= 2
+    measured = len(complete) >= 2 and not recorded
     return {
         "trial_count": len(trials),
         "complete_count": len(complete),
@@ -349,7 +404,10 @@ def _repeatability(trials):
             {model for trial in complete for model in trial["identity"]["returned_models"]}
         )
         > 1,
-        "note": "Descriptive repeats on the same images, not independent samples "
+        "note": "Repeated imports do not establish repeated provider execution. "
+        "Geometry and metric ranges describe submitted evidence only."
+        if recorded
+        else "Descriptive repeats on the same images, not independent samples "
         "or confidence intervals. "
         "Geometry equality preserves proposal order and ignores IDs, scores and explanations. "
         "One complete trial cannot measure repeatability; model aliases do not identify weights.",
@@ -447,7 +505,9 @@ def build_comparison(store, benchmark_id, *, role, connection=None):
                 "fingerprint": config["fingerprint"],
                 "config": deepcopy(config["config"]),
                 "trials": trials,
-                "repeatability": _repeatability(trials),
+                "repeatability": _repeatability(
+                    trials, recorded=config["approach"] == "recorded_proposals"
+                ),
             }
         )
     return {
@@ -630,7 +690,9 @@ def validate_comparison_snapshot(snapshot):
                     "missing": len(frames) - ready - failed,
                 }:
                     raise ValueError("Comparison trial coverage changed")
-            if config["repeatability"] != _repeatability(config["trials"]):
+            if config["repeatability"] != _repeatability(
+                config["trials"], recorded=config["approach"] == "recorded_proposals"
+            ):
                 raise ValueError("Comparison repetition summary changed")
         if len(trial_ids) > MAX_TRIALS or snapshot["coverage"] != _coverage(snapshot["configs"]):
             raise ValueError("Comparison coverage changed")

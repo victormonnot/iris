@@ -595,6 +595,7 @@ class OpenAIPreannotator:
         }
         if self.metadata["status"] != "ready":
             raise ProviderResponseError(self.metadata["reason"], metadata=self.metadata)
+        self._base_metadata = deepcopy(self.metadata)
 
     def propose(self, image: Image.Image, *, expected_image_sha256=None):
         prepared = prepare_request(image, self.config)
@@ -606,7 +607,11 @@ class OpenAIPreannotator:
         raw, key = None, _api_key()
         callback_failed = False
         started = time.perf_counter()
-        metadata = {**self.metadata, "image": prepared["image"], "estimate": prepared["estimate"]}
+        metadata = {
+            **self._base_metadata,
+            "image": prepared["image"],
+            "estimate": prepared["estimate"],
+        }
 
         def before_dispatch():
             nonlocal callback_failed

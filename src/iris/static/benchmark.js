@@ -47,6 +47,7 @@
   const trialOptions = () => ({ config_id: field("trial-config").value, role: field("trial-role").value });
   const selectedConfig = () => view.detail?.configs.find((config) => config.id === field("trial-config").value);
   const trialApproach = () => selectedConfig()?.approach || selectedConfig()?.config?.approach || "local_detector";
+  const recordedTrial = () => trialApproach() === "recorded_proposals";
   const externalTrial = () => ["multimodal", "combined"].includes(trialApproach());
   const externalBudget = () => field("external-budget").value.trim() ? Number(field("external-budget").value) : NaN;
   const approval = () => {
@@ -115,11 +116,13 @@
     for (const name of ["trial-config", "trial-role", "trial-preview", "trial-history"]) field(name).disabled = busy || view.loading || !view.detail;
     field("trial-role").querySelector('[value="tuning"]').disabled = locked();
     field("trial-role").querySelector('[value="evaluation"]').disabled = !locked();
-    field("trial-preview").disabled ||= !field("trial-config").value;
+    field("trial-preview").disabled ||= !field("trial-config").value || recordedTrial();
     field("trial-create").disabled = busy || view.loading || !view.trialPreview || view.trialPreview.key !== tools.canonical(trialOptions());
     field("trial-create").disabled ||= externalTrial() && !approval().allowed;
     field("trial-create").disabled ||= !samTools.launchAllowed(view.trialPreview, trialApproach());
-    field("trial-create").textContent = externalTrial() ? "Send approved external trial" : trialApproach() === "segmentation" ? "Run checked local SAM trial" : "Run checked trial";
+    field("trial-create").disabled ||= recordedTrial();
+    field("trial-create").textContent = recordedTrial() ? "Imported evidence only" : externalTrial() ? "Send approved external trial" : trialApproach() === "segmentation" ? "Run checked local SAM trial" : "Run checked trial";
+    field("recorded-notice").hidden = !recordedTrial();
     field("external-budget").disabled = busy || !view.trialPreview?.external_plan;
     field("external-consent").disabled = busy || !view.trialPreview?.external_plan;
     if (view.trialPreview?.external_plan) {
@@ -420,7 +423,8 @@
       const external = config.config.approach === "multimodal";
       const sam = config.config.approach === "segmentation";
       const pipeline = config.config.approach === "combined";
-      section.append(node("strong", "", config.name), node("p", "field-hint", pipeline
+      const recorded = tools.recordedConfig(config.config);
+      section.append(node("strong", "", config.name), node("p", "field-hint", recorded ? tools.recordedSummary(config.config) : pipeline
         ? `C · Astra → SAM 3 → Astra · at most two external calls per image · one local image encoding · SAM score > ${config.config.provider_config.sam_config.settings.threshold} · generated class prompts · review preserves candidate geometry · final scores unavailable`
         : external
         ? `A · ${config.config.model_name || config.config.model_id} · external API · image edge ${config.config.provider_config.image_encoding.long_edge}px · reasoning ${config.config.provider_config.settings.reasoning.effort} · output limit ${config.config.provider_config.settings.max_output_tokens} tokens · no detector confidence scores`
@@ -453,12 +457,13 @@
     head.append(row); table.append(head); const body = node("tbody", "");
     for (const trial of view.detail.trials) {
       const metrics = trial.quality?.metrics?.summary, corrections = trial.corrections;
+      const recorded = tools.recordedConfig(trial.config?.candidate_config);
       const modelLoading = trial.config?.candidate_config?.approach === "combined" ? ` · includes ${tools.duration(trial.latency?.model_load_ms)} model loading`
         : trial.config?.candidate_config?.approach === "segmentation" ? ` · model loading ${tools.duration(trial.latency?.model_load_ms)} separately` : "";
       const tr = node("tr", "");
       const values = [`${trial.config_name} · ${roleName(trial.split)}`, `${trial.job?.status || "saved"} · ${trial.counts?.ready || 0}/${trial.counts?.total || 0} outputs`,
         metrics ? `${metrics.fp} extra / ${metrics.fn} missed` : "Incomplete · not scored", metrics ? String(metrics.class_conflicts) : "N/A", metrics ? `${percentage(metrics.precision)} / ${percentage(metrics.recall)}` : "N/A",
-        metrics ? percentage(metrics.matched_iou_mean) : "N/A", trial.latency ? `${tools.duration(trial.latency.total_ms)} · ${trial.latency.measured_count}/${trial.latency.planned_count} images timed${modelLoading}` : "See saved trial details", externalTools.costPresentation(trial.external_dispatch), corrections ? `${corrections.reviewed_count}/${corrections.output_count} reviewed · ${tools.duration(corrections.recorded_review_ms)} recorded${corrections.fully_timed_count < corrections.timed_count ? " · interruptions recorded" : ""}` : "Unmeasured"];
+        metrics ? percentage(metrics.matched_iou_mean) : "N/A", trial.latency ? `${tools.duration(trial.latency.total_ms)} · ${trial.latency.measured_count}/${trial.latency.planned_count} images timed${recorded ? " · local import validation only" : modelLoading}` : "See saved trial details", recorded ? "Source receipts preserved; import makes no provider call" : externalTools.costPresentation(trial.external_dispatch), corrections ? `${corrections.reviewed_count}/${corrections.output_count} reviewed · ${tools.duration(corrections.recorded_review_ms)} recorded${corrections.fully_timed_count < corrections.timed_count ? " · interruptions recorded" : ""}` : "Unmeasured"];
       for (const value of values) tr.append(node("td", "", value)); body.append(tr);
     }
     table.append(body); container.append(table);
@@ -507,7 +512,7 @@
     });
   }
   async function previewTrial() {
-    if (field("trial-preview").disabled) return;
+    if (field("trial-preview").disabled || recordedTrial()) return;
     const options = trialOptions(); invalidate("trial");
     await operation("trial-preview", () => api(`${base()}/trials/preview`, { method: "POST", body: JSON.stringify(options) }), (result) => {
       view.trialPreview = { ...result, key: tools.canonical(options) };
@@ -522,6 +527,7 @@
     });
   }
   async function createTrial() {
+    if (recordedTrial()) return;
     if (field("trial-create").disabled) return;
     if (!samTools.launchAllowed(view.trialPreview, trialApproach())) { update(); return; }
     const preview = view.trialPreview, isExternal = externalTrial(), benchmarkId = view.id, path = base();
@@ -564,9 +570,10 @@
     field("trial-summary").textContent = `${trial.config_name} · ${roleName(trial.split)} · ${trial.job?.status || "saved"} · ${trial.counts.ready}/${trial.counts.total} usable outputs${trial.quality?.reason ? `. ${trial.quality.reason}` : ""}`;
     const measured = (trial.outputs || []).map((output) => output.metadata?.timing?.elapsed_ms).filter((value) => typeof value === "number" && Number.isFinite(value) && value >= 0);
     const pipeline = trial.config?.candidate_config?.approach === "combined";
+    const recorded = tools.recordedConfig(trial.config?.candidate_config);
     const remote = trial.config?.candidate_config?.approach === "multimodal" || pipeline || Boolean(trial.external_dispatch);
     const sam = trial.config?.candidate_config?.approach === "segmentation";
-    field("trial-summary").textContent += ` · ${remote ? "API/image processing" : "Local image processing"}: ${measured.length ? tools.duration(measured.reduce((sum, value) => sum + value, 0)) : "unmeasured"} across ${measured.length}/${trial.counts.total} images. ${remote ? "Includes observed request processing; separate from human correction time." : "Includes image decode and local inference; separate from human correction time. Monetary cost is not measured."}`;
+    field("trial-summary").textContent += ` · ${recorded ? "Local import validation" : remote ? "API/image processing" : "Local image processing"}: ${measured.length ? tools.duration(measured.reduce((sum, value) => sum + value, 0)) : "unmeasured"} across ${measured.length}/${trial.counts.total} images. ${recorded ? "This saved trial imports submitted evidence; it makes no provider call and performs no model inference. Source request timings and costs are retained separately below. They are historical receipts, not new charges or an end-to-end measurement. Human correction time is measured separately." : remote ? "Includes observed request processing; separate from human correction time." : "Includes image decode and local inference; separate from human correction time. Monetary cost is not measured."}`;
     if (remote) field("trial-summary").textContent += ` ${externalTools.costPresentation(trial.external_dispatch)}. Usage-based estimates are not the provider's invoice.`;
     if (sam) field("trial-summary").textContent += ` SAM 3 model loading: ${tools.duration(trial.latency?.model_load_ms)}, recorded separately from image processing. Image times include the first pass; there is no warm-up pass. Native SAM scores are not calibrated probabilities. Metrics cover native boxes; masks are neither calculated nor saved.`;
     if (pipeline) field("trial-summary").textContent += ` C uses one planning call, one local SAM stage and at most one review call per image. End-to-end image time includes ${tools.duration(trial.latency?.model_load_ms)} of SAM model loading; do not add it again. Final scores are unavailable; original SAM scores remain in provenance and are not calibrated probabilities. The review cannot invent or move boxes. Inspect stage records for partial or failed attempts.`;
@@ -591,6 +598,14 @@
       const row = node("article", "benchmark-output");
       const correction = trial.corrections?.frames.find((entry) => entry.output_id === frame.output_id);
       row.append(node("strong", "", frame.source_filename || frame.frame_id), node("p", "field-hint", `${frame.state} · ${frame.proposal_count} candidate boxes${frame.error ? ` · ${frame.error}` : ""}${correction ? ` · correction ${correction.status}, revision ${correction.revision} · ${tools.duration(correction.timing?.elapsed_ms)} recorded` : " · correction not measured"}`));
+      if (recorded) {
+        const output = trial.outputs?.find((item) => item.id === frame.output_id || item.frame_id === frame.frame_id);
+        const source = node("details", "benchmark-request-details");
+        source.append(node("summary", "", "Saved source receipts · separate from this local import"),
+          node("p", "field-hint", "Source receipts describe the original DINO-X request and, when present, the Astra review. Native response evidence is available in the saved trial record. Missing costs or durations are unknown, not zero; estimates are not invoices."),
+          node("pre", "", JSON.stringify(output?.metadata?.source || { note: "Source receipts unavailable" }, null, 2)));
+        row.append(source);
+      }
       if (pipeline) {
         const output = trial.outputs?.find((item) => item.id === frame.output_id || item.frame_id === frame.frame_id);
         const stages = node("ol", "benchmark-pipeline");

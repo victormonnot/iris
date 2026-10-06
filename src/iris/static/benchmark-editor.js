@@ -220,13 +220,14 @@
     renderBoxes(); update();
   }
 
-  async function open(id, label) {
+  async function open(id, label, linked = false) {
     if (!id || !mayClose()) return;
     stopLocal();
     editor.id = id; editor.record = null; editor.timer = null; editor.loading = true;
     editor.dirty = false; editor.token = ownerToken(id); editor.pauseRequested = false;
     const request = ++editor.request;
     field("context").textContent = label || `Output ${id}`;
+    field("link-notice").hidden = !linked;
     field("reviewer").value = "";
     field("history-list").replaceChildren();
     error(null);
@@ -476,5 +477,23 @@
     if (editor.active || editor.dirty || editor.busy) { pause(); event.preventDefault(); event.returnValue = ""; }
   });
   window.addEventListener("iris:benchmark-correct", (event) => open(event.detail?.output_id, event.detail?.label));
+  const linkedReview = tools.correctionLink(window.location.search);
+  let linkOpened = false;
+  function openLinkedReview() {
+    if (!linkedReview || linkOpened || !state.projectInitialized) return;
+    linkOpened = true;
+    if (linkedReview.error) {
+      field("context").textContent = linkedReview.label;
+      field("link-notice").hidden = false;
+      error(linkedReview.error);
+      dialog.showModal(); update();
+      return;
+    }
+    // Project and initial session are ready. This only reads the correction;
+    // the human must explicitly start/resume timing and save their own review.
+    open(linkedReview.output_id, linkedReview.label, true);
+  }
+  window.addEventListener("iris:project-initialized", openLinkedReview);
+  if (state.projectInitialized) openLinkedReview();
   new ResizeObserver(() => { if (editor.active) { pointerEnd(null, true); paint(); } }).observe(canvas);
 })();

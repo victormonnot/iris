@@ -1622,6 +1622,8 @@ async function initialize() {
     else if (window.IRISNavigation) window.IRISNavigation.syncSession();
     else $("#welcome").hidden = false;
     await refreshJobs();
+    state.projectInitialized = true;
+    window.dispatchEvent(new Event("iris:project-initialized"));
   } catch (error) {
     notify(error.message, true);
     $("#storage-path").textContent = "Local server unavailable";

@@ -66,6 +66,11 @@ def _ready_config(store, config, manifest):
 
 def preview_benchmark_trial(store: Store, benchmark_id: str, *, config_id: str, role: str):
     benchmark, config, manifest = _context(store, benchmark_id, config_id, role)
+    if config["approach"] == "recorded_proposals":
+        raise ValueError(
+            "Use the recorded-trials import preview with saved evidence; "
+            "this configuration does not run a provider"
+        )
     _ready_config(store, config, manifest)
     frames = [frame for frame in manifest["frames"] if frame["role"] == role]
     for frame in frames:
@@ -257,6 +262,10 @@ def run_benchmark_trial(store: Store, trial_id: str, progress, cancelled, detect
     trial = store.get("benchmark_trials", trial_id)
     if trial is None:
         raise KeyError(trial_id)
+    if trial["config"].get("candidate_config", {}).get("approach") == "recorded_proposals":
+        from iris.benchmark_recorded import run_trial
+
+        return run_trial(store, trial_id, progress, cancelled)
     if trial["config"].get("candidate_config", {}).get("approach") == "multimodal":
         from iris.benchmark_multimodal import run_trial
 
@@ -568,7 +577,11 @@ def benchmark_trial_detail(store: Store, trial_id: str, *, include_outputs: bool
             "planned_count": len(trial["config"]["frame_ids"]),
             "total_ms": sum(timings) if timings else None,
             "mean_ms": sum(timings) / len(timings) if timings else None,
-            "includes": "OpenAI request and response round trip, including provider processing"
+            "includes": "Per-image saved-output validation, normalization and hashing; excludes "
+            "preflight image verification and database writes; not provider inference "
+            "or full import duration"
+            if config["approach"] == "recorded_proposals"
+            else "OpenAI request and response round trip, including provider processing"
             if config["approach"] == "multimodal"
             else "end-to-end planning, local grounding and review; includes first model "
             "loading and cold prediction, with no warmup"

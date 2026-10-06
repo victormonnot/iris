@@ -275,11 +275,65 @@ usage is available, the displayed known subtotal is explicitly separate from the
 unknown total. Usage-based estimates use the frozen price basis and are not invoices.
 Reserved planning amounts are also distinct from recorded usage estimates.
 
+## Import recorded provider evidence
+
+Completed DINO-X outputs and DINO-X outputs reviewed by Astra can be imported for
+the same scoring and human correction workflow. This is an API import of submitted
+evidence: it makes no provider request, loads no model and creates no human review
+or timer receipt. The UI displays these configurations and their results; it does
+not launch their source providers.
+
+Before locking the benchmark, use the normal configuration preview/create routes
+with `approach: "recorded_proposals"` and a `recorded` object containing a frozen
+`dinox_config` and one transform:
+
+- `identity`: retain the source detections after their frozen native threshold.
+- `threshold`: also supply `threshold`, at least the source threshold and at most
+  1; retain source proposals with scores greater than or equal to this value.
+- `review`: supply a frozen `review_config`; replay the saved Astra decisions
+  against the verified DINO-X candidates, preserving retained IDs and geometry.
+
+The model ID is `DINO-X-1.0` for identity/threshold and
+`DINO-X-1.0+gpt-6-astra` for review. Configuration and tuning/evaluation lock rules
+are unchanged. Different thresholds or review settings need separate frozen
+configurations before locking.
+
+`POST /api/benchmarks/{id}/recorded-trials/preview` accepts `config_id`, `role`
+and a bundle with protocol `iris-benchmark-recorded-bundle-v1`. The bundle must
+cover the exact role's frames in order, with image identities, native DINO-X
+results and source receipts. Review entries additionally include the exact saved
+review input, native response and receipt. See `benchmark_recorded.py` for the
+bounded field contract. Reference annotations are never part of provider inputs.
+
+Submit the same payload plus the preview's `expected_fingerprint` to
+`POST /api/benchmarks/{id}/recorded-trials`. The resulting local job verifies the
+source files, reconstructs canonical proposals and binds outputs to its real job
+attempt. Repeating the same import returns the existing trial. Invalid evidence
+fails validation; it cannot silently become a successful empty prediction.
+
+These checks establish internal consistency, not authenticated provider history.
+Native evidence and declared source receipts remain inspectable and are validated
+again during analysis and archive restoration. Displayed duration measures
+per-image validation, normalization and hashing, excluding preflight image checks
+and database writes; it is not model inference or full import duration.
+Historical DINO-X CNY estimates and Astra
+USD usage estimates remain separate; shared source receipts must not be summed
+across variants. Import incurs no new provider charge, and its local monetary cost
+is unmeasured. Reimporting saved predictions does not measure model repeatability.
+
 ## Measure corrections without changing the reference
 
 Choose **Measure human correction** on a usable output. The separate editor loads
 candidate boxes, frozen class definitions and any saved correction draft. It does
 not load the human reference into its canvas.
+
+A link with `?project=<project-id>&benchmark_review=<output-id>&review_label=Task%2001`
+opens that output's correction editor directly after project initialization. It
+does not supply a reviewer, start the timer or mark anything reviewed. Neutral
+task labels can support a prepared correction session without opening the results
+table first. This is limited masking, not secure blinding: ordinary trial views
+remain accessible, and recognizable proposals or previously seen images may reveal
+the method. Reloaded sessions still require an explicit timer resume.
 
 Enter a correction reviewer and choose **Start review**. The image and editable
 boxes appear only while the timer is running. You can draw missing boxes, select,

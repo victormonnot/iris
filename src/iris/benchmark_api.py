@@ -67,6 +67,13 @@ class CombinedSettings(StrictInput):
     segmentation: CombinedSegmentationSettings = Field(default_factory=CombinedSegmentationSettings)
 
 
+class RecordedSettings(StrictInput):
+    dinox_config: dict
+    transform: Literal["identity", "threshold", "review"]
+    threshold: float | None = Field(default=None, ge=0, le=1)
+    review_config: dict | None = None
+
+
 class ConfigPreview(StrictInput):
     model_id: str = Field(min_length=1, max_length=128)
     threshold: float = Field(default=0.5, ge=0, le=1)
@@ -74,10 +81,13 @@ class ConfigPreview(StrictInput):
     inference_mode: Literal["full", "tiled"] = "full"
     tile_size: int = Field(default=640, ge=64, le=4096)
     overlap: float = Field(default=0.2, ge=0, le=0.5)
-    approach: Literal["local_detector", "multimodal", "segmentation", "combined"] = "local_detector"
+    approach: Literal[
+        "local_detector", "multimodal", "segmentation", "combined", "recorded_proposals"
+    ] = "local_detector"
     multimodal: MultimodalSettings | None = None
     segmentation: SegmentationSettings | None = None
     combined: CombinedSettings | None = None
+    recorded: RecordedSettings | None = None
 
 
 class ConfigCreate(ConfigPreview):
@@ -99,6 +109,14 @@ class TrialCreate(TrialPreview):
     approve_external: bool = False
     max_cost_usd: float | None = Field(default=None, ge=0, le=1000)
     preview_token: str | None = Field(default=None, max_length=512)
+
+
+class RecordedTrialPreview(TrialPreview):
+    bundle: dict
+
+
+class RecordedTrialCreate(RecordedTrialPreview):
+    expected_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class CorrectionBox(StrictInput):
@@ -228,6 +246,22 @@ def install_benchmark_routes(app, store, jobs, require, active_project):
     def trial_detail(trial_id: str):
         require("benchmark_trials", trial_id)
         return action(lambda: benchmark_trial_detail(store, trial_id))
+
+    @app.post("/api/benchmarks/{benchmark_id}/recorded-trials/preview")
+    def recorded_preview(benchmark_id: str, payload: RecordedTrialPreview):
+        from iris.benchmark_recorded import preview_import
+
+        require("benchmarks", benchmark_id)
+        require("benchmark_configs", payload.config_id)
+        return action(lambda: preview_import(store, benchmark_id, **payload.model_dump()))
+
+    @app.post("/api/benchmarks/{benchmark_id}/recorded-trials", status_code=202)
+    def recorded_create(benchmark_id: str, payload: RecordedTrialCreate):
+        from iris.benchmark_recorded import create_import
+
+        require("benchmarks", benchmark_id)
+        require("benchmark_configs", payload.config_id)
+        return action(lambda: create_import(store, jobs, benchmark_id, **payload.model_dump()))
 
     @app.get("/api/benchmarks/{benchmark_id}/frames/{frame_id}/image")
     def frame_image(benchmark_id: str, frame_id: str):

@@ -7,9 +7,11 @@ This tests whether visual review can remove false detections while retaining
 the detector's geometry. It does not run a planner, SAM, a new DINO-X request or
 an iterative correction loop.
 
-This is a standalone provider adapter. It is **not yet a selectable Benchmark
-approach or Annotation workflow**. Its real acceptance experiment uses saved
-provider evidence outside the workspace database. The existing
+The provider adapter runs independently. Completed native evidence can now enter
+Benchmark through the explicit [recorded-evidence import](benchmark.md#import-recorded-provider-evidence)
+for scoring and timed human correction. Import makes no provider request; it is
+not a live combined option in Annotation. The initial acceptance experiment used
+saved provider evidence outside the workspace database. The existing
 [Astra → SAM → Astra adapter](combined-preannotation-adapter.md) keeps its own
 unchanged protocol and has not been validated by this experiment.
 
@@ -106,6 +108,7 @@ An independent audit reconstructed the native detections, outgoing image/request
 hashes, raw review decisions, geometry, matching and token cost. The application
 database, human annotation revisions and protected source files stayed unchanged.
 No reserved evaluation image or human correction record was added or modified.
-The comparison is available as a private, offline visual report; this experiment
-does not create an integrated Benchmark trial or claim a general quality or
-annotation-time improvement.
+The comparison is available as a private, offline visual report; this initial
+experiment did not create an integrated Benchmark trial or establish a general
+quality or annotation-time improvement. Later recorded-evidence imports retain
+their own local import history and do not rewrite the earlier provider execution.

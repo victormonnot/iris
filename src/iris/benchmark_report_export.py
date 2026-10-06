@@ -97,6 +97,17 @@ def _paragraph(value, *, css=""):
 
 
 def _cost(cost):
+    if cost.get("recorded"):
+        source = cost["source_costs"]
+        detector = source["dinox_estimate_cny"]
+        reviewer = source["review_usage_cost_usd"]
+        value = "Imported source estimates: "
+        value += f"{detector:.4f} CNY" if detector is not None else "DINO-X cost unavailable"
+        if source["review_receipt_count"]:
+            value += " + " + (
+                _money(reviewer) if reviewer is not None else "review cost unavailable"
+            )
+        return value + "; no new provider requests; shared source costs are not additive"
     if not cost.get("external"):
         return "Local execution cost not measured"
     if cost.get("usage_cost_usd") is not None:

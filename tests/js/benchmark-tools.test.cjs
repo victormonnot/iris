@@ -63,6 +63,34 @@ test("a masked editor cannot save a running timer and credit an uninspected inte
   assert.equal(tools.canSaveCorrection({ ...timer, state: "paused" }, "this-editor", false), true);
 });
 
+test("correction links accept bounded opaque task labels and never turn URL text into a model title", () => {
+  const id = "0123456789abcdef0123456789abcdef";
+  assert.equal(tools.correctionLink("?project=default"), null);
+  assert.deepEqual(tools.correctionLink(`?benchmark_review=${id}&review_label=Task%2001`), { output_id: id, label: "Task 01", error: null });
+  assert.equal(tools.correctionLink(`?benchmark_review=${id}&review_label=Task%2015%20of%2015`).label, "Task 15 of 15");
+  for (const label of ["Astra", "<img src=x>", "Task 01\nAstra", "Task 1234", "Task 1 of many"]) {
+    assert.equal(tools.correctionLink(`?benchmark_review=${id}&review_label=${encodeURIComponent(label)}`).label, "Linked correction");
+  }
+  for (const invalid of ["", "../other-project/output", "<script>", "0".repeat(33)]) {
+    const link = tools.correctionLink(`?benchmark_review=${encodeURIComponent(invalid)}`);
+    assert.equal(link.output_id, null);
+    assert.match(link.error, /invalid output ID/);
+  }
+});
+
+test("recorded configurations do not need detector inference settings and disclose offline execution", () => {
+  for (const transform of ["identity", "threshold", "review"]) {
+    const config = { approach: "recorded_proposals", model_id: "DINO-X-1.0", recorded: { transform, threshold: 0.5 } };
+    assert.equal(tools.recordedConfig(config), true);
+    const summary = tools.recordedSummary(config);
+    assert.match(summary, /Offline evidence import only.*does not run a model or contact a provider/);
+    if (transform === "threshold") assert.match(summary, /native score ≥ 0.5/);
+    if (transform === "review") assert.match(summary, /saved Astra decisions; candidate geometry preserved/);
+  }
+  assert.equal(tools.recordedConfig({ approach: "local_detector" }), false);
+  assert.equal(tools.recordedConfig(null), false);
+});
+
 test("box movement and corner resizing preserve image bounds and positive extent", () => {
   assert.deepEqual(tools.boxAfterDrag([10, 10, 40, 40], "move", [15, 15], [-100, 1000], 100, 80), [0, 50, 30, 80]);
   assert.deepEqual(tools.boxAfterDrag([10, 10, 40, 40], "nw", [10, 10], [100, 100], 100, 80), [39, 39, 40, 40]);

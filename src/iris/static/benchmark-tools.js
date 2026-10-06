@@ -17,6 +17,22 @@
   const ownsRunningTimer = (timer, token) => timer?.state === "running" && Boolean(token) && timer.owner_token === token;
   const canSaveCorrection = (timer, token, active) => timer?.state !== "running" || active && ownsRunningTimer(timer, token);
   const currentTrial = (trial, benchmarkId, trialId) => Boolean(trial && benchmarkId && trialId && trial.benchmark_id === benchmarkId && trial.id === trialId);
+  const recordedConfig = (config) => config?.approach === "recorded_proposals";
+  function recordedSummary(config) {
+    const settings = config?.recorded || {};
+    const transform = settings.transform === "threshold" ? `native score ≥ ${settings.threshold}`
+      : settings.transform === "review" ? "saved Astra decisions; candidate geometry preserved"
+        : "original saved proposals";
+    return `Recorded proposals · ${config?.model_name || config?.model_id || "source model unspecified"} · ${transform}. Offline evidence import only; this configuration does not run a model or contact a provider.`;
+  }
+  function correctionLink(search) {
+    const params = new URLSearchParams(search);
+    if (!params.has("benchmark_review")) return null;
+    const id = params.get("benchmark_review"), requested = params.get("review_label") || "";
+    return { output_id: /^[a-f0-9]{32}$/.test(id || "") ? id : null,
+      label: /^Task [0-9]{1,3}(?: of [0-9]{1,3})?$/.test(requested) ? requested : "Linked correction",
+      error: /^[a-f0-9]{32}$/.test(id || "") ? null : "This correction link has an invalid output ID." };
+  }
   function correctionMatches(record, payload, previousRevision) {
     return record?.revision > previousRevision && record.status === payload.status &&
       canonical(record.boxes) === canonical(payload.boxes) && record.reviewer === payload.reviewer && record.notes === payload.notes;
@@ -48,5 +64,5 @@
     }
     return { frame_ids, roles: selectedRoles, counts, valid: counts.tuning > 0 && counts.evaluation > 0 && counts.tuning <= 25 && counts.evaluation <= 25 };
   }
-  return { canonical, duration, ownsRunningTimer, canSaveCorrection, currentTrial, correctionMatches, boxAfterDrag, referenceSelection };
+  return { canonical, duration, ownsRunningTimer, canSaveCorrection, currentTrial, recordedConfig, recordedSummary, correctionLink, correctionMatches, boxAfterDrag, referenceSelection };
 });

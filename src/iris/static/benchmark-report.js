@@ -60,7 +60,8 @@ window.IRISBenchmarkReport = (() => {
         return [`${index + 1} · ${trial.id}\n${date(trial.created_at)}`, `${trial.status} · ${tools.number(trial.coverage.ready)}/${tools.number(trial.coverage.planned)} ready\n${tools.number(trial.coverage.failed)} failed · ${tools.number(trial.coverage.missing)} missing${trial.error ? `\n${trial.error}` : ""}`,
           quality.errors, quality.conflicts, quality.precisionRecall, quality.iou,
           `${latency(trial.latency)}\nScope: ${trial.latency?.includes || "Not recorded"}\n${trial.latency?.note || ""}`,
-          trial.cost?.external ? `${external.costPresentation(trial.cost)}\n${config.approach === "combined" ? "External API usage only; local SAM compute cost is unmeasured.\n" : ""}${trial.cost.note || ""}` : "Local monetary cost unmeasured",
+          config.approach === "recorded_proposals" ? "No provider call during import. Historical source receipts are retained with image evidence; missing amounts remain unknown."
+            : trial.cost?.external ? `${external.costPresentation(trial.cost)}\n${config.approach === "combined" ? "External API usage only; local SAM compute cost is unmeasured.\n" : ""}${trial.cost.note || ""}` : "Local monetary cost unmeasured",
           `${corrections(trial.corrections)}\n${trial.corrections?.note || ""}`];
       });
     }
@@ -128,6 +129,7 @@ window.IRISBenchmarkReport = (() => {
         const article = node("article", "benchmark-report-config");
         article.append(node("h4", "", `${tools.approach(config.approach)} · ${config.name}`), node("p", "field-hint", `${config.model_id} · ${config.trials.length} saved trials for this role`),
           node("p", "field-hint", tools.repeatability(config.repeatability)));
+        if (config.approach === "recorded_proposals") article.append(node("p", "field-hint", "Imported saved proposals. Processing time covers local evidence validation only, not the source model or provider. Reimporting identical evidence does not measure model repeatability."));
         if (config.repeatability.mixed_runtime_identity || config.repeatability.mixed_returned_models) article.append(node("p", "field-hint", "Runtime or returned-model identities differ between trials. Inspect the evidence before attributing variation to the configuration."));
         if (config.repeatability.note) article.append(node("p", "field-hint", config.repeatability.note));
         const metrics = config.repeatability.metrics;

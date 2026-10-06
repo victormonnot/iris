@@ -530,9 +530,10 @@ def _validate_benchmarks(connection, root, require):
         except ValueError as exc:
             raise ArchiveError("Benchmark frozen configuration is invalid") from exc
         configurations[row["id"]] = row
-    external_trials, sam_trials, combined_trials = {}, {}, {}
+    external_trials, sam_trials, combined_trials, recorded_trials = {}, {}, {}, {}
     for row in connection.execute(
-        "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params,j.result AS job_result "
+        "SELECT t.*,c.benchmark_id AS config_benchmark_id,j.kind,j.params,"
+        "j.status AS job_status,j.result AS job_result "
         "FROM benchmark_trials t JOIN benchmark_configs c ON c.id=t.config_id "
         "JOIN jobs j ON j.id=t.job_id"
     ):
@@ -618,6 +619,40 @@ def _validate_benchmarks(connection, root, require):
                 if isinstance(job_result, dict)
                 else None,
             }
+        elif config["approach"] == "recorded_proposals":
+            from iris.benchmark_recorded import validate_trial
+
+            try:
+                bundle = validate_trial(
+                    frozen,
+                    config["config"],
+                    [frame for frame in manifest["frames"] if frame["role"] == row["split"]],
+                )
+                if _parse_json(row["params"]) != {
+                    "trial_id": row["id"],
+                    "operation": "import_recorded_proposals",
+                }:
+                    raise ValueError("Recorded proposal import has an invalid job operation")
+                job_result = _parse_json(row["job_result"]) if row["job_result"] else {}
+                if (
+                    not isinstance(job_result, dict)
+                    or job_result
+                    and (
+                        job_result.get("trial_id") != row["id"]
+                        or job_result.get("operation") != "import_recorded_proposals"
+                    )
+                ):
+                    raise ValueError("Recorded proposal result has an invalid job owner")
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError("Recorded benchmark source bundle or job is invalid") from exc
+            recorded_trials[row["id"]] = {
+                "trial": {**dict(row), "config": frozen},
+                "bundle": bundle,
+                "frames": set(),
+                "attempt": job_result.get("benchmark_attempt_id")
+                if isinstance(job_result, dict)
+                else None,
+            }
     for row in connection.execute(
         "SELECT o.*,t.benchmark_id,t.split FROM benchmark_outputs o "
         "JOIN benchmark_trials t ON t.id=o.trial_id"
@@ -675,12 +710,33 @@ def _validate_benchmarks(connection, root, require):
                 )
             except (ValueError, TypeError, AttributeError) as exc:
                 raise ArchiveError("SAM benchmark native output evidence is invalid") from exc
+        elif row["trial_id"] in recorded_trials:
+            from iris.benchmark_recorded import validate_output_row
+
+            recorded = recorded_trials[row["trial_id"]]
+            try:
+                if not isinstance(recorded["attempt"], str) or not recorded["attempt"]:
+                    raise ValueError("Recorded output has no owning import attempt")
+                validate_output_row(
+                    _decode(row),
+                    recorded["trial"],
+                    validated_bundle=recorded["bundle"],
+                    attempt=recorded["attempt"],
+                )
+                recorded["frames"].add(row["frame_id"])
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ArchiveError("Recorded benchmark native output evidence is invalid") from exc
     for external in (*external_trials.values(), *combined_trials.values()):
         if (
             external["frames"] != {request["frame_id"] for request in external["plan"]["requests"]}
             or external["reserved"] > external["plan"]["approval"]["budget_microusd"]
         ):
             raise ArchiveError("External benchmark request coverage or budget is inconsistent")
+    for recorded in recorded_trials.values():
+        if recorded["trial"]["job_status"] == "succeeded" and recorded["frames"] != set(
+            recorded["trial"]["config"]["frame_ids"]
+        ):
+            raise ArchiveError("Completed recorded benchmark output coverage is inconsistent")
     for row in connection.execute("SELECT elapsed_ms,segments FROM benchmark_timers"):
         if (
             type(row["elapsed_ms"]) not in (int, float)
