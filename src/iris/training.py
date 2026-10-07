@@ -33,6 +33,7 @@ from iris.training_architectures import (
     SCOPE_VERSION,
     SSDLITE,
     TRAINING_ARCHITECTURES,
+    YOLOX,
     training_scope,
 )
 from iris.training_architectures import (
@@ -52,6 +53,11 @@ def _scope_from_config(config: dict) -> dict:
 
         if config.get("training_adapter") != POLICY or "scope_version" not in config:
             raise ValueError("SSDLite training adapter changed; create a new run")
+    if architecture == YOLOX:
+        from iris.yolox_spec import POLICY
+
+        if config.get("training_adapter") != POLICY or "scope_version" not in config:
+            raise ValueError("YOLOX training adapter changed; create a new run")
     if "scope_version" not in config:
         if scope["id"] != "prediction_head_only" or "trainable_modules" in config:
             raise ValueError("Unsupported legacy training scope contract; create a new run")
@@ -76,7 +82,7 @@ def _ready_parent(store: Store, parent_model_id: str) -> dict:
     parent = next((item for item in catalog(store.root) if item["id"] == parent_model_id), None)
     if parent is None or parent.get("architecture") not in TRAINING_ARCHITECTURES:
         raise ValueError(
-            "Choose a supported Faster R-CNN or SSDLite detector, or its trained descendants"
+            "Choose a supported Faster R-CNN, SSDLite or YOLOX detector, or its trained descendants"
         )
     if parent["status"] != "ready":
         raise RuntimeError(parent.get("reason") or "Parent checkpoint is unavailable")
@@ -163,6 +169,10 @@ def _prepare_training(
         from iris.ssdlite_training import POLICY
 
         config.update(architecture=SSDLITE, training_adapter=deepcopy(POLICY))
+    if parent["architecture"] == YOLOX:
+        from iris.yolox_spec import POLICY
+
+        config.update(architecture=YOLOX, training_adapter=deepcopy(POLICY))
     if device != "cpu":
         config.update(
             device_identity=device_identity,
@@ -260,6 +270,20 @@ def preview_training(
             ),
             *(
                 [
+                    "YOLOX-Nano uses fixed 416 × 416 BGR letterboxing and native SimOTA loss. "
+                    "This bounded fine-tuning uses no augmentation or EMA. Compare validation "
+                    "quality before deployment; it does not reproduce the full upstream recipe.",
+                    "YOLOX has no background class. Empty images contribute objectness loss; "
+                    "box and class losses stay connected with zero positive targets.",
+                    "Finite YOLOX gradients are clipped to a global L2 norm of 10 before SGD. "
+                    "The unclipped norm and clipping flag are recorded for every step. "
+                    "Nonfinite gradients still stop the attempt without publishing weights.",
+                ]
+                if parent["architecture"] == YOLOX
+                else []
+            ),
+            *(
+                [
                     f"Save optimizer and RNG state every {config['checkpoint_interval']} "
                     f"steps and at completion. "
                     "Keep the latest two states per attempt (up to 512 MiB each); source "
@@ -285,7 +309,10 @@ def preview_training(
             ),
         ],
         "device_notes": [
-            "The training device does not restrict where the completed model can run. "
+            "Choose CPU or CUDA independently for comparison and evaluation. "
+            "The current YOLOX ONNX export targets OpenCV CPU."
+            if parent["architecture"] == YOLOX
+            else "The training device does not restrict where the completed model can run. "
             "Choose CPU or CUDA independently for comparison, evaluation and export.",
             *(
                 [
@@ -483,6 +510,17 @@ class _HeadTrainer:
                 )
             )
             adapter_metadata.update(configure_ssdlite_training(self.model, torch))
+        elif self.architecture == YOLOX:
+            from iris.yolox_training import prepare_yolox_head
+
+            adapter_metadata.update(
+                prepare_yolox_head(
+                    self.model,
+                    torch,
+                    self.contract,
+                    trained=self.detector.spec.get("origin") == "trained",
+                )
+            )
         else:
             inference_proposal_threshold = self.model.rpn.score_thresh
             # The MobileNet320 inference preset drops RPN proposals below 0.05.
@@ -540,9 +578,10 @@ class _HeadTrainer:
                 for module in modules.values()
             ):
                 raise ValueError("The training detector must retain frozen batch normalization")
-        elif list(self.model.backbone.features._modules) != ["0", "1"] or list(
-            self.model.backbone.extra._modules
-        ) != [str(index) for index in range(4)]:
+        elif self.architecture == SSDLITE and (
+            list(self.model.backbone.features._modules) != ["0", "1"]
+            or list(self.model.backbone.extra._modules) != [str(index) for index in range(4)]
+        ):
             raise ValueError("Unsupported SSDLite feature layout")
         self.named_parameters = dict(self.model.named_parameters())
         self.selected_parameters = {}
@@ -577,7 +616,7 @@ class _HeadTrainer:
             for name, module in modules.items()
             if isinstance(module, torchvision.ops.misc.FrozenBatchNorm2d)
             or (
-                self.architecture == SSDLITE
+                self.architecture in (SSDLITE, YOLOX)
                 and isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             )
         ]
@@ -643,6 +682,9 @@ class _HeadTrainer:
             "validation_consumed": False,
             "test_consumed": False,
         }
+        if self.architecture == YOLOX:
+            self.metadata.update(adapter_metadata)
+            self.metadata.pop("native_to_coco", None)
         if self.contract["taxonomy_id"] == "iris-objects-v1":
             self.metadata["native_to_coco"] = IRIS_NATIVE_TO_COCO
 
@@ -673,23 +715,35 @@ class _HeadTrainer:
 
     def _step(self, image: Image.Image, boxes: list[dict]) -> dict:
         torch = self.torch
-        tensor = (
-            self.detector.functional.pil_to_tensor(image).to(
-                device=self.device, dtype=torch.float32
-            )
-            / 255
-        )
-        coordinates = torch.tensor(
-            [box["box"] for box in boxes], dtype=torch.float32, device=self.device
-        ).reshape(-1, 4)
-        labels = torch.tensor(
-            [self.class_mapping[box["label"]] for box in boxes],
-            dtype=torch.int64,
-            device=self.device,
-        )
         self.optimizer.zero_grad(set_to_none=True)
-        losses = self.model([tensor], [{"boxes": coordinates, "labels": labels}])
-        loss = sum(losses.values())
+        if self.architecture == YOLOX:
+            from iris.yolox_training import training_losses
+
+            loss, losses = training_losses(
+                self.model,
+                image,
+                boxes,
+                self.class_mapping,
+                torch,
+                self.device,
+            )
+        else:
+            tensor = (
+                self.detector.functional.pil_to_tensor(image).to(
+                    device=self.device, dtype=torch.float32
+                )
+                / 255
+            )
+            coordinates = torch.tensor(
+                [box["box"] for box in boxes], dtype=torch.float32, device=self.device
+            ).reshape(-1, 4)
+            labels = torch.tensor(
+                [self.class_mapping[box["label"]] for box in boxes],
+                dtype=torch.int64,
+                device=self.device,
+            )
+            losses = self.model([tensor], [{"boxes": coordinates, "labels": labels}])
+            loss = sum(losses.values())
         if not torch.isfinite(loss).item():
             raise ValueError("Nonfinite training loss; no checkpoint was published")
         loss.backward()
@@ -704,6 +758,11 @@ class _HeadTrainer:
                 )
         if any(parameter.grad is not None for parameter in self.frozen_parameters.values()):
             raise ValueError("A frozen parameter unexpectedly received a gradient")
+        gradient_measurement = {}
+        if self.architecture == YOLOX:
+            from iris.yolox_training import clip_gradients
+
+            gradient_measurement = clip_gradients(self.parameters, torch)
         self.optimizer.step()
         if any(not torch.isfinite(parameter).all().item() for parameter in self.parameters):
             raise ValueError("Nonfinite trainable weights; no checkpoint was published")
@@ -712,6 +771,7 @@ class _HeadTrainer:
         return {
             "loss": float(loss.detach()),
             "losses": {name: float(value.detach()) for name, value in losses.items()},
+            **gradient_measurement,
         }
 
     def write_checkpoint(self, path: Path) -> dict:
@@ -748,7 +808,8 @@ class _HeadTrainer:
             "head_weights_changed": any(
                 changed
                 and _matches_module(
-                    name, "head" if self.architecture == SSDLITE else "roi_heads.box_predictor"
+                    name,
+                    "head" if self.architecture in (SSDLITE, YOLOX) else "roi_heads.box_predictor",
                 )
                 for name, changed in changes.items()
             ),

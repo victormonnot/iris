@@ -89,8 +89,9 @@ also exercised a two-class SSDLite car/bus head on CUDA: real training, reload,
 evaluation and standalone export completed, with exact parity on six samples.
 Its detector quality remained poor; workflow completion is not a quality gain.
 Other class sets, architectures with those classes, and physical target machines
-still need their own checks. No
-ONNX or TensorRT conversion is provided. Use the PyTorch runner on an embedded
+still need their own checks. These native profiles do not provide ONNX or TensorRT
+conversion; [YOLOX-Nano has a separate ONNX profile](yolox-onnx.md).
+Use the PyTorch runner on an embedded
 target only when that target satisfies its runtime and operator requirements.
 Internal optimizer
 recovery states cannot be used as inference exports.

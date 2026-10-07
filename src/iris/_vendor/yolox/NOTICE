@@ -1,0 +1,25 @@
+YOLOX, Copyright (c) Megvii Inc. and its affiliates.
+Apache License 2.0; see LICENSE.
+Source: https://github.com/Megvii-BaseDetection/YOLOX
+Tag: 0.3.0
+Commit: 419778480ab6ec0590e5d3831b3afb3b46ab2aa3
+
+IRIS modifications:
+- Private package imports and file-level lint exclusions.
+- Extract only bboxes_iou and meshgrid utilities; fixed modern PyTorch meshgrid API.
+- Remove automatic GPU OOM assignment fallback to CPU and CUDA cache clearing.
+  Errors propagate to IRIS durable training without silently changing device.
+- Use modern torch.amp.autocast on the actual assignment device.
+- Architecture, forward operations, SimOTA assignment and loss are otherwise retained.
+
+Original upstream file SHA-256:
+{
+  "yolox/models/darknet.py": "368c9db45166e863691cf7460b314d047928f90e8744c492a673b6eff9b809f3",
+  "yolox/models/network_blocks.py": "f490240a674799f1b548ac4ca571c7f3e59d4e75efee8ebeb1e24e6e4e10d2a4",
+  "yolox/models/yolo_pafpn.py": "8571af557f6caacda61e54813be4be2d73c4a0889e1f876ec5586057eb2eebde",
+  "yolox/models/yolo_head.py": "9fcdcf859b91c587d11926c0a8e3e423abdaa53504eb8ad2a17379ee405378bd",
+  "yolox/models/losses.py": "7fa685fb4653bab69d5880c3f749edeb8a4cabfe71fadf0acc5151c2eaa75702",
+  "yolox/models/yolox.py": "3b88f3b19e27232ab5442b4d2c53b20d3f1e40f6f093871d6742e694368f6da0",
+  "yolox/utils/boxes.py": "65d8341d67ec35d65f4a73ba8480ce536a8bb38f4b4088f99db82bc812ec9bcb",
+  "yolox/utils/compat.py": "a8f0dec9e0566cf0a09a211bc08ce47bc7abd6dd75d239ee85d8c0c5fe3e07ce"
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from statistics import median
 
 from iris import model_exports
 from iris.model_taxonomy import class_contract
@@ -42,6 +43,16 @@ def _measurement(export, item, report, detail):
     """Validate saved JSON and its precise evaluation lane without loading a detector."""
     manifest, config = export["manifest"], export["config"]
     source, model = manifest["source"], manifest["model"]
+    yolox = manifest.get("format") == "iris-yolox-onnx-v1"
+    if yolox:
+        from iris.yolox_exports import manifest as onnx_manifest
+
+        model = config["model"]  # Checkpoint identity remains distinct from the ONNX graph.
+        expected_manifest = onnx_manifest(
+            config, export["id"], export["created_at"], manifest["files"], manifest["validation"]
+        )
+    else:
+        expected_manifest = model_exports._manifest(config, export["id"], export["created_at"])
     lane = next(lane for lane in report["lanes"] if lane["id"] == source["evaluation_model_id"])
     metadata = next(row["metadata"] for row in detail["models"] if row["id"] == lane["id"])
     if (
@@ -58,7 +69,7 @@ def _measurement(export, item, report, detail):
         or source.get("reference_device", "cpu") != metadata["device"]
         or config["evaluation_metadata_sha256"] != model_exports._digest(metadata)
         or lane["variant"] != "full"
-        or manifest != model_exports._manifest(config, export["id"], export["created_at"])
+        or manifest != expected_manifest
         or model_exports._digest(manifest) != export["manifest_sha256"]
         or item["export_id"] != export["id"]
     ):
@@ -84,9 +95,16 @@ def _measurement(export, item, report, detail):
         or model_exports._digest(payload) != item["fingerprint"]
     ):
         raise ValueError("Saved standalone measurement no longer matches its checksum")
-    summary = model_exports._runtime().validate_measurement(manifest, reference, payload)
+    if yolox:
+        from iris.yolox_export_runner import validate_measurement
+
+        summary = validate_measurement(manifest, reference, payload)
+    else:
+        summary = model_exports._runtime().validate_measurement(manifest, reference, payload)
     if summary != item["summary"]:
         raise ValueError("Saved standalone measurement summary is inconsistent")
+    if yolox:
+        summary = _onnx_summary(summary, reference, payload)
     environment = {
         key: deepcopy(payload["environment"][key])
         for key in (
@@ -103,7 +121,9 @@ def _measurement(export, item, report, detail):
             "interop_threads",
             "precision",
             "batch_size",
+            "opencv",
         )
+        if key in payload["environment"]
     }
     if "cuda" in payload["environment"]:
         environment["cuda"] = {
@@ -150,7 +170,42 @@ def _measurement(export, item, report, detail):
                 "execution_verified",
             )
         },
-        "declaration": payload["declaration"],
+        "declaration": payload.get(
+            "declaration", payload.get("evidence_kind", "declared_execution")
+        ),
+    }
+
+
+def _onnx_summary(summary, reference, payload):
+    """Project measured fields without inventing unrecorded stage/load durations."""
+
+    def distribution(values):
+        return {"min": min(values), "median": median(values), "max": max(values)}
+
+    samples = payload["samples"]
+    expected = reference["frames"] * payload["repeats"]
+    mismatches = [
+        {"frame_id": sample["frame_id"], "repeat": sample["repeat"]}
+        for sample, frame in zip(samples, expected, strict=True)
+        if any(sample["prediction"][key] != frame[key] for key in ("input_size", "detections"))
+    ]
+    return {
+        **summary,
+        "frames": len(reference["frames"]),
+        "repeats": payload["repeats"],
+        "mismatched_samples": mismatches,
+        "timing_ms": {
+            **{
+                key: {"min": None, "median": None, "max": None}
+                for key in ("preprocess_ms", "inference_ms", "postprocess_ms")
+            },
+            "total_ms": distribution(
+                [item["prediction"]["timing"]["total_ms"] for item in samples]
+            ),
+        },
+        "decode_ms": distribution([item["prediction"]["timing"]["decode_ms"] for item in samples]),
+        "load_ms": None,
+        "warmup_ms": None,
     }
 
 

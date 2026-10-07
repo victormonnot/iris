@@ -1,5 +1,11 @@
 # Trainable detector choices
 
+**YOLOX-Nano** is a third supported trainable family, with CPU/CUDA training,
+the same three scope choices and durable recovery. Its portable export targets
+OpenCV CPU through ONNX. See [its pinned training recipe](yolox-training.md) and
+[export contract](yolox-onnx.md). The comparison below describes the original
+two Torchvision families; export capabilities depend on the architecture.
+
 IRIS can fine-tune **Faster R-CNN MobileNetV3-Large 320 FPN** and
 **SSDLite320 MobileNetV3-Large**, including their compatible trained descendants.
 Both accept frozen custom classes, CPU or NVIDIA CUDA training, durable recovery,
@@ -58,7 +64,9 @@ Official weights are provisioned explicitly using the existing model setup
 commands. Training, preview and export never download them. No additional ML
 package is required for SSDLite. See [compute setup](compute-targets.md) and
 [model export](model-export.md) for target requirements, including embedded
-systems. There is no ONNX/TensorRT conversion or blanket embedded-board support.
+systems. These two profiles do not convert to ONNX or TensorRT. The separate
+[YOLOX ONNX profile](yolox-onnx.md) targets OpenCV CPU; no profile establishes
+blanket embedded-board support.
 
 ## Training contracts
 

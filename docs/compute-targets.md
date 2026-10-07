@@ -13,14 +13,14 @@ choices are independent:
 
 This table describes the implemented paths, not hardware certification. In
 addition to synthetic software checks, real 40-step acceptance trials covered
-both architectures with light training on CPU and all three depths on an RTX 4060
+the two Torchvision architectures with light training on CPU and all three depths on an RTX 4060
 using a separate PyTorch 2.10.0 / Torchvision 0.25.0 `cu128` environment. Completed
 checkpoints were reloaded and evaluated on the corresponding execution device.
 Light-scope runs also continued after cancellation and forced worker termination
 on CPU and CUDA, preserving each attempt's device and runtime.
 
 Standalone exports of the light-scope models then completed all four paths for
-both architectures in separate CPU/CUDA environments without IRIS and with
+the two Torchvision architectures in separate CPU/CUDA environments without IRIS and with
 networking disabled, on that same host. Each export used eight saved validation
 images and three repetitions. Same-device references passed exact parity;
 cross-device references failed it on small numerical differences, with unchanged
@@ -117,10 +117,13 @@ recovery and storage contract.
 
 In **Model exports**, select a CPU or CUDA target independently of the training
 device. A completed full-image evaluation supplies saved reference predictions
-from CPU or CUDA. Exports preserve the original weights, classes, input/output
-recipe and reference device. They never run inference while being packaged.
+from CPU or CUDA. Native Torchvision exports preserve the original weights, classes, input/output
+recipe and reference device, without running inference while being packaged.
+YOLOX-Nano uses a separate [ONNX conversion profile](yolox-onnx.md): it runs a
+bounded numerical conversion check and currently targets OpenCV CPU. Its
+training and reference evaluation can use CPU or CUDA.
 
-The standalone runner requires Python 3.12 or 3.13, PyTorch 2.10.0, Torchvision
+The native Torchvision standalone runner requires Python 3.12 or 3.13, PyTorch 2.10.0, Torchvision
 0.25.0 and Pillow 12.3.0. Provision its dependencies for the destination first;
 the bundle does not install them. Inspecting a bundle requires only Python's
 standard library. A CUDA target can select a visible CUDA index:
@@ -166,10 +169,11 @@ compatibility with IRIS's modern pinned runtime; such targets need a separately
 validated deployment solution.
 ([NVIDIA JetPack 4 end-of-life notice](https://forums.developer.nvidia.com/t/announcing-end-of-life-for-nvidia-jetpack-4-with-the-release-of-jetpack-4-6-6/314409))
 
-This feature supplies native PyTorch CPU/CUDA execution and portable weights. It
-does not convert models to ONNX or TensorRT, quantize them, certify Jetson hardware,
-or promise a latency, memory budget or frame rate. Those are separate target
+This feature supplies native PyTorch CPU/CUDA execution and portable weights.
+[YOLOX-Nano additionally exports ONNX for OpenCV CPU](yolox-onnx.md).
+Neither profile builds TensorRT engines, quantizes models, certifies Jetson hardware,
+or promises a latency, memory budget or frame rate. Those are separate target
 integration and measurement tasks.
 
-Both trainable architectures follow these device rules; see [model choices](trainable-models.md)
+The trainable architectures follow these device rules; see [model choices](trainable-models.md)
 for their training and deployment contracts.

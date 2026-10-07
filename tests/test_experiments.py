@@ -565,6 +565,40 @@ def test_trained_run_configuration_and_counts_are_copied_without_private_provena
     assert "PRIVATE_" not in json.dumps(report)
 
 
+def test_yolox_nested_recipe_and_letterbox_are_preserved_without_private_fields(saved):
+    from iris.yolox_spec import INPUT_TRANSFORM, POLICY
+
+    store, detail, dataset, _ = saved
+    model_id = MODELS[0]
+    training_id = _record_training(
+        store, dataset, model_id, detail["config"]["model_hashes"][model_id]
+    )
+    run = store.get("training_runs", training_id)
+    policy = deepcopy(POLICY)
+    policy["gradient_clipping"]["private_path"] = "PRIVATE_CLIPPING_PATH"
+    run["config"]["training_adapter"] = policy
+    run["metadata"]["training_loss_policy"] = policy
+    store.update(
+        "training_runs",
+        training_id,
+        {
+            "config": run["config"],
+            "metadata": run["metadata"],
+        },
+    )
+    model = detail["models"][0]
+    metadata = deepcopy(model["metadata"])
+    metadata["input_transform"] = deepcopy(INPUT_TRANSFORM)
+    metadata["input_transform"]["letterbox"]["private_path"] = "PRIVATE_RESIZE_PATH"
+    store.update("evaluation_models", model["id"], {"metadata": metadata})
+    report = create(saved)
+    lane = report["snapshot"]["lanes"][0]
+    assert lane["training"]["config"]["training_adapter"] == POLICY
+    assert lane["training"]["metadata"]["training_loss_policy"] == POLICY
+    assert lane["runtime"]["input_transform"] == INPUT_TRANSFORM
+    assert "PRIVATE_" not in json.dumps(report)
+
+
 def test_known_official_origin_is_pretrained_without_claiming_unknown_training(saved):
     store, detail, _, _ = saved
     _replace_lineage(store, detail, MODELS[0], [{"model_id": MODELS[0], "origin": "official"}])

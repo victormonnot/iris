@@ -195,8 +195,8 @@ annotation workflow and completed all six reviews.
 
 | Capability | Real acceptance evidence | Limit |
 | --- | --- | --- |
-| CPU training | Both detector architectures, 40 light-scope steps, checkpoint reload and evaluation | Longer runs and partial/full CPU training remain unmeasured |
-| NVIDIA training | RTX 4060, both architectures, light/partial/full scopes, 40 steps | Other GPUs untested; successful execution does not imply better quality |
+| CPU training | Both Torchvision detector architectures, 40 light-scope steps, checkpoint reload and evaluation | Longer runs and partial/full CPU training remain unmeasured |
+| NVIDIA training | RTX 4060, both Torchvision architectures, light/partial/full scopes, 40 steps | Other GPUs untested; successful execution does not imply better quality |
 | Interrupted training | Light-scope continuation after cancellation and forced worker termination on CPU/CUDA | Same runtime/device only; power loss and deeper-scope recovery untested |
 | Standalone inference | Both architectures, all four CPU/CUDA training-to-target paths; R10 also exercised a custom car/bus SSDLite head on CUDA | Same-device exact parity passed; the four original cross-device comparisons failed. Separate target-reference controls passed without replacing those failures |
 | DINO-X API | Integrated annotation worker and saved native Benchmark evidence | Small person-only quality pilot so far |
@@ -204,8 +204,91 @@ annotation workflow and completed all six reviews.
 | DINO-X → Astra review | Real requests and imported Benchmark outputs | No incremental quality benefit in R9; no live combined Annotation option |
 | SAM / Astra → SAM → Astra | Adapter and runtime preparation | Real model execution remains unmeasured |
 | Backup/restoration | Separate restoration of 36 tables and 370 files | Verified snapshot, not a guarantee for every future backup |
-| Jetson / other embedded devices | Runtime profiles documented | No physical-device acceptance; no ONNX/TensorRT export |
+| Jetson / other embedded devices | Runtime profiles documented | No physical-device acceptance; no TensorRT export. The later YOLOX ONNX profile is qualified separately on workstation CPU |
 
 Detailed conditions and results remain in [custom training](custom-training.md),
 [training continuation](long-training.md), [model exports](model-export.md),
 [compute targets](compute-targets.md), and the provider-specific documentation.
+
+## YOLOX-Nano: custom detector accepted by an external application
+
+On 2026-10-07, a person-detection cycle trained YOLOX-Nano in IRIS, exported its
+raw ONNX graph and replayed it through ARGOS's actual detector and tracker. This
+was offline work on the workstation; no flight service or default model changed.
+
+The frozen human reference contains **57 images and 52 people**. Forty images
+from bedroom and morning-park recordings supply training, including four
+negatives; 17 courtyard images supply validation, including one negative.
+Recordings are separated, but this small validation set was already used during
+R3–R9. It is not a new independent test of distant-person or analog-video
+robustness. No cloud annotation or paid API call was needed for this cycle.
+
+### Training and detection quality
+
+Two planned CUDA configurations used batch size one, learning rate 0.0001 and
+seed 42 on an RTX 4060. The head-only configuration completed 400 steps. The first
+partial-backbone attempt stopped after 15 updates because an unstable update on
+a negative image led to nonfinite gradients in the next step. No checkpoint was
+published from that attempt. The failure and original recipe remain recorded.
+
+A training-only reproduction identified the numerical instability. A separately
+versioned v2 recipe adds global L2 gradient clipping at 10 before SGD, retaining
+the original learning rate, seed and data. The new partial-backbone attempt
+completed 800 finite updates, with clipping applied on 728. Validation images
+were not used to diagnose the failure or train either model. The v2 training
+worker took 97.33 seconds; both published checkpoints reloaded and predicted on
+CPU successfully.
+
+Full-image IRIS evaluation used confidence 0.35 and matching IoU 0.5:
+
+| YOLOX-Nano configuration | Correct | Extra | Missed | AP50 | AP@[.50:.95] |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Official parent | 15 | 0 | 1 | 93.07% | 57.05% |
+| Head only, 400 steps | 15 | 0 | 1 | 95.59% | 56.80% |
+| Partial backbone v2, 800 steps | 16 | 0 | 0 | 100% | 67.76% |
+
+ARGOS independently confirmed **15/0/1 → 16/0/0** on the same 17 validation images
+using its normal person-only filtering: confidence 0.35, NMS 0.45 and at most
+16 detections. Its training-image result changed from 28/1/8 to 36/0/0; this is
+training fit, not additional generalization evidence. The model remains a
+candidate, with no automatic selection or deployment.
+
+### Export and temporal replay
+
+The final ONNX conversion passed its fixed raw-output numerical check on three
+reference images (`rtol=0.001`, `atol=0.001`), with maximum absolute difference
+0.0004352. The standalone OpenCV CPU runner then produced nine measured samples
+(three images, three repetitions). Exact saved-prediction parity **failed** and
+that failure was imported unchanged. Detection counts and order agreed; the
+largest box-coordinate difference was 0.000184 pixels and largest score difference
+was 0.000000179. Numerical conversion agreement and strict exact parity remain
+separate claims. See [the export contract](yolox-onnx.md).
+
+The temporal comparison used 300 original camera frames in three 100-frame clips,
+with original receipt timestamps, identical inputs and per-clip tracker resets.
+Two courtyard clips, totaling 200 frames, belong to the validation recording;
+the 100-frame morning-park clip belongs to training and is diagnostic only.
+The official and custom graph ran through the same current ARGOS pipeline,
+with alternating model order and two warmups each. Standalone viewers embed all
+original frames and saved boxes, without rerunning inference.
+
+On the 200 validation frames, frames with a retained detection increased from
+**137 to 170**, while locally created track IDs increased from **20 to 23**.
+Only two of those frames have human box references, and none have identity ground
+truth. More frames with detections therefore do not establish fewer false alarms,
+fewer true target losses or better identity continuity. Historical loss/ambiguity
+markers locate useful passages; they are not verified target-loss labels.
+
+Median inference time in this workstation replay was 7.19 ms for the official
+model and 6.74 ms for the candidate; median full processing was 10.46 and 10.18 ms.
+These are OpenCV CPU measurements on the workstation with four threads, not live
+flight throughput, end-to-end latency or portable-computer measurements. The
+portable computer was unavailable; its timing and a fresh difficult FPV set
+remain follow-up work.
+
+Independent checks reconstructed quality counts, verified original-image hashes
+and preserved all 795 earlier workspace rows. Code checks include the full IRIS
+suite (3,671 passed, eight skipped), subsequent targeted export/report checks and
+real desktop/mobile browser inspection. The application bridge and viewer have
+separate ARGOS tests. These checks establish the tested software cycle; new scenes
+and temporal identity annotations are needed to qualify tracking improvements.

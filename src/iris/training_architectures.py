@@ -4,7 +4,8 @@ from copy import deepcopy
 
 FRCNN = "fasterrcnn_mobilenet_v3_large_320_fpn"
 SSDLITE = "ssdlite320_mobilenet_v3_large"
-TRAINING_ARCHITECTURES = (FRCNN, SSDLITE)
+YOLOX = "yolox_nano"
+TRAINING_ARCHITECTURES = (FRCNN, SSDLITE, YOLOX)
 
 SCOPE_VERSION = 1
 TRAINING_SCOPES = {
@@ -63,12 +64,35 @@ SSDLITE_SCOPES = {
 }
 
 
+YOLOX_SCOPES = {
+    "prediction_head_only": {
+        "id": "prediction_head_only",
+        "label": "Detection predictions only",
+        "description": "Adapt class, box and objectness predictions with image features fixed.",
+        "trainable_modules": ["head.cls_preds", "head.reg_preds", "head.obj_preds"],
+    },
+    "partial_backbone": {
+        "id": "partial_backbone",
+        "label": "Last backbone stage and detection head",
+        "description": "Adapt the final CSP feature stage and the complete detection head.",
+        "trainable_modules": ["backbone.backbone.dark5", "head"],
+    },
+    "full_model": {
+        "id": "full_model",
+        "label": "All detector layers",
+        "description": "Adapt all CSP features, feature pyramid and detection layers.",
+        "trainable_modules": ["backbone", "head"],
+    },
+}
+
+
 def training_scope(scope, architecture=FRCNN):
     if not isinstance(scope, str) or scope not in TRAINING_SCOPES:
         raise ValueError("Choose prediction_head_only, partial_backbone or full_model")
     if architecture not in TRAINING_ARCHITECTURES:
         raise ValueError("Unsupported training architecture")
-    return deepcopy((SSDLITE_SCOPES if architecture == SSDLITE else TRAINING_SCOPES)[scope])
+    scopes = {FRCNN: TRAINING_SCOPES, SSDLITE: SSDLITE_SCOPES, YOLOX: YOLOX_SCOPES}
+    return deepcopy(scopes[architecture][scope])
 
 
 def capabilities(architecture):
@@ -78,7 +102,10 @@ def capabilities(architecture):
         "training": True,
         "training_scopes": [training_scope(scope, architecture) for scope in TRAINING_SCOPES],
         "training_summary": (
-            "Lightweight, fixed 320 × 320 detector candidate. Compare quality and target "
+            "Anchor-free, fixed 416 × 416 detector. Supports portable ONNX export; compare "
+            "quality and target latency before replacing a deployed detector."
+            if architecture == YOLOX
+            else "Lightweight, fixed 320 × 320 detector candidate. Compare quality and target "
             "measurements on your data; smaller weights do not guarantee faster execution."
             if architecture == SSDLITE
             else "Two-stage detector with region proposals. Compare quality and target "

@@ -1,5 +1,10 @@
 # Portable trained-model export
 
+For the separate **YOLOX-Nano ONNX/OpenCV CPU** profile, see
+[YOLOX ONNX bundles](yolox-onnx.md). That profile converts a graph and executes a
+bounded numerical check. The native PyTorch profiles below retain their original
+copy-only behavior and immutable manifests.
+
 IRIS exports trained **Faster R-CNN MobileNetV3-Large 320 FPN** and
 **SSDLite320 MobileNetV3-Large** checkpoints with a standalone CPU or NVIDIA CUDA
 runner. The package contains the original PyTorch `state_dict`,

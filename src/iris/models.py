@@ -25,7 +25,7 @@ from urllib.request import Request, urlopen
 
 from PIL import Image, ImageOps
 
-from iris.training_architectures import FRCNN, capabilities
+from iris.training_architectures import FRCNN, YOLOX, capabilities
 
 RUNTIME_VERSIONS = {"torch": "2.10.0", "torchvision": "0.25.0"}
 # COCO category IDs contain gaps; never use a compact 0..79 class index.
@@ -140,6 +140,13 @@ _SPECS = {
         "expected_hash_prefix": "907ea3f9",
         "download_bytes": 77844807,
     },
+    "yolox_nano": {
+        "name": "YOLOX-Nano",
+        "architecture": "yolox_nano",
+        "weight_filename": "yolox_nano.pth",
+        "expected_hash_prefix": "cd28f55fbbc1829f99d9ac9b38a16d259a22889739c8728ea877610201feff7b",
+        "download_bytes": 7694953,
+    },
 }
 
 TIMING_PROTOCOL = {
@@ -237,6 +244,16 @@ def get_spec(model_id: str, root: Path | None = None) -> dict:
         **capabilities(spec["architecture"]),
         origin="official",
     )
+    if spec["architecture"] == YOLOX:
+        from iris.yolox_spec import SOURCE_COMMIT, SOURCE_URL, WEIGHT_URL
+
+        spec.update(
+            weights_name="YOLOX-Nano COCO 0.1.1rc0",
+            weight_url=WEIGHT_URL,
+            license_url=SOURCE_URL + "/LICENSE",
+            code_license_url=SOURCE_URL + "/LICENSE",
+            source_commit=SOURCE_COMMIT,
+        )
     return spec
 
 
@@ -532,7 +549,14 @@ def _configure_cuda(torch, device):
 
 
 class TorchvisionDetector:
-    """Load a verified official or trained checkpoint, without implicit downloads."""
+    """Historical detector entry point; dispatch YOLOX while preserving existing callers."""
+
+    def __new__(cls, root: Path, model_id: str, device: str = "cpu"):
+        if cls is TorchvisionDetector and get_spec(model_id, root)["architecture"] == YOLOX:
+            from iris.yolox_runtime import YOLOXDetector
+
+            return YOLOXDetector(root, model_id, device)
+        return super().__new__(cls)
 
     def __init__(self, root: Path, model_id: str, device: str = "cpu"):
         from iris.model_taxonomy import class_contract

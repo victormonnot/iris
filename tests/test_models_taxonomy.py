@@ -118,7 +118,7 @@ def test_catalog_keeps_other_models_visible_when_custom_contract_is_corrupt(
     monkeypatch.setattr(models, "_runtime_problem", lambda: None)
     rows = models.catalog(tmp_path)
     invalid = next(item for item in rows if item["id"] == "trained-fixture")
-    assert len(rows) == 3
+    assert len(rows) == 4
     assert invalid["status"] == "invalid_weights" and "class definition" in invalid["reason"]
     assert not invalid["inference"] and not invalid["training"] and invalid["classes"] == []
     with pytest.raises(ValueError, match="class definition"):

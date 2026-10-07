@@ -777,7 +777,7 @@
       ? "Checking local checkpoints and supported training depths…"
       : workspace.trainingModelsError || (model?.status === "ready"
         ? compatibility.reason
-        : "A ready Faster R-CNN or SSDLite checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
+        : "A ready Faster R-CNN, SSDLite or YOLOX-Nano checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
     $("#training-model-description").textContent = model?.training_summary || "";
     $("#training-preview").disabled = unavailable;
     $("#training-readiness").textContent = workspace.trainingBusy

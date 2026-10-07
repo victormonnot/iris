@@ -196,7 +196,25 @@ def _training_summary(store, model_id, expected_sha256=None):
         (run["metadata"], selected_metadata, "training_loss_policy"),
     ):
         if field in source:
-            target[field] = _pick(source[field], ("id", "empty_image_hard_negatives", "batchnorm"))
+            target[field] = _pick(
+                source[field],
+                (
+                    "id",
+                    "empty_image_hard_negatives",
+                    "batchnorm",
+                    "source_commit",
+                    "input_size",
+                    "loss",
+                    "augmentation",
+                    "ema",
+                    "automatic_device_fallback",
+                ),
+            )
+            if "gradient_clipping" in source[field]:
+                target[field]["gradient_clipping"] = _pick(
+                    source[field]["gradient_clipping"],
+                    ("norm_type", "max_norm", "error_if_nonfinite"),
+                )
     if "taxonomy" in config:
         from iris.model_taxonomy import class_contract
 
@@ -274,8 +292,15 @@ def _runtime(metadata):
                 "max_size",
                 "fixed_size",
                 "size_divisible",
+                "dtype",
+                "layout",
             ),
         )
+        if "letterbox" in metadata["input_transform"]:
+            result["input_transform"]["letterbox"] = _pick(
+                metadata["input_transform"]["letterbox"],
+                ("alignment", "value", "interpolation"),
+            )
     if "timing_protocol" in metadata:
         result["timing_protocol"] = _pick(
             metadata["timing_protocol"],

@@ -206,6 +206,10 @@ def _source(store, model_id, evaluation_id):
     if model is None:
         raise ValueError("Choose a locally trained checkpoint")
     architecture = model["architecture"]
+    if architecture == "yolox_nano":
+        from iris.yolox_exports import source
+
+        return source(store, model_id, evaluation_id)
     if architecture not in (TRAINING_ARCHITECTURE, _runtime().SSDLITE_ARCHITECTURE):
         raise ValueError("This export supports trained Faster R-CNN and SSDLite MobileNetV3 only")
     ssdlite = architecture == _runtime().SSDLITE_ARCHITECTURE
@@ -308,6 +312,20 @@ def _plan(
     target_device="cpu",
     frozen=None,
 ):
+    model = store.get("trained_models", trained_model_id)
+    if model is not None and model["architecture"] == "yolox_nano":
+        from iris.yolox_exports import plan
+
+        return plan(
+            store,
+            trained_model_id=trained_model_id,
+            evaluation_id=evaluation_id,
+            frame_ids=frame_ids,
+            name=name,
+            request_id=request_id,
+            target_device=target_device,
+            frozen=frozen,
+        )
     if target_device not in ("cpu", "cuda"):
         raise ValueError("Choose a CPU or CUDA export target")
     if (
@@ -467,11 +485,14 @@ def preview_export(store, **options):
     with store.connect() as connection:
         connection.execute("BEGIN")
         plan = _plan(_View(store.root, connection), request_id=request_id, **options)
+    warnings = WARNINGS
+    if plan["format"] == "iris-yolox-export-plan-v1":
+        from iris.yolox_exports import WARNINGS as warnings
     return {
         "plan": plan,
         "request_id": request_id,
         "fingerprint": _digest(plan),
-        "warnings": WARNINGS,
+        "warnings": warnings,
     }
 
 
@@ -565,6 +586,10 @@ def run_export(store, identifier, progress, cancelled):
     row = store.get("model_exports", identifier)
     if row is None:
         raise ValueError("Export not found")
+    if row["config"].get("format") == "iris-yolox-export-plan-v1":
+        from iris.yolox_exports import run_export as run_yolox
+
+        return run_yolox(store, identifier, progress, cancelled)
     if row["path"]:
         raise ValueError("This immutable export is already published")
     directory = store.root / "model_exports"
@@ -698,7 +723,13 @@ def read_bundle(path, expected_manifest=None):
             if not 0 < manifest_info.file_size <= 2 * 1024**2:
                 raise ValueError("Standalone manifest exceeds its size limit")
             manifest = _json(archive.read(manifest_info))
-            _runtime().validate_manifest(manifest)
+            yolox = manifest.get("format") == "iris-yolox-onnx-v1"
+            if yolox:
+                from iris.yolox_export_runner import validate_manifest
+
+                validate_manifest(manifest)
+            else:
+                _runtime().validate_manifest(manifest)
             if expected_manifest is not None and manifest != expected_manifest:
                 raise ValueError("Standalone manifest differs from the saved export")
             expected = {"manifest.json", *manifest["files"]}
@@ -728,7 +759,12 @@ def read_bundle(path, expected_manifest=None):
                     raise ValueError("Standalone file checksum is inconsistent")
                 if info.filename == "parity/reference.json":
                     reference = _json(b"".join(chunks))
-            _runtime().validate_reference(manifest, reference)
+            if yolox:
+                from iris.yolox_exports import validate_reference
+
+                validate_reference(manifest, reference)
+            else:
+                _runtime().validate_reference(manifest, reference)
             return manifest, reference
     except (zipfile.BadZipFile, KeyError, RuntimeError, OverflowError) as exc:
         raise ValueError("Standalone ZIP is invalid or incomplete") from exc
@@ -755,7 +791,12 @@ def preview_measurement(store, identifier, payload):
     if len(_canonical(payload)) > MAX_MEASUREMENT_BYTES:
         raise ValueError("Measurement JSON exceeds the 8 MiB limit")
     manifest, reference = read_bundle(download_path(store, identifier), row["manifest"])
-    summary = _runtime().validate_measurement(manifest, reference, payload)
+    if manifest.get("format") == "iris-yolox-onnx-v1":
+        from iris.yolox_export_runner import validate_measurement
+
+        summary = validate_measurement(manifest, reference, payload)
+    else:
+        summary = _runtime().validate_measurement(manifest, reference, payload)
     return {"fingerprint": _digest(payload), "summary": summary}
 
 
@@ -788,6 +829,10 @@ def save_measurement(store, identifier, payload, expected_fingerprint):
 
 def validate_export_archive(row, *, connection, root):
     """Validate frozen source links and nested evidence from a read-only archive snapshot."""
+    if row["config"].get("format") == "iris-yolox-export-plan-v1":
+        from iris.yolox_exports import validate_archive
+
+        return validate_archive(row, connection=connection, root=root)
     view = _View(root, connection)
     plan = _plan(view, **_options(row["config"]), frozen=row["config"])
     if (

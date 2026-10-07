@@ -93,11 +93,18 @@
   }
   function renderEvaluations(previous = null) {
     const model = selectedModel(), evaluations = model?.evaluations || [];
+    const yolox = model?.architecture === "yolox_nano";
+    field("target-device").querySelector('[value="cpu"]').textContent = yolox ? "CPU · OpenCV ONNX" : "CPU · native PyTorch";
+    field("target-device").querySelector('[value="cuda"]').disabled = yolox;
+    if (yolox) field("target-device").value = "cpu";
+    field("target-hint").textContent = yolox
+      ? "YOLOX exports an ONNX graph for OpenCV CPU. Packaging converts the weights and checks raw outputs locally. Training may use CPU or CUDA."
+      : "Choose the device on the destination machine. This computer does not need the selected hardware to prepare a package.";
     field("evaluation").replaceChildren();
     if (!evaluations.length) field("evaluation").append(new Option("No eligible saved evaluation", ""));
     for (const item of evaluations) field("evaluation").append(new Option(`${item.name || item.id} · ${deviceLabel(item.device)} · ${item.frames?.length || 0} images`, item.id));
     if (evaluations.some((item) => item.id === previous)) field("evaluation").value = previous;
-    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled evaluations are not eligible. Training, reference evaluation and destination devices are independent." : "Supported trained Faster R-CNN and SSDLite checkpoints can use a native PyTorch export profile.");
+    field("model-reason").textContent = model?.reason || (model?.eligible ? "Uses saved native outputs from this exact checkpoint. Tiled evaluations are not eligible. Training, reference evaluation and destination devices are independent." : "Trained Faster R-CNN and SSDLite use native PyTorch; trained YOLOX-Nano uses OpenCV ONNX.");
     renderFrames();
   }
   async function refreshCandidates() {
@@ -151,7 +158,8 @@
     const parity = node("p", "model-export-parity", presentation.parity);
     parity.dataset.status = summary?.parity_passed === true ? "passed" : summary?.parity_passed === false ? "failed" : "unknown";
     container.replaceChildren(parity, node("p", "field-hint", presentation.evidence));
-    if (Number.isInteger(summary?.sample_count)) container.append(node("p", "field-hint", `${summary.frames} images · ${summary.repeats} repeats · ${summary.sample_count} measured predictions`));
+    if (Number.isInteger(summary?.sample_count)) container.append(node("p", "field-hint", Number.isInteger(summary.frames) && Number.isInteger(summary.repeats) ? `${summary.frames} images · ${summary.repeats} repeats · ${summary.sample_count} measured predictions` : `${summary.sample_count} measured predictions`));
+    if (typeof summary?.mean_total_ms === "number") container.append(node("p", "field-hint", `Mean prediction processing: ${summary.mean_total_ms.toFixed(3)} ms · image decoding excluded.`));
     if (summary?.parity_passed === false) container.append(node("p", "field-hint", "One or more outputs differ from the frozen IRIS outputs. Inspect mismatches before using the model in another application."));
     const milliseconds = (value) => typeof value === "number" && Number.isFinite(value) ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "Unavailable";
     if (summary?.timing_ms) {
@@ -233,11 +241,12 @@
       if (result.plan?.profile?.device !== payload.target_device)
         throw new Error("The export preview does not match the selected target device. Preview the package again.");
       view.preview = { ...result, key, options: payload };
-      field("preview-summary").textContent = `${payload.name} · ${selectedModel()?.name || payload.trained_model_id} · ${payload.frame_ids.length} explicitly selected parity images. Full checkpoint weights and saved native predictions are copied with the standalone ${deviceLabel(payload.target_device)} runner. Reference evaluation: ${deviceLabel(result.plan?.source?.reference_device || selectedEvaluation()?.device)}. No model execution is started.`;
+      const yolox = result.plan?.format === "iris-yolox-export-plan-v1";
+      field("preview-summary").textContent = `${payload.name} · ${selectedModel()?.name || payload.trained_model_id} · ${payload.frame_ids.length} explicitly selected parity images. ${yolox ? "Creating this package converts YOLOX to ONNX and checks raw outputs on CPU. The package includes a standalone OpenCV runner and saved predictions." : `Full checkpoint weights and saved native predictions are copied with the standalone ${deviceLabel(payload.target_device)} runner. No model execution is started.`} Reference evaluation: ${deviceLabel(result.plan?.source?.reference_device || selectedEvaluation()?.device)}.`;
       field("preview-warnings").replaceChildren(...(result.warnings || []).map((text) => node("p", "field-hint", text)));
       const model = result.plan?.model, runtime = result.plan?.profile?.runtime;
       if (model?.class_contract?.class_mapping) field("preview-warnings").prepend(node("p", "field-hint", `Frozen class mapping: ${JSON.stringify(model.class_contract.class_mapping)}.`));
-      if (runtime) field("preview-warnings").prepend(node("p", "field-hint", `Runtime: PyTorch ${runtime.torch}, Torchvision ${runtime.torchvision}, Pillow ${runtime.pillow} · ${deviceLabel(result.plan?.profile?.device)} float32.`));
+      if (runtime) field("preview-warnings").prepend(node("p", "field-hint", yolox ? `Runtime: OpenCV ${runtime.opencv} · CPU float32 ONNX.` : `Runtime: PyTorch ${runtime.torch}, Torchvision ${runtime.torchvision}, Pillow ${runtime.pillow} · ${deviceLabel(result.plan?.profile?.device)} float32.`));
       if (model?.sha256) field("preview-warnings").append(node("p", "field-hint", `Checkpoint SHA-256: ${model.sha256}`));
       field("preview-contract").textContent = JSON.stringify(result.plan, null, 2); field("preview-result").hidden = false;
     } catch (failure) { if (generation === view.generation) error("error", failure); }

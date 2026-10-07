@@ -427,6 +427,7 @@ def _deployment_environment(measurement):
             ("Python", "python"),
             ("PyTorch", "torch"),
             ("Torchvision", "torchvision"),
+            ("OpenCV", "opencv"),
             ("Pillow", "pillow"),
             ("CPU threads", "threads"),
             ("Interop threads", "interop_threads"),

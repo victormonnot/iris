@@ -60,7 +60,7 @@ def test_catalog_does_not_import_runtime_or_contact_network(monkeypatch, tmp_pat
         models, "urlopen", lambda *a, **kw: pytest.fail("Unexpected network request")
     )
     rows = models.catalog(tmp_path)
-    assert [row["id"] for row in rows] == [SSD, FRCNN]
+    assert [row["id"] for row in rows] == [SSD, FRCNN, "yolox_nano"]
     assert all(row["status"] == "missing_runtime" for row in rows)
     assert all(row["runtime_load_verified"] is False for row in rows)
     assert not (tmp_path / "models").exists()

@@ -15,6 +15,14 @@ comparator and can be measured against their parents. See
 
 ## Standalone model export
 
+**YOLOX-Nano** also supports a generic ONNX export for OpenCV CPU, with explicit
+classes, preprocessing and raw output encoding. Select its trained checkpoint
+and reference images in the same Model exports panel. This job converts and
+checks raw outputs locally; its standalone runner measures exact saved-output
+parity separately. GPU training does not require a GPU destination. See
+[YOLOX training and export](docs/yolox-training.md) and the
+[ONNX bundle contract](docs/yolox-onnx.md).
+
 In **Dataset & Training → Model exports**, choose a trained Faster R-CNN or SSDLite checkpoint,
 a completed CPU or CUDA full-image evaluation, a CPU or CUDA target, and 1–8 saved
 images for parity checking.
@@ -38,6 +46,13 @@ hardware or deployment performance.
 See [the export format, runner commands and limitations](docs/model-export.md).
 
 ## Trainable model choices
+
+**YOLOX-Nano** is available for CPU/CUDA fine-tuning, all three training depths,
+checkpoint continuation and held-out comparison. It preserves aspect ratio with
+a 416-pixel letterbox and supports custom classes. Its first training recipe
+uses no augmentation or EMA; measured quality, not training duration, determines
+whether to retain a candidate. YOLOX exports use ONNX/OpenCV CPU; the existing
+Torchvision architectures retain their native CPU/CUDA export profiles.
 
 Fine-tune **Faster R-CNN MobileNetV3-Large 320 FPN** or the lighter
 **SSDLite320 MobileNetV3-Large** candidate on the same frozen dataset and custom
@@ -356,10 +371,10 @@ uv run --extra ml iris models download --all
 uv run --extra ml iris
 ```
 
-These commands download roughly 300 MB in total (CPU packages and two official
-COCO checkpoints). The checkpoints alone total 91,914,162 bytes. No user images
+These commands download roughly 310 MB in total (CPU packages and three official
+COCO checkpoints). The checkpoints alone total 99,609,115 bytes. No user images
 are sent to a provider. Downloads go into the chosen workspace's `models/`
-directory and are verified against the published SHA-256 prefixes. Setup is
+directory and are verified against pinned SHA-256 identities. Setup is
 atomic and repeatable. Keep using `--extra ml` with `uv run` / `uv sync` to retain
 the optional runtime in the managed environment.
 

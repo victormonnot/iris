@@ -19,7 +19,7 @@ def main():
     listing = actions.add_parser("list", help="List model readiness without network access")
     download = actions.add_parser("download", help="Download official weights (no user data sent)")
     download.add_argument("model_ids", nargs="*")
-    download.add_argument("--all", action="store_true", help="Download both official checkpoints")
+    download.add_argument("--all", action="store_true", help="Download all official checkpoints")
     for action in (listing, download):
         action.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
     workspace = commands.add_parser(

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-workbench"
-version = "0.44.1"
+version = "0.45.0"
 description = "A local computer vision workbench for images and videos"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -20,6 +20,9 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = ["torch==2.10.0", "torchvision==0.25.0"]
+onnx = [
+    "onnx==1.20.1",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -51,3 +54,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+exclude = ["src/iris/_vendor/**"]
