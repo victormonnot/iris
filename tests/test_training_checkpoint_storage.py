@@ -15,6 +15,7 @@ from iris.store import (
     SCHEMA_V17,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -31,7 +32,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+OLD_TABLES = TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES
 
 
 def rows(root, tables=OLD_TABLES):
@@ -135,7 +136,7 @@ def test_schema18_adds_only_training_states_without_changing_history_or_files(sc
         assert artifacts(schema17) == files
         assert store.list("training_checkpoints") == []
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 19
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 

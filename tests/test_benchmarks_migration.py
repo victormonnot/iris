@@ -17,6 +17,7 @@ from iris.store import (
     SCHEMA_V14,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -27,7 +28,12 @@ from iris.workspace_archive import create_archive, preview_workspace
 from iris.workspace_restore import inspect_archive, restore_archive
 
 SCHEMA14_TABLES = (
-    TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+    TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
 )
 
 

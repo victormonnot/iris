@@ -32,6 +32,8 @@ a restored workspace.
   jobs, training and evaluation histories, references and experiment reports.
 - Original media, extracted images and imported COCO source material.
 - Frozen dataset manifests and their images.
+- Temporal sequence manifests, reference revision histories and temporal dataset
+  versions, with the original videos and checksummed extracted frames they use.
 - Benchmark reference manifests and copied images, frozen configurations, trial
   outputs, correction revisions and recorded timer segments.
 - Local detector weights, trained checkpoints and receipts.
@@ -82,13 +84,14 @@ records format and application versions, database schema, time, table counts and
 each payload file's size and SHA-256. It does not hash itself. A separate SHA-256
 identifies the whole completed ZIP.
 
-This version supports SQLite schemas 12, 13, 14 and 15 and Linux publication semantics.
+This version supports SQLite schemas 12 through 20 and Linux publication semantics.
 Each schema is checked against its own expected tables, columns, indexes and
 references. Restoration preserves the archived database and files without
 migrating them. Opening an older restored workspace in the current application
-then migrates it to schema 15, assigning pre-project work to **Default project**,
+then migrates it to schema 20, assigning pre-project work to **Default project**,
 pinning historical frames to the original class definitions, and adding empty
-benchmark tables without rewriting saved annotations or results.
+tables introduced by subsequent versions, including the temporal records,
+without rewriting saved annotations or results.
 Archives with unsupported schema versions are rejected. Backups include all projects;
 the current project selection never limits their contents. Symlinks, special files, encrypted or
 compressed members, duplicate or unsafe paths, unexpected files, bad hashes and

@@ -38,8 +38,17 @@ PARENTS = {
     "benchmark_reports": ("benchmarks", "benchmark_id"),
     "model_exports": ("trained_models", "trained_model_id"),
     "model_export_measurements": ("model_exports", "export_id"),
+    "temporal_references": ("temporal_sequences", "sequence_id"),
 }
-DIRECT = {"sessions", "dataset_versions", "dataset_imports", "taxonomy_versions", "benchmarks"}
+DIRECT = {
+    "sessions",
+    "dataset_versions",
+    "dataset_imports",
+    "taxonomy_versions",
+    "benchmarks",
+    "temporal_sequences",
+    "temporal_datasets",
+}
 JOB_PARENTS = {
     "extract": ("assets", "asset_id"),
     "infer": ("comparisons", "comparison_id"),

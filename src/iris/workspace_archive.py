@@ -32,8 +32,10 @@ from iris.store import (
     SCHEMA_V16,
     SCHEMA_V17,
     SCHEMA_V18,
+    SCHEMA_V19,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     now,
 )
@@ -49,6 +51,7 @@ SCHEMAS = {
     16: SCHEMA_V16,
     17: SCHEMA_V17,
     18: SCHEMA_V18,
+    19: SCHEMA_V19,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
@@ -57,22 +60,31 @@ SCHEMA_TABLES = {
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
+    - TEMPORAL_TABLES
     - {"projects", "taxonomy_versions"},
     13: TABLES
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
+    - TEMPORAL_TABLES
     - {"taxonomy_versions"},
-    14: TABLES - BENCHMARK_TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
+    14: TABLES
+    - BENCHMARK_TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES,
     15: TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
+    - TEMPORAL_TABLES
     - {"benchmark_reports"},
-    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
-    17: TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES,
-    18: TABLES - DINOX_TABLES,
+    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES,
+    17: TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES,
+    18: TABLES - DINOX_TABLES - TEMPORAL_TABLES,
+    19: TABLES - TEMPORAL_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -1177,6 +1189,13 @@ def validate_database(
                     raise ArchiveError(
                         "Workspace taxonomy definitions or ownership are invalid"
                     ) from exc
+            if version >= 20:
+                from iris.temporal import validate_temporal_records
+
+                try:
+                    validate_temporal_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace temporal records are invalid") from exc
             active = connection.execute(
                 "SELECT count(*) FROM jobs WHERE status IN ('queued','running')"
             ).fetchone()[0]
@@ -1184,6 +1203,13 @@ def validate_database(
                 require(row["path"], ("assets/", "imports/"), row["sha256"], row["size_bytes"])
             for row in connection.execute("SELECT path FROM frames"):
                 require(row["path"], ("frames/", "imports/"))
+            if version >= 20:
+                for row in connection.execute("SELECT manifest FROM temporal_sequences"):
+                    for frame in json.loads(row["manifest"])["frames"]:
+                        saved = connection.execute(
+                            "SELECT path FROM frames WHERE id=?", (frame["frame_id"],)
+                        ).fetchone()
+                        require(saved["path"], ("frames/", "imports/"), frame["file_sha256"])
             for row in connection.execute("SELECT path,weight_sha256 FROM trained_models"):
                 require(row["path"], ("models/trained/",), row["weight_sha256"])
             for row in connection.execute("SELECT id,path,sha256,summary FROM dataset_imports"):
@@ -1197,6 +1223,7 @@ def validate_database(
                         image["size_bytes"],
                     )
                     require(image["path"], (f"imports/{row['id']}/",), image.get("png_sha256"))
+            dataset_manifests = []
             for row in connection.execute("SELECT id,path,manifest_sha256 FROM dataset_versions"):
                 if row["path"] != f"datasets/{row['id']}/manifest.json":
                     raise ArchiveError("Dataset manifest path differs from its version directory")
@@ -1219,6 +1246,14 @@ def validate_database(
                         (f"datasets/{row['id']}/images/",),
                         frame["image_file_sha256"],
                     )
+                dataset_manifests.append(manifest)
+            if version >= 20:
+                from iris.temporal import validate_temporal_dataset_splits
+
+                try:
+                    validate_temporal_dataset_splits(connection, dataset_manifests)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace temporal dataset splits are invalid") from exc
             if version >= 15:
                 _validate_benchmarks(connection, root, require)
             if version >= 17:

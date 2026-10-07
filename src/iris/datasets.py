@@ -187,6 +187,23 @@ def _reservation_state(
             video = _source_video(frame.get("source", {}))
             if video is not None:
                 videos.setdefault(video, set()).add(split)
+    # Temporal and image datasets share source/pixel reservations. Freezing a
+    # different task must not turn known training data into independent test data.
+    from iris.temporal import temporal_reservations
+
+    temporal_groups, temporal_pixels, temporal_videos = temporal_reservations(conn, project_id)
+    for key, split in temporal_groups.items():
+        if groups.get(key, split) != split:
+            raise ValueError("Temporal and image datasets have conflicting scene-group splits")
+        groups[key] = split
+    for key, split in temporal_pixels.items():
+        if pixels.get(key, split) != split:
+            raise ValueError("Temporal and image datasets have conflicting image-pixel splits")
+        pixels[key] = split
+    for key, splits in temporal_videos.items():
+        if videos.get(key, splits) != splits:
+            raise ValueError("Temporal and image datasets have conflicting source-video splits")
+        videos.setdefault(key, set()).update(splits)
     return groups, pixels, videos
 
 

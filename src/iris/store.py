@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -309,7 +309,7 @@ CREATE INDEX IF NOT EXISTS training_checkpoints_training ON training_checkpoints
 )
 
 DINOX_TABLES = {"dinox_batches", "dinox_requests"}
-SCHEMA = (
+SCHEMA_V19 = (
     SCHEMA_V18
     + """
 CREATE TABLE IF NOT EXISTS dinox_batches (
@@ -330,6 +330,33 @@ CREATE TABLE IF NOT EXISTS dinox_requests (
 CREATE INDEX IF NOT EXISTS dinox_requests_frame ON dinox_requests(frame_id);
 CREATE INDEX IF NOT EXISTS dinox_requests_job ON dinox_requests(job_id);
 CREATE INDEX IF NOT EXISTS dinox_requests_cache_key ON dinox_requests(cache_key);
+"""
+)
+
+TEMPORAL_TABLES = {"temporal_sequences", "temporal_references", "temporal_datasets"}
+SCHEMA = (
+    SCHEMA_V19
+    + """
+CREATE TABLE IF NOT EXISTS temporal_sequences (
+    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+    asset_id TEXT NOT NULL REFERENCES assets(id), parent_id TEXT REFERENCES temporal_sequences(id),
+    name TEXT NOT NULL, manifest TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS temporal_sequences_project ON temporal_sequences(project_id);
+CREATE INDEX IF NOT EXISTS temporal_sequences_asset ON temporal_sequences(asset_id);
+CREATE TABLE IF NOT EXISTS temporal_references (
+    id TEXT PRIMARY KEY, sequence_id TEXT NOT NULL REFERENCES temporal_sequences(id),
+    revision INTEGER NOT NULL CHECK(revision >= 1), payload TEXT NOT NULL,
+    payload_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(sequence_id,revision)
+);
+CREATE INDEX IF NOT EXISTS temporal_references_sequence ON temporal_references(sequence_id);
+CREATE TABLE IF NOT EXISTS temporal_datasets (
+    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+    parent_id TEXT REFERENCES temporal_datasets(id), name TEXT NOT NULL,
+    manifest TEXT NOT NULL, manifest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS temporal_datasets_project ON temporal_datasets(project_id);
 """
 )
 
@@ -407,6 +434,7 @@ TABLES = (
     | MODEL_EXPORT_TABLES
     | TRAINING_CHECKPOINT_TABLES
     | DINOX_TABLES
+    | TEMPORAL_TABLES
     | {
         "projects",
         "taxonomy_versions",
@@ -590,6 +618,8 @@ class Store:
         self._check(table, data)
         if table == "taxonomy_versions":
             raise ValueError("Published taxonomy versions are immutable; publish a new version")
+        if table in TEMPORAL_TABLES:
+            raise ValueError("Published temporal records are immutable; publish a new version")
         if not data or "id" in data:
             raise ValueError("An update must contain fields and cannot change the ID")
         encoded = _encode(data)

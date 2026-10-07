@@ -17,6 +17,7 @@ from iris.store import (
     SCHEMA_V17,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -32,7 +33,9 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+OLD_TABLES = (
+    TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES
+)
 
 
 def rows(root, tables=OLD_TABLES):
@@ -119,7 +122,11 @@ def test_schema16_and17_archives_preserve_exact_saved_database(
         with sqlite3.connect(schema16 / "iris.sqlite3") as connection:
             connection.executescript(SCHEMA_V17)
             connection.execute("PRAGMA user_version=17")
-    tables = OLD_TABLES if version == 16 else TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+    tables = (
+        OLD_TABLES
+        if version == 16
+        else TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES
+    )
     original = rows(schema16, tables)
     saved = create_archive(schema16, tmp_path / "historical.zip")
     assert saved["manifest"]["schema_version"] == version

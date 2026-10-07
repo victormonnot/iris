@@ -18,6 +18,7 @@ from iris.store import (
     SCHEMA_V13,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
 )
@@ -31,6 +32,7 @@ SCHEMA13_TABLES = (
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
+    - TEMPORAL_TABLES
     - {"taxonomy_versions"}
 )
 

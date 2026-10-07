@@ -14,7 +14,16 @@ from iris import dinox_provider
 from iris.annotations import save_annotation
 from iris.jobs import JobManager
 from iris.projects import create_project, project_records, record_project
-from iris.store import DINOX_TABLES, SCHEMA_V18, SCHEMA_VERSION, TABLES, Store, new_id, now
+from iris.store import (
+    DINOX_TABLES,
+    SCHEMA_V18,
+    SCHEMA_VERSION,
+    TABLES,
+    TEMPORAL_TABLES,
+    Store,
+    new_id,
+    now,
+)
 from iris.taxonomies import TAXONOMY
 from iris.workspace_archive import (
     ArchiveError,
@@ -25,7 +34,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - DINOX_TABLES
+OLD_TABLES = TABLES - DINOX_TABLES - TEMPORAL_TABLES
 FRAME_FIELDS = ("id", "session_id", "asset_id", "sha256", "path", "width", "height", "taxonomy_id")
 
 
@@ -360,7 +369,7 @@ def test_schema18_migration_preserves_rows_and_is_idempotent(schema18):
         assert rows(schema18, OLD_TABLES) == original
         assert store.list("dinox_requests") == store.list("dinox_batches") == []
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 19
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 

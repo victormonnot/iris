@@ -15,6 +15,7 @@ from iris.store import (
     SCHEMA_V16,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
 )
@@ -23,7 +24,12 @@ from iris.workspace_restore import inspect_archive, restore_archive
 
 benchmark_workspace = archive_fixtures.benchmark_workspace
 OLD_TABLES = (
-    TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - {"benchmark_reports"}
+    TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - {"benchmark_reports"}
 )
 
 
@@ -114,7 +120,11 @@ def test_archives_restore_original_database_before_schema16_migration(
     tables = (
         OLD_TABLES
         if version == 15
-        else TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES
+        else TABLES
+        - MODEL_EXPORT_TABLES
+        - TRAINING_CHECKPOINT_TABLES
+        - DINOX_TABLES
+        - TEMPORAL_TABLES
         if version == 16
         else TABLES
     )

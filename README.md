@@ -13,6 +13,12 @@ annotation progress and inspecting detector disagreements. Trained checkpoints r
 comparator and can be measured against their parents. See
 [the architecture](docs/architecture.md).
 
+The temporal data foundation also supports immutable video sequences, explicit
+timestamps and gaps, separate reference identities, revisioned human/assistant
+review evidence, and frozen temporal dataset splits. These Python/JSON API
+contracts are included in workspace backups; they do not yet execute trackers
+or add a temporal editor to Studio. See [temporal sources and identities](docs/temporal-data.md).
+
 ## Standalone model export
 
 **YOLOX-Nano** also supports a generic ONNX export for OpenCV CPU, with explicit

@@ -12,8 +12,11 @@ the UI and recovery CLI; see [backup and recovery](workspace-backup.md).
 IRIS is a local workbench for improving object detectors from images and videos.
 Projects organize import, model comparison, assisted annotation, human review,
 dataset versions, fine-tuning, and comparison against earlier checkpoints. The
-current task is bounding-box detection; full segmentation and tracking workflows
-are outside this version. No ARGOS or drone integration is required.
+current executable model task is bounding-box detection. Temporal sequences,
+reference identities and dataset versions have a separate data/API foundation;
+tracker execution, temporal editing and tracking metrics are not implemented yet.
+Full segmentation workflows remain outside this version. No ARGOS or drone
+integration is required.
 
 ## Application boundary
 
@@ -51,6 +54,17 @@ through an SSH tunnel; computation and storage remain on that workstation.
 This is a single-user application, not an authenticated public service.
 
 ## Projects and compatibility
+
+SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
+`temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
+reference revisions use optimistic concurrency and preserve their declared
+review provenance. Sources retain project ownership, a frozen taxonomy, clock
+provenance, file/pixel hashes and explicit missing-frame ranges. Temporal identity
+labels never reuse image annotation IDs implicitly. Frozen image and temporal
+datasets share source-video, pixel and declared group split reservations.
+Archives preserve these records and verify their media references. No historical
+annotation, model, dataset or experiment is rewritten. See
+[the temporal contract](temporal-data.md).
 
 SQLite schema 13 adds `projects` and a project foreign key on sessions, dataset
 versions and COCO imports. Other ownership follows the existing session, dataset
