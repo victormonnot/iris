@@ -15,6 +15,7 @@ from iris.store import (
     SCHEMA_V16,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
@@ -29,6 +30,7 @@ OLD_TABLES = (
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
     - {"benchmark_reports"}
 )
 
@@ -125,6 +127,7 @@ def test_archives_restore_original_database_before_schema16_migration(
         - TRAINING_CHECKPOINT_TABLES
         - DINOX_TABLES
         - TEMPORAL_TABLES
+        - TEMPORAL_DETECTION_TABLES
         if version == 16
         else TABLES
     )

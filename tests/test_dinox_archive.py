@@ -19,6 +19,7 @@ from iris.store import (
     SCHEMA_V18,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
     Store,
     new_id,
@@ -34,7 +35,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - DINOX_TABLES - TEMPORAL_TABLES
+OLD_TABLES = TABLES - DINOX_TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES
 FRAME_FIELDS = ("id", "session_id", "asset_id", "sha256", "path", "width", "height", "taxonomy_id")
 
 

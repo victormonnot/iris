@@ -17,6 +17,7 @@ from iris.store import (
     SCHEMA_V17,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
@@ -34,7 +35,12 @@ from iris.workspace_archive import (
 from iris.workspace_restore import inspect_archive, restore_archive
 
 OLD_TABLES = (
-    TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES
+    TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
 )
 
 
@@ -125,7 +131,11 @@ def test_schema16_and17_archives_preserve_exact_saved_database(
     tables = (
         OLD_TABLES
         if version == 16
-        else TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES
+        else TABLES
+        - TRAINING_CHECKPOINT_TABLES
+        - DINOX_TABLES
+        - TEMPORAL_TABLES
+        - TEMPORAL_DETECTION_TABLES
     )
     original = rows(schema16, tables)
     saved = create_archive(schema16, tmp_path / "historical.zip")

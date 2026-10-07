@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { history, dispatchPresentation, canContinue, findApprovedRequest, retryableBatchFrames } = require("../../src/iris/static/job-tools.js");
+const { history, dispatchPresentation, canContinue, continuationPresentation, findApprovedRequest, retryableBatchFrames } = require("../../src/iris/static/job-tools.js");
 
 test("project history retains every active task while paging and filtering saved jobs", () => {
   const jobs = Array.from({ length: 12 }, (_, i) => ({ id: String(i), kind: "extract", status: "succeeded", created_at: `2026-10-${String(i + 1).padStart(2, "0")}`, message: "Saved source" }));
@@ -44,6 +44,38 @@ test("continuation needs a checked extraction fingerprint for this exact termina
   assert.equal(canContinue({ ...detail, job: { ...detail.job, status: "running" } }, preview), false);
   assert.equal(canContinue({ ...detail, job: { ...detail.job, kind: "train" } }, preview), false);
   assert.equal(canContinue({ ...detail, dispatch: { external: true } }, preview), false);
+});
+
+test("temporal continuation binds the checked cache preview to its exact eligible job", () => {
+  const detail = { job: { id: "cache-attempt", kind: "temporal_detect", status: "interrupted" }, recovery: { can_check: true }, dispatch: null };
+  const preview = { source_job_id: "cache-attempt", mode: "continue_temporal_detection", available: true, fingerprint: "frozen-cache", remaining_count: 2 };
+  assert.equal(canContinue(detail, preview), true);
+  for (const status of ["failed", "cancelled"]) assert.equal(canContinue({ ...detail, job: { ...detail.job, status } }, preview), true);
+  for (const status of ["queued", "running", "succeeded", "unknown"]) assert.equal(canContinue({ ...detail, job: { ...detail.job, status } }, preview), false);
+  for (const mutation of [{ mode: "continue_extraction" }, { mode: "future" }, { source_job_id: "other" }, { available: false }, { fingerprint: " " }, { remaining_count: 0 }, { remaining_count: "2" }, { remaining_count: 0.5 }]) assert.equal(canContinue(detail, { ...preview, ...mutation }), false);
+  assert.equal(canContinue({ ...detail, recovery: { can_check: false } }, preview), false);
+  assert.equal(canContinue({ ...detail, dispatch: { external: true } }, preview), false);
+  assert.equal(canContinue(null, preview), false);
+  assert.equal(canContinue(detail, null), false);
+  const extraction = { ...detail, job: { ...detail.job, kind: "extract" } };
+  assert.equal(canContinue(extraction, preview), false, "temporal previews cannot enable extraction continuation");
+});
+
+test("recovery wording distinguishes cached detection frames from sampled extraction positions", () => {
+  const preview = { completed_count: 1, remaining_count: 2, total_count: 3, reason: "Saved evidence checked." };
+  const temporal = continuationPresentation({ job: { kind: "temporal_detect" } }, preview);
+  assert.equal(temporal.label, "Continue remaining detections");
+  assert.match(temporal.summary, /1 frames with saved results.*2 remaining of 3/);
+  assert.match(temporal.summary, /no detections are also saved results/);
+  assert.match(temporal.notice, /only the remaining frames.*saved detector settings/);
+  assert.match(temporal.queuedMessage, /remaining detection frames/);
+  assert.doesNotMatch(JSON.stringify(temporal), /extraction|skipped duplicates|sampled positions/);
+  const extraction = continuationPresentation({ job: { kind: "extract" } }, preview);
+  assert.equal(extraction.label, "Continue remaining extraction");
+  assert.match(extraction.summary, /sampled positions.*skipped duplicates/);
+  assert.match(extraction.queuedMessage, /remaining extraction positions/);
+  assert.equal(continuationPresentation(null, null).label, "Continue remaining work");
+  assert.equal(history([{ id: "cache", kind: "temporal_detect", status: "interrupted" }], { query: "temporal detector cache" }).total, 1);
 });
 
 test("lost external acknowledgements reconcile by exact consumed preview identity only", () => {

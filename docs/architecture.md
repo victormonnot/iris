@@ -13,7 +13,8 @@ IRIS is a local workbench for improving object detectors from images and videos.
 Projects organize import, model comparison, assisted annotation, human review,
 dataset versions, fine-tuning, and comparison against earlier checkpoints. The
 current executable model task is bounding-box detection. Temporal sequences,
-reference identities and dataset versions have a separate data/API foundation;
+reference identities, dataset versions and reusable detector outputs have separate
+Python/JSON API services;
 tracker execution, temporal editing and tracking metrics are not implemented yet.
 Full segmentation workflows remain outside this version. No ARGOS or drone
 integration is required.
@@ -55,6 +56,18 @@ This is a single-user application, not an authenticated public service.
 
 ## Projects and compatibility
 
+SQLite schema 21 adds `temporal_detection_caches` and `temporal_detection_frames`.
+Immutable cache recipes pin a sequence, ordered frames, verified local detector
+weights, classes, preprocessing, native filtering, CPU/CUDA selection and runtime
+sources. The worker saves an execution receipt and commits each complete image
+output together with its attempt checkpoint. Retained rows form an exact prefix;
+explicit continuation creates a new job for the remaining frames. Read-only
+score/class filters preserve source indices and never run inference. Archive
+validation checks recipes, output hashes and attempt lineage without requiring
+weights or the producing runtime. These caches do not implement association,
+tracking metrics or a Studio tracking panel. See
+[temporal detector caches](temporal-detections.md).
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared
@@ -90,9 +103,9 @@ This avoids retaining another project's selection, modal or pending preview.
 Scene-group reservations are project-local, while exact-pixel split reservations
 span the workspace. Creating a project cannot turn an existing training image into
 an independent test image. Related scenes still need human grouping and review.
-Archive validation recognizes the exact structures of schemas 12, 13 and 14. Restore
+Archive validation recognizes the exact structures of schemas 12 through 21. Restore
 preserves archive payload bytes; opening an older restored workspace performs
-the normal schema-14 migration. See [project behavior](projects.md).
+the normal additive migration. See [project behavior](projects.md).
 
 ## Model and annotation choices
 

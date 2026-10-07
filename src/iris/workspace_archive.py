@@ -33,8 +33,10 @@ from iris.store import (
     SCHEMA_V17,
     SCHEMA_V18,
     SCHEMA_V19,
+    SCHEMA_V20,
     SCHEMA_VERSION,
     TABLES,
+    TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     now,
@@ -52,6 +54,7 @@ SCHEMAS = {
     17: SCHEMA_V17,
     18: SCHEMA_V18,
     19: SCHEMA_V19,
+    20: SCHEMA_V20,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
@@ -61,6 +64,7 @@ SCHEMA_TABLES = {
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
     - {"projects", "taxonomy_versions"},
     13: TABLES
     - BENCHMARK_TABLES
@@ -68,23 +72,36 @@ SCHEMA_TABLES = {
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
     - {"taxonomy_versions"},
     14: TABLES
     - BENCHMARK_TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
-    - TEMPORAL_TABLES,
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES,
     15: TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
     - {"benchmark_reports"},
-    16: TABLES - MODEL_EXPORT_TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES,
-    17: TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES,
-    18: TABLES - DINOX_TABLES - TEMPORAL_TABLES,
-    19: TABLES - TEMPORAL_TABLES,
+    16: TABLES
+    - MODEL_EXPORT_TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES,
+    17: TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES,
+    18: TABLES - DINOX_TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES,
+    19: TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES,
+    20: TABLES - TEMPORAL_DETECTION_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -1196,6 +1213,13 @@ def validate_database(
                     validate_temporal_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace temporal records are invalid") from exc
+            if version >= 21:
+                from iris.temporal_detections import validate_detection_records
+
+                try:
+                    validate_detection_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace temporal detection records are invalid") from exc
             active = connection.execute(
                 "SELECT count(*) FROM jobs WHERE status IN ('queued','running')"
             ).fetchone()[0]

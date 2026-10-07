@@ -1060,6 +1060,7 @@ function updateJobActions() {
   for (const id of ["job-open-results", "job-check-continuation", "job-new-run", "job-open-batch"])
     $(`#${id}`).disabled = blocked || !detail;
   $("#job-confirm-continuation").disabled = blocked || !jobTools.canContinue(detail, jobView.recovery);
+  $("#job-confirm-continuation").textContent = jobTools.continuationPresentation(detail, jobView.recovery).label;
   $("#job-detail-cancel").disabled = blocked || Boolean(detail?.job.cancel_requested);
 }
 
@@ -1176,8 +1177,10 @@ async function checkJobContinuation() {
     const preview = await api(`/api/jobs/${encodeURIComponent(id)}/recovery`);
     if (request !== jobView.recoveryRequest || id !== jobView.detailId) return;
     jobView.recovery = preview;
+    const presentation = jobTools.continuationPresentation(detail, preview);
     $("#job-recovery-preview").hidden = false;
-    $("#job-recovery-summary").textContent = `${preview.reason || ""} ${preview.completed_count ?? "Unknown"} sampled positions already processed · ${preview.remaining_count ?? "unknown"} remaining of ${preview.total_count ?? "unknown"}. Processed positions can include skipped duplicates.`;
+    $("#job-recovery-summary").textContent = presentation.summary;
+    $("#job-recovery-notice").textContent = presentation.notice;
     $("#job-recovery-notice").hidden = !preview.available;
     if (preview.successor_job_id) $("#job-recovery-summary").append(document.createTextNode(` Existing continuation: ${preview.successor_job_id}. Open it from the task links.`));
     await loadJobDetails(id);
@@ -1201,7 +1204,7 @@ async function continueJob() {
     created = await api(`/api/jobs/${encodeURIComponent(id)}/recover`, { method: "POST", body: JSON.stringify({ fingerprint: preview.fingerprint }) });
     jobView.recovery = null;
     await refreshJobs();
-    notify("A linked continuation was queued for the remaining extraction positions. The original job is preserved.");
+    notify(jobTools.continuationPresentation(detail, preview).queuedMessage);
   } catch (error) {
     jobView.recovery = null;
     $("#job-recovery-preview").hidden = true;

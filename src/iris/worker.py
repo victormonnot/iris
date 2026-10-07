@@ -72,6 +72,16 @@ def run(root: Path, job_id: str, parent_pid: int):
                 )
         elif job["kind"] == "infer":
             result = run_comparison(store, job["params"]["comparison_id"], progress, cancelled)
+        elif job["kind"] == "temporal_detect":
+            from iris.temporal_detections import run_detection_cache
+
+            result = run_detection_cache(store, job_id, progress, cancelled)
+            if not cancelled():
+                from iris.temporal_detections import get_detection_cache
+
+                saved = get_detection_cache(store, job["params"]["cache_id"])
+                if saved["coverage"]["remaining_count"]:
+                    raise RuntimeError("Temporal detector stopped before every frame was saved")
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         elif job["kind"] == "dinox":
@@ -136,6 +146,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                     or {
                         "extract": "Extraction complete",
                         "infer": "Comparison complete",
+                        "temporal_detect": "Temporal detections saved; cache ready for reuse",
                         "assist": "Annotation proposals ready for human review",
                         "dinox": "DINO-X proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",

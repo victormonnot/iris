@@ -39,6 +39,8 @@ PARENTS = {
     "model_exports": ("trained_models", "trained_model_id"),
     "model_export_measurements": ("model_exports", "export_id"),
     "temporal_references": ("temporal_sequences", "sequence_id"),
+    "temporal_detection_caches": ("temporal_sequences", "sequence_id"),
+    "temporal_detection_frames": ("temporal_detection_caches", "cache_id"),
 }
 DIRECT = {
     "sessions",
@@ -59,6 +61,7 @@ JOB_PARENTS = {
     "video_review": ("video_reviews", "video_review_id"),
     "benchmark": ("benchmark_trials", "trial_id"),
     "model_export": ("model_exports", "export_id"),
+    "temporal_detect": ("temporal_detection_caches", "cache_id"),
 }
 
 
@@ -104,6 +107,7 @@ def record_project(store: Store, table: str, record: dict) -> str | None:
             "video_reviews",
             "benchmark_trials",
             "model_exports",
+            "temporal_detection_caches",
         ):
             rows = store.list(parent_table, job_id=record["id"])
             if rows:

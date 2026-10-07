@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -334,7 +334,7 @@ CREATE INDEX IF NOT EXISTS dinox_requests_cache_key ON dinox_requests(cache_key)
 )
 
 TEMPORAL_TABLES = {"temporal_sequences", "temporal_references", "temporal_datasets"}
-SCHEMA = (
+SCHEMA_V20 = (
     SCHEMA_V19
     + """
 CREATE TABLE IF NOT EXISTS temporal_sequences (
@@ -357,6 +357,27 @@ CREATE TABLE IF NOT EXISTS temporal_datasets (
     manifest TEXT NOT NULL, manifest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS temporal_datasets_project ON temporal_datasets(project_id);
+"""
+)
+
+TEMPORAL_DETECTION_TABLES = {"temporal_detection_caches", "temporal_detection_frames"}
+SCHEMA = (
+    SCHEMA_V20
+    + """
+CREATE TABLE IF NOT EXISTS temporal_detection_caches (
+    id TEXT PRIMARY KEY, sequence_id TEXT NOT NULL REFERENCES temporal_sequences(id),
+    name TEXT NOT NULL, config TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE,
+    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS temporal_detection_caches_sequence
+    ON temporal_detection_caches(sequence_id);
+CREATE TABLE IF NOT EXISTS temporal_detection_frames (
+    id TEXT PRIMARY KEY, cache_id TEXT NOT NULL REFERENCES temporal_detection_caches(id),
+    frame_id TEXT NOT NULL REFERENCES frames(id), job_id TEXT NOT NULL REFERENCES jobs(id),
+    payload TEXT NOT NULL, payload_sha256 TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(cache_id,frame_id)
+);
+CREATE INDEX IF NOT EXISTS temporal_detection_frames_cache ON temporal_detection_frames(cache_id);
 """
 )
 
@@ -435,6 +456,7 @@ TABLES = (
     | TRAINING_CHECKPOINT_TABLES
     | DINOX_TABLES
     | TEMPORAL_TABLES
+    | TEMPORAL_DETECTION_TABLES
     | {
         "projects",
         "taxonomy_versions",
@@ -618,7 +640,7 @@ class Store:
         self._check(table, data)
         if table == "taxonomy_versions":
             raise ValueError("Published taxonomy versions are immutable; publish a new version")
-        if table in TEMPORAL_TABLES:
+        if table in TEMPORAL_TABLES | TEMPORAL_DETECTION_TABLES:
             raise ValueError("Published temporal records are immutable; publish a new version")
         if not data or "id" in data:
             raise ValueError("An update must contain fields and cannot change the ID")

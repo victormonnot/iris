@@ -249,6 +249,14 @@ def _owned_job(store, job_id, project_id):
 
 def preview_job_recovery(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) -> dict:
     job = _owned_job(store, job_id, project_id)
+    if job["kind"] == "temporal_detect":
+        from iris.temporal_detections import preview_detection_recovery
+
+        return {
+            **preview_detection_recovery(store, job_id, project_id=project_id),
+            "source_job_id": job_id,
+            "mode": "continue_temporal_detection",
+        }
     result = {
         "source_job_id": job_id,
         "available": False,
@@ -332,6 +340,13 @@ def preview_job_recovery(store: Store, job_id: str, project_id: str = DEFAULT_PR
 def recover_job(
     store: Store, jobs, job_id: str, *, fingerprint: str, project_id: str = DEFAULT_PROJECT_ID
 ) -> dict:
+    candidate = _owned_job(store, job_id, project_id)
+    if candidate["kind"] == "temporal_detect":
+        from iris.temporal_detections import recover_detection_cache
+
+        return recover_detection_cache(
+            store, jobs, job_id, fingerprint=fingerprint, project_id=project_id
+        )
     if not isinstance(fingerprint, str) or len(fingerprint) != 64:
         raise ValueError("Provide the current extraction recovery fingerprint")
     with jobs.guard, store.connect() as conn:

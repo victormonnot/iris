@@ -36,6 +36,28 @@ inputs. The original class version remains pinned even if the project's current
 definitions change. Start a separate extraction to choose a different sampling
 plan or class version. Older jobs without a frozen plan also require a new run.
 
+## Continue a temporal detector cache
+
+Temporal detection jobs calculate a frozen sequence with one pinned detector
+recipe. A complete image output and its checkpoint commit together, including
+images with no retained detections. Saved outputs form an exact prefix of the
+sequence's available frames. Cancellation or interruption leaves that prefix
+intact; missing frames are not reported as empty predictions.
+
+Use `GET /api/jobs/{job_id}/recovery` to inspect a failed, cancelled or interrupted
+attempt, then `POST /api/jobs/{job_id}/recover` with its returned `fingerprint`.
+Pass the owning `project_id` on both requests. Confirmation creates a linked job
+for the remaining frames. It does not overwrite the earlier attempt or rerun its
+saved images. Inspect an existing successor rather than submitting the same
+continuation again.
+
+Changed source bytes, weights, preprocessing or pinned runtime prevent continuation.
+The worker also checks actual device, hardware and execution settings after loading
+the detector; it refuses to append results from a different execution environment.
+Create a fresh cache to intentionally change the recipe. Each attempt records its
+own loading and warmup cost separately. Reading complete saved results needs no
+weights or ML runtime. See [temporal detector caches](temporal-detections.md).
+
 ## Prepare unfinished local batch images
 
 A stopped local annotation batch can prepare a **new batch** for its failed,
@@ -92,3 +114,6 @@ Extraction checkpoints and dispatch receipts use existing SQLite records; schema
 14 and earlier frozen datasets remain compatible with workspace backup and restore.
 Training recovery adds schema 18; opening an older workspace adds its checkpoint
 table without rewriting previous training records or model files.
+Temporal detection caches add schema 21 without changing previous image annotations,
+temporal references or saved datasets. Workspace restoration never resumes a cache
+job automatically.

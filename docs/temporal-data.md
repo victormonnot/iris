@@ -10,6 +10,10 @@ extract new frames, run trackers, compute tracking scores or train a model.
 Ordinary image annotations remain independent and unchanged. No optional ML
 runtime, external provider or ARGOS integration is required.
 
+The separate [temporal detector cache](temporal-detections.md) service can now
+calculate and retain detections for these frozen frames. Its outputs remain
+independent of reference identities and human review.
+
 ## Source sequence
 
 `iris-temporal-sequence-v1` records:

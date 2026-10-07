@@ -5,7 +5,8 @@
   else root.IRISJobTools = tools;
 })(typeof window === "undefined" ? globalThis : window, () => {
   const active = (job) => ["queued", "running"].includes(job.status);
-  const kindNames = { extract: "Frame extraction", infer: "Model comparison", assist: "Annotation assistance", dinox: "DINO-X cloud proposals", train: "Detector training", evaluate: "Quality evaluation", model_export: "Model export", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
+  const kindNames = { extract: "Frame extraction", infer: "Model comparison", temporal_detect: "Temporal detector cache", assist: "Annotation assistance", dinox: "DINO-X cloud proposals", train: "Detector training", evaluate: "Quality evaluation", model_export: "Model export", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
+  const continuationModes = { extract: "continue_extraction", temporal_detect: "continue_temporal_detection" };
   const statusName = (status) => String(status || "unknown").replaceAll("_", " ");
   function history(jobs, { status = "all", kind = "all", query = "", limit = 8 } = {}) {
     const search = query.trim().toLocaleLowerCase();
@@ -37,9 +38,31 @@
     return { label: labels[dispatch.state] || statusName(dispatch.state), explanation, unknown: dispatch.state === "outcome_unknown" };
   }
   function canContinue(detail, preview) {
-    return Boolean(detail?.recovery?.can_check && !active(detail.job) && detail.job.kind === "extract" &&
+    const job = detail?.job;
+    return Boolean(job && detail.recovery?.can_check && ["failed", "interrupted", "cancelled"].includes(job.status) && continuationModes[job.kind] &&
       !detail.dispatch?.external && preview?.source_job_id === detail.job.id && preview.available === true &&
-      preview.mode === "continue_extraction" && typeof preview.fingerprint === "string" && preview.fingerprint && preview.remaining_count > 0);
+      preview.mode === continuationModes[job.kind] && typeof preview.fingerprint === "string" && preview.fingerprint.trim() &&
+      Number.isInteger(preview.remaining_count) && preview.remaining_count > 0);
+  }
+  function continuationPresentation(detail, preview) {
+    const kind = detail?.job?.kind;
+    const completed = preview?.completed_count ?? "Unknown";
+    const remaining = preview?.remaining_count ?? "unknown";
+    const total = preview?.total_count ?? "unknown";
+    const reason = preview?.reason || "";
+    if (kind === "temporal_detect") return {
+      label: "Continue remaining detections",
+      summary: `${reason} ${completed} frames with saved results · ${remaining} remaining of ${total}. Frames with no detections are also saved results.`,
+      notice: "Continuing calculates only the remaining frames with the saved detector settings. Saved results and the original task are preserved.",
+      queuedMessage: "A linked continuation was queued for the remaining detection frames. Saved results and the original job are preserved.",
+    };
+    if (kind === "extract") return {
+      label: "Continue remaining extraction",
+      summary: `${reason} ${completed} sampled positions already processed · ${remaining} remaining of ${total}. Processed positions can include skipped duplicates.`,
+      notice: "Continuing creates a new linked job for remaining positions. Saved frames and the original task are preserved.",
+      queuedMessage: "A linked continuation was queued for the remaining extraction positions. The original job is preserved.",
+    };
+    return { label: "Continue remaining work", summary: reason, notice: "", queuedMessage: "" };
   }
   function findApprovedRequest(records, previewId) {
     if (!previewId || !Array.isArray(records)) return null;
@@ -49,5 +72,5 @@
     if (!detail || detail.counts?.queued || detail.counts?.running) return [];
     return (detail.frames || []).filter((frame) => ["failed", "cancelled", "interrupted"].includes(frame.status) && !(frame.suggestions_created > 0));
   }
-  return { active, kindNames, statusName, history, dispatchPresentation, canContinue, findApprovedRequest, retryableBatchFrames };
+  return { active, kindNames, statusName, history, dispatchPresentation, canContinue, continuationPresentation, findApprovedRequest, retryableBatchFrames };
 });

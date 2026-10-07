@@ -13,7 +13,14 @@ from test_datasets import add_frame
 
 from iris.annotations import save_annotation
 from iris.datasets import create_dataset
-from iris.store import SCHEMA_V19, SCHEMA_VERSION, TABLES, TEMPORAL_TABLES, Store
+from iris.store import (
+    SCHEMA_V19,
+    SCHEMA_VERSION,
+    TABLES,
+    TEMPORAL_DETECTION_TABLES,
+    TEMPORAL_TABLES,
+    Store,
+)
 from iris.workspace_archive import (
     SCHEMA_TABLES,
     SCHEMAS,
@@ -24,7 +31,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - TEMPORAL_TABLES
+OLD_TABLES = TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES
 
 
 def rows(root, tables=OLD_TABLES):
@@ -76,7 +83,7 @@ def test_schema20_migration_preserves_annotations_history_and_artifacts(schema19
         assert artifacts(schema19) == files
         assert all(store.list(table) == [] for table in TEMPORAL_TABLES)
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 20
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -198,7 +205,7 @@ def test_temporal_archive_round_trip_preserves_exact_rows_and_files(
     store = temporal_workspace
     original = rows(store.root, TABLES)
     archive = create_archive(store.root, tmp_path / "temporal.zip")
-    assert archive["manifest"]["schema_version"] == 20
+    assert archive["manifest"]["schema_version"] == SCHEMA_VERSION
     assert all(archive["manifest"]["counts"][table] == 1 for table in TEMPORAL_TABLES)
 
     def forbidden(*_args, **_kwargs):

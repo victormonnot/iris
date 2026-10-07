@@ -15,9 +15,13 @@ comparator and can be measured against their parents. See
 
 The temporal data foundation also supports immutable video sequences, explicit
 timestamps and gaps, separate reference identities, revisioned human/assistant
-review evidence, and frozen temporal dataset splits. These Python/JSON API
-contracts are included in workspace backups; they do not yet execute trackers
-or add a temporal editor to Studio. See [temporal sources and identities](docs/temporal-data.md).
+review evidence, and frozen temporal dataset splits. Temporal detector caches
+compute those frames once on CPU or CUDA, retain complete frame results across
+interruptions, and support stricter score/class filters without further inference.
+These Python/JSON API services are included in workspace backups; they do not yet
+execute trackers or add a temporal editor to Studio. See
+[temporal sources and identities](docs/temporal-data.md) and
+[reusable temporal detections](docs/temporal-detections.md).
 
 ## Standalone model export
 

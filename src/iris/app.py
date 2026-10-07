@@ -1686,6 +1686,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     from iris.temporal_api import install_temporal_routes
 
     install_temporal_routes(app, store, require, active_project)
+    from iris.temporal_detection_api import install_temporal_detection_routes
+
+    install_temporal_detection_routes(app, store, jobs, require, active_project)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)

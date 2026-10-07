@@ -13,6 +13,7 @@ WORKSPACES = {
     "video_review": "intake",
     "benchmark": "benchmark",
     "model_export": "training",
+    "temporal_detect": "comparison",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -24,6 +25,7 @@ NAMES = {
     "video_review": "Video passage review",
     "benchmark": "Annotation benchmark",
     "model_export": "Standalone model export",
+    "temporal_detect": "Temporal detector cache",
 }
 
 
@@ -47,6 +49,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         session_id = store.get("frames", target["frame_id"])["session_id"]
     elif target and table == "video_reviews":
         session_id = store.get("assets", target["asset_id"])["session_id"]
+    elif target and table == "temporal_detection_caches":
+        sequence = store.get("temporal_sequences", target["sequence_id"])
+        asset = store.get("assets", sequence["asset_id"]) if sequence else None
+        session_id = asset["session_id"] if asset else None
     session = store.get("sessions", session_id) if session_id else None
     batch_id = job["params"].get("batch_id")
     if batch_id and job["kind"] != "dinox":
@@ -71,6 +77,22 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                 "SELECT COUNT(*) FROM predictions WHERE comparison_id=?", (target["id"],)
             ).fetchone()[0]
             add("predictions", "Saved image/model predictions", count, target["id"])
+        elif target and job["kind"] == "temporal_detect":
+            count = conn.execute(
+                "SELECT COUNT(*) FROM temporal_detection_frames WHERE cache_id=?",
+                (target["id"],),
+            ).fetchone()[0]
+            own_count = conn.execute(
+                "SELECT COUNT(*) FROM temporal_detection_frames WHERE cache_id=? AND job_id=?",
+                (target["id"], job_id),
+            ).fetchone()[0]
+            add("temporal_detection_frames", "Saved frames in this cache", count, target["id"])
+            add(
+                "temporal_detection_attempt_frames",
+                "Frames saved by this attempt",
+                own_count,
+                target["id"],
+            )
         elif target and job["kind"] == "assist":
             count = conn.execute(
                 "SELECT COUNT(*) FROM annotation_suggestions WHERE job_id=?", (job_id,)
@@ -173,9 +195,9 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         parent = store.get("jobs", parent_id)
         if parent is None or record_project(store, "jobs", parent) != project_id:
             parent_id = None
-    can_check = (
-        job["kind"] == "extract"
-        and job["status"] in {"failed", "cancelled", "interrupted"}
+    can_check = job["status"] in {"failed", "cancelled", "interrupted"} and (
+        job["kind"] == "temporal_detect"
+        or job["kind"] == "extract"
         and isinstance(job["params"].get("extraction_contract"), dict)
     )
     reason = (
@@ -183,6 +205,8 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         if can_check
         else "This task cannot resume in place. Prepare a new run explicitly if needed."
     )
+    if can_check and job["kind"] == "temporal_detect":
+        reason = "Check frozen detector settings and the remaining frames before continuing."
     next_reason = {
         "train": (
             "A new training run starts from its chosen checkpoint; optimizer state is not resumed."
@@ -209,6 +233,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         ),
         "extract": (
             "A new extraction uses a new sampling plan; it does not resume the earlier attempt."
+        ),
+        "temporal_detect": (
+            "Reuse a complete cache or explicitly continue its remaining frames. "
+            "Changed detector settings require a separate cache."
         ),
     }[job["kind"]]
     if preannotation:
