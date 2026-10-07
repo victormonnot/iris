@@ -18,10 +18,13 @@ timestamps and gaps, separate reference identities, revisioned human/assistant
 review evidence, and frozen temporal dataset splits. Temporal detector caches
 compute those frames once on CPU or CUDA, retain complete frame results across
 interruptions, and support stricter score/class filters without further inference.
-These Python/JSON API services are included in workspace backups; they do not yet
-execute trackers or add a temporal editor to Studio. See
-[temporal sources and identities](docs/temporal-data.md) and
-[reusable temporal detections](docs/temporal-detections.md).
+These Python/JSON API services are included in workspace backups. Optional
+ByteTrack and BoT-SORT adapters can now replay complete caches locally, preserving
+observations, predictions and unassigned detections in standalone JSON reports.
+They add no temporal editor or tracking comparator to Studio yet. See
+[temporal sources and identities](docs/temporal-data.md),
+[reusable temporal detections](docs/temporal-detections.md), and
+[native tracking and replay](docs/tracking.md).
 
 ## Standalone model export
 

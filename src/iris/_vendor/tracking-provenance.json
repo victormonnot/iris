@@ -1,0 +1,75 @@
+{
+  "bytetrack": {
+    "repository": "https://github.com/FoundationVision/ByteTrack",
+    "commit": "d1bf0191adff59bc8fcfeaa0b33d3d1642552a99",
+    "license": "MIT",
+    "files": {
+      "basetrack.py": {
+        "path": "yolox/tracker/basetrack.py",
+        "upstream_sha256": "c938afcf7c516bba4a77155c2499fcae6f926df7a2faa6f73a4be1b073f9bb2d",
+        "vendored_sha256": "3f9378136b48d1574ab97bea00ca63ec261bbeb0989b9b9319a7cb963b87512e"
+      },
+      "byte_tracker.py": {
+        "path": "yolox/tracker/byte_tracker.py",
+        "upstream_sha256": "7cecdcdd7998103969a4ba1772f4c9fb5560fd5eef05ca03e0d2df28346ca50b",
+        "vendored_sha256": "59dfbd57090b74cd9fc5110fa337563219d3701b9eb1da4943aba18473ea6306"
+      },
+      "kalman_filter.py": {
+        "path": "yolox/tracker/kalman_filter.py",
+        "upstream_sha256": "9842d0dd9957c97e312d42e5789441add55082066d87cc051ac768143a46eb39",
+        "vendored_sha256": "e23a53f747c9e4d2f664747343cffe807e4ba95d57bf9d44d5f0f244ddf2fbe7"
+      },
+      "matching.py": {
+        "path": "yolox/tracker/matching.py",
+        "upstream_sha256": "2f54bf0c183f577087391901562ae2bcd3c01633a3e077bd5d4168fafbd899a6",
+        "vendored_sha256": "83a505d44b30c1ce1ffb197fb766e70a37a96eeb673dc59fa1c48ad4ff159d86"
+      },
+      "__init__.py": {
+        "path": null,
+        "upstream_sha256": null,
+        "vendored_sha256": "865e624e866c9cb7bc6fb65f663f1a76dcbb81ada6acb12e670672e9e901d9e0"
+      }
+    },
+    "license_sha256": "e9d83751678cbaba6dfba902ea39215c423d93425e58f8450d6001f7261696f9",
+    "adaptations_sha256": "2850895d775454ef28555fb2f5e5ec482bb2ad325829d595baf4e6e7c3535e0c"
+  },
+  "botsort": {
+    "repository": "https://github.com/NirAharon/BoT-SORT",
+    "commit": "251985436d6712aaf682aaaf5f71edb4987224bd",
+    "license": "MIT",
+    "files": {
+      "basetrack.py": {
+        "path": "tracker/basetrack.py",
+        "upstream_sha256": "a0f717a5059ebfa626a63cea5b040a649acd7720072f503cabfa24d749f082f6",
+        "vendored_sha256": "a451144db22f2f2190e43281a8a2f945e22648f3d7a01bca418a1d6b1efd1c27"
+      },
+      "bot_sort.py": {
+        "path": "tracker/bot_sort.py",
+        "upstream_sha256": "ba6dd32ad4b96ee49d6f70654159269bd45ce15fd0fe5007f3a1b81bc257edf0",
+        "vendored_sha256": "c9dd364a02cc925f0c940eecb906b33ac6668483cd8da583b8e09d91a8387723"
+      },
+      "gmc.py": {
+        "path": "tracker/gmc.py",
+        "upstream_sha256": "508c3a4ea0e9a72478ce2d1d29aa1eb8892b3804c76b524a16a34dca23dba9ba",
+        "vendored_sha256": "c2659c7e4aff4ba3326b8818091d95dfb68310d873114c46a21a1d68e4e0c683"
+      },
+      "kalman_filter.py": {
+        "path": "tracker/kalman_filter.py",
+        "upstream_sha256": "c1a4c0acc71b9a91c0cdbe7b689f88712d68e7e8be4d7e54fb437f33fdbc9e5a",
+        "vendored_sha256": "0036e5bf1a67144231de991807c5e76a8e94e33e59c4d7f918719d64b71302db"
+      },
+      "matching.py": {
+        "path": "tracker/matching.py",
+        "upstream_sha256": "020b2215c20467b31f7d8a977a2f557b8d1838f8baa5a5be54c0b8d14bbee4e1",
+        "vendored_sha256": "c6b3586d50a5bf0910bf5bd4769f819d87644722b8e024cbd17451043c5a41b2"
+      },
+      "__init__.py": {
+        "path": null,
+        "upstream_sha256": null,
+        "vendored_sha256": "865e624e866c9cb7bc6fb65f663f1a76dcbb81ada6acb12e670672e9e901d9e0"
+      }
+    },
+    "license_sha256": "12a15474ca15cec568da311e6cd89e593e3cd2bb5b790e75b90e1608306a3a5f",
+    "adaptations_sha256": "663de2dae57e286f5e8de3ebc6df97d1cef62e38ee37039ab220ca66c122b6a7"
+  }
+}

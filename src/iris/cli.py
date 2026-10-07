@@ -38,7 +38,60 @@ def main():
     restore = transfers.add_parser("restore", help="Restore to a new folder, without starting IRIS")
     restore.add_argument("archive", type=Path)
     restore.add_argument("--to", type=Path, required=True, dest="destination")
+    tracking = commands.add_parser(
+        "tracking", help="Replay saved temporal detections with an optional local tracker"
+    )
+    tracking_actions = tracking.add_subparsers(dest="tracking_action", required=True)
+    tracking_actions.add_parser("status", help="Inspect optional tracker package readiness")
+    replay = tracking_actions.add_parser("replay", help="Write a complete standalone replay report")
+    replay.add_argument("--cache-id", required=True)
+    replay.add_argument("--output", type=Path, required=True)
+    choice = replay.add_mutually_exclusive_group(required=True)
+    choice.add_argument("--tracker", choices=("bytetrack", "botsort"))
+    choice.add_argument("--profile", type=Path, help="Complete versioned tracker profile JSON")
+    replay.add_argument("--class-id", type=int, action="append", dest="class_ids")
+    replay.add_argument("--repeats", type=int, default=2, choices=range(1, 6))
+    replay.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.command == "tracking":
+        if args.tracking_action == "status":
+            from iris.tracking import tracking_status
+
+            print(json.dumps(tracking_status(), indent=2))
+            return
+        from iris.tracking_replay import ReadOnlyReplayStore, replay_to_file
+
+        if args.profile is not None and args.class_ids is not None:
+            parser.error("--class-id cannot override a complete --profile")
+        try:
+            profile = (
+                json.loads(args.profile.read_text(encoding="utf-8"))
+                if args.profile is not None
+                else None
+            )
+            report = replay_to_file(
+                ReadOnlyReplayStore(args.data_dir),
+                args.cache_id,
+                args.output,
+                algorithm=args.tracker,
+                profile=profile,
+                class_ids=args.class_ids,
+                repeats=args.repeats,
+            )
+            print(
+                json.dumps(
+                    {
+                        "report": str(args.output.absolute()),
+                        "complete": report["complete"],
+                        "frames": len(report["sequence"]["frames"]),
+                        "repeatability": report["repeatability"],
+                    },
+                    indent=2,
+                )
+            )
+        except (ValueError, KeyError, OSError, RuntimeError, ImportError) as exc:
+            parser.exit(1, f"Tracking replay failed: {exc}\n")
+        return
     if args.command == "workspace":
         from iris.workspace_archive import ArchiveError, create_archive
         from iris.workspace_restore import inspect_archive, restore_archive

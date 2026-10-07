@@ -1,0 +1,6 @@
+# Vendored source bytes are covered by the upstream/adaptation SHA-256 manifest.
+src/iris/_vendor/bytetrack/** text eol=lf
+src/iris/_vendor/botsort/** text eol=lf
+# Unified diffs require a literal context marker even on otherwise empty lines.
+src/iris/_vendor/bytetrack/adaptations.patch -whitespace
+src/iris/_vendor/botsort/adaptations.patch -whitespace

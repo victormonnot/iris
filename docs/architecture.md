@@ -14,8 +14,9 @@ Projects organize import, model comparison, assisted annotation, human review,
 dataset versions, fine-tuning, and comparison against earlier checkpoints. The
 current executable model task is bounding-box detection. Temporal sequences,
 reference identities, dataset versions and reusable detector outputs have separate
-Python/JSON API services;
-tracker execution, temporal editing and tracking metrics are not implemented yet.
+Python/JSON API services. Optional native ByteTrack and BoT-SORT adapters replay
+complete detector caches through a standalone Python/CLI interface; temporal
+editing, a Studio tracker comparator and tracking metrics are not implemented yet.
 Full segmentation workflows remain outside this version. No ARGOS or drone
 integration is required.
 
@@ -55,6 +56,18 @@ through an SSH tunnel; computation and storage remain on that workstation.
 This is a single-user application, not an authenticated public service.
 
 ## Projects and compatibility
+
+The T3 tracker layer adds no database migration. Complete T2 caches feed class-isolated
+native ByteTrack or BoT-SORT instances without detector inference or learned ReID.
+The adapter preserves exact measurement provenance, separates native predictions
+from observations, accounts for every selected detection and resets per sequence.
+Native memory counts analyzed updates; source gaps and clock provenance remain
+explicit. BoT-SORT optical-flow compensation reads verified original pixels, while
+ByteTrack and explicit no-GMC profiles need only saved detections. A read-only CLI
+publishes complete standalone reports with source/runtime/profile hashes, timings
+and repeated-run semantic checks. Optional dependencies and MIT upstream sources
+are pinned; the application can still start without tracker packages. See
+[tracking adapters and replay](tracking.md).
 
 SQLite schema 21 adds `temporal_detection_caches` and `temporal_detection_frames`.
 Immutable cache recipes pin a sequence, ordered frames, verified local detector

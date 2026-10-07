@@ -1,0 +1,144 @@
+--- upstream/yolox/tracker/basetrack.py
++++ bytetrack/basetrack.py
+@@ -1,3 +1,4 @@
++# ruff: noqa
+ import numpy as np
+ from collections import OrderedDict
+ 
+--- upstream/yolox/tracker/byte_tracker.py
++++ bytetrack/byte_tracker.py
+@@ -1,26 +1,26 @@
++# ruff: noqa
+ import numpy as np
+ from collections import deque
+ import os
+ import os.path as osp
+ import copy
+-import torch
+-import torch.nn.functional as F
+ 
+ from .kalman_filter import KalmanFilter
+-from yolox.tracker import matching
++from . import matching
+ from .basetrack import BaseTrack, TrackState
+ 
+ class STrack(BaseTrack):
+     shared_kalman = KalmanFilter()
+-    def __init__(self, tlwh, score):
++    def __init__(self, tlwh, score, detection_index=None):
+ 
+         # wait activate
+-        self._tlwh = np.asarray(tlwh, dtype=np.float)
++        self._tlwh = np.asarray(tlwh, dtype=float)
+         self.kalman_filter = None
+         self.mean, self.covariance = None, None
+         self.is_activated = False
+ 
+         self.score = score
++        self.detection_index = detection_index  # IRIS observation provenance only.
+         self.tracklet_len = 0
+ 
+     def predict(self):
+@@ -67,6 +67,7 @@
+         if new_id:
+             self.track_id = self.next_id()
+         self.score = new_track.score
++        self.detection_index = new_track.detection_index  # IRIS provenance only.
+ 
+     def update(self, new_track, frame_id):
+         """
+@@ -86,6 +87,7 @@
+         self.is_activated = True
+ 
+         self.score = new_track.score
++        self.detection_index = new_track.detection_index  # IRIS provenance only.
+ 
+     @property
+     # @jit(nopython=True)
+@@ -174,6 +176,7 @@
+         scale = min(img_size[0] / float(img_h), img_size[1] / float(img_w))
+         bboxes /= scale
+ 
++        detection_indices = np.arange(len(scores))  # IRIS provenance only.
+         remain_inds = scores > self.args.track_thresh
+         inds_low = scores > 0.1
+         inds_high = scores < self.args.track_thresh
+@@ -186,8 +189,8 @@
+ 
+         if len(dets) > 0:
+             '''Detections'''
+-            detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
+-                          (tlbr, s) in zip(dets, scores_keep)]
++            detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s, detection_index=int(i)) for
++                          (tlbr, s, i) in zip(dets, scores_keep, detection_indices[remain_inds])]
+         else:
+             detections = []
+ 
+@@ -223,8 +226,8 @@
+         # association the untrack to the low score detections
+         if len(dets_second) > 0:
+             '''Detections'''
+-            detections_second = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
+-                          (tlbr, s) in zip(dets_second, scores_second)]
++            detections_second = [STrack(STrack.tlbr_to_tlwh(tlbr), s, detection_index=int(i)) for
++                          (tlbr, s, i) in zip(dets_second, scores_second, detection_indices[inds_second])]
+         else:
+             detections_second = []
+         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
+--- upstream/yolox/tracker/kalman_filter.py
++++ bytetrack/kalman_filter.py
+@@ -1,3 +1,4 @@
++# ruff: noqa
+ # vim: expandtab:ts=4:sw=4
+ import numpy as np
+ import scipy.linalg
+--- upstream/yolox/tracker/matching.py
++++ bytetrack/matching.py
+@@ -1,3 +1,4 @@
++# ruff: noqa
+ import cv2
+ import numpy as np
+ import scipy
+@@ -5,7 +6,7 @@
+ from scipy.spatial.distance import cdist
+ 
+ from cython_bbox import bbox_overlaps as bbox_ious
+-from yolox.tracker import kalman_filter
++from . import kalman_filter
+ import time
+ 
+ def merge_matches(m1, m2, shape):
+@@ -58,13 +59,13 @@
+ 
+     :rtype ious np.ndarray
+     """
+-    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
++    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=float)
+     if ious.size == 0:
+         return ious
+ 
+     ious = bbox_ious(
+-        np.ascontiguousarray(atlbrs, dtype=np.float),
+-        np.ascontiguousarray(btlbrs, dtype=np.float)
++        np.ascontiguousarray(atlbrs, dtype=float),
++        np.ascontiguousarray(btlbrs, dtype=float)
+     )
+ 
+     return ious
+@@ -118,13 +119,13 @@
+     :return: cost_matrix np.ndarray
+     """
+ 
+-    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float)
++    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=float)
+     if cost_matrix.size == 0:
+         return cost_matrix
+-    det_features = np.asarray([track.curr_feat for track in detections], dtype=np.float)
++    det_features = np.asarray([track.curr_feat for track in detections], dtype=float)
+     #for i, track in enumerate(tracks):
+         #cost_matrix[i, :] = np.maximum(0.0, cdist(track.smooth_feat.reshape(1,-1), det_features, metric))
+-    track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float)
++    track_features = np.asarray([track.smooth_feat for track in tracks], dtype=float)
+     cost_matrix = np.maximum(0.0, cdist(track_features, det_features, metric))  # Nomalized features
+     return cost_matrix
+ 

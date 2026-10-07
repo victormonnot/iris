@@ -1,0 +1,223 @@
+--- upstream/tracker/basetrack.py
++++ botsort/basetrack.py
+@@ -1,3 +1,4 @@
++# ruff: noqa
+ import numpy as np
+ from collections import OrderedDict
+ 
+--- upstream/tracker/bot_sort.py
++++ botsort/bot_sort.py
+@@ -1,28 +1,28 @@
++# ruff: noqa
+ import cv2
+-import matplotlib.pyplot as plt
+ import numpy as np
+ from collections import deque
+ 
+-from tracker import matching
+-from tracker.gmc import GMC
+-from tracker.basetrack import BaseTrack, TrackState
+-from tracker.kalman_filter import KalmanFilter
+-
+-from fast_reid.fast_reid_interfece import FastReIDInterface
++from . import matching
++from .gmc import GMC
++from .basetrack import BaseTrack, TrackState
++from .kalman_filter import KalmanFilter
++
+ 
+ 
+ class STrack(BaseTrack):
+     shared_kalman = KalmanFilter()
+ 
+-    def __init__(self, tlwh, score, feat=None, feat_history=50):
++    def __init__(self, tlwh, score, feat=None, feat_history=50, detection_index=None):
+ 
+         # wait activate
+-        self._tlwh = np.asarray(tlwh, dtype=np.float)
++        self._tlwh = np.asarray(tlwh, dtype=float)
+         self.kalman_filter = None
+         self.mean, self.covariance = None, None
+         self.is_activated = False
+ 
+         self.score = score
++        self.detection_index = detection_index  # IRIS observation provenance only.
+         self.tracklet_len = 0
+ 
+         self.smooth_feat = None
+@@ -108,6 +108,7 @@
+         if new_id:
+             self.track_id = self.next_id()
+         self.score = new_track.score
++        self.detection_index = new_track.detection_index  # IRIS provenance only.
+ 
+     def update(self, new_track, frame_id):
+         """
+@@ -131,6 +132,7 @@
+         self.is_activated = True
+ 
+         self.score = new_track.score
++        self.detection_index = new_track.detection_index  # IRIS provenance only.
+ 
+     @property
+     def tlwh(self):
+@@ -223,6 +225,7 @@
+         self.appearance_thresh = args.appearance_thresh
+ 
+         if args.with_reid:
++            from fast_reid.fast_reid_interfece import FastReIDInterface
+             self.encoder = FastReIDInterface(args.fast_reid_config, args.fast_reid_weights, args.device)
+ 
+         self.gmc = GMC(method=args.cmc_method, verbose=[args.name, args.ablation])
+@@ -244,8 +247,10 @@
+                 bboxes = output_results[:, :4]  # x1y1x2y2
+                 classes = output_results[:, -1]
+ 
++            detection_indices = np.arange(len(scores))  # IRIS provenance only.
+             # Remove bad detections
+             lowest_inds = scores > self.track_low_thresh
++            detection_indices = detection_indices[lowest_inds]  # IRIS provenance only.
+             bboxes = bboxes[lowest_inds]
+             scores = scores[lowest_inds]
+             classes = classes[lowest_inds]
+@@ -271,11 +276,11 @@
+         if len(dets) > 0:
+             '''Detections'''
+             if self.args.with_reid:
+-                detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s, f) for
+-                              (tlbr, s, f) in zip(dets, scores_keep, features_keep)]
++                detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s, f, detection_index=int(i)) for
++                              (tlbr, s, f, i) in zip(dets, scores_keep, features_keep, detection_indices[remain_inds])]
+             else:
+-                detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
+-                              (tlbr, s) in zip(dets, scores_keep)]
++                detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s, detection_index=int(i)) for
++                              (tlbr, s, i) in zip(dets, scores_keep, detection_indices[remain_inds])]
+         else:
+             detections = []
+ 
+@@ -352,8 +357,8 @@
+         # association the untrack to the low score detections
+         if len(dets_second) > 0:
+             '''Detections'''
+-            detections_second = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
+-                                 (tlbr, s) in zip(dets_second, scores_second)]
++            detections_second = [STrack(STrack.tlbr_to_tlwh(tlbr), s, detection_index=int(i)) for
++                                 (tlbr, s, i) in zip(dets_second, scores_second, detection_indices[inds_second])]
+         else:
+             detections_second = []
+ 
+--- upstream/tracker/gmc.py
++++ botsort/gmc.py
+@@ -1,5 +1,5 @@
++# ruff: noqa
+ import cv2
+-import matplotlib.pyplot as plt
+ import numpy as np
+ import copy
+ import time
+@@ -62,6 +62,7 @@
+         self.prevDescriptors = None
+ 
+         self.initializedFirstFrame = False
++        self.last_status = 'uninitialized'  # IRIS diagnostics only.
+ 
+     def apply(self, raw_frame, detections=None):
+         if self.method == 'orb' or self.method == 'sift':
+@@ -73,6 +74,7 @@
+         elif self.method == 'file':
+             return self.applyFile(raw_frame, detections)
+         elif self.method == 'none':
++            self.last_status = 'disabled'  # IRIS diagnostics only.
+             return np.eye(2, 3)
+         else:
+             return np.eye(2, 3)
+@@ -200,6 +202,7 @@
+ 
+         # Draw the keypoint matches on the output image
+         if 0:
++            import matplotlib.pyplot as plt
+             matches_img = np.hstack((self.prevFrame, frame))
+             matches_img = cv2.cvtColor(matches_img, cv2.COLOR_GRAY2BGR)
+             W = np.size(self.prevFrame, 1)
+@@ -261,6 +264,7 @@
+ 
+             # Initialization done
+             self.initializedFirstFrame = True
++            self.last_status = 'initialized'  # IRIS diagnostics only.
+ 
+             return H
+ 
+@@ -287,7 +291,9 @@
+             if self.downscale > 1.0:
+                 H[0, 2] *= self.downscale
+                 H[1, 2] *= self.downscale
++            self.last_status = 'estimated'  # IRIS diagnostics only.
+         else:
++            self.last_status = 'identity_insufficient_matches'  # IRIS diagnostics only.
+             print('Warning: not enough matching points')
+ 
+         # Store to next iteration
+@@ -305,7 +311,7 @@
+     def applyFile(self, raw_frame, detections=None):
+         line = self.gmcFile.readline()
+         tokens = line.split("\t")
+-        H = np.eye(2, 3, dtype=np.float_)
++        H = np.eye(2, 3, dtype=np.float64)
+         H[0, 0] = float(tokens[1])
+         H[0, 1] = float(tokens[2])
+         H[0, 2] = float(tokens[3])
+--- upstream/tracker/kalman_filter.py
++++ botsort/kalman_filter.py
+@@ -1,3 +1,4 @@
++# ruff: noqa
+ # vim: expandtab:ts=4:sw=4
+ import numpy as np
+ import scipy.linalg
+--- upstream/tracker/matching.py
++++ botsort/matching.py
+@@ -1,10 +1,11 @@
++# ruff: noqa
+ import numpy as np
+ import scipy
+ import lap
+ from scipy.spatial.distance import cdist
+ 
+ from cython_bbox import bbox_overlaps as bbox_ious
+-from tracker import kalman_filter
++from . import kalman_filter
+ 
+ 
+ def merge_matches(m1, m2, shape):
+@@ -57,13 +58,13 @@
+ 
+     :rtype ious np.ndarray
+     """
+-    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
++    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=float)
+     if ious.size == 0:
+         return ious
+ 
+     ious = bbox_ious(
+-        np.ascontiguousarray(atlbrs, dtype=np.float),
+-        np.ascontiguousarray(btlbrs, dtype=np.float)
++        np.ascontiguousarray(atlbrs, dtype=float),
++        np.ascontiguousarray(btlbrs, dtype=float)
+     )
+ 
+     return ious
+@@ -133,11 +134,11 @@
+     :return: cost_matrix np.ndarray
+     """
+ 
+-    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float)
++    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=float)
+     if cost_matrix.size == 0:
+         return cost_matrix
+-    det_features = np.asarray([track.curr_feat for track in detections], dtype=np.float)
+-    track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float)
++    det_features = np.asarray([track.curr_feat for track in detections], dtype=float)
++    track_features = np.asarray([track.smooth_feat for track in tracks], dtype=float)
+ 
+     cost_matrix = np.maximum(0.0, cdist(track_features, det_features, metric))  # / 2.0  # Nomalized features
+     return cost_matrix
