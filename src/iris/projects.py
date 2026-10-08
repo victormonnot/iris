@@ -66,6 +66,7 @@ JOB_PARENTS = {
     "tracking_compare": ("temporal_detection_caches", "cache_id"),
     "tracking_cost": ("jobs", "comparison_id"),
     "tracking_study": ("temporal_datasets", "dataset_id"),
+    "tracking_selection": ("jobs", "source_job_id"),
 }
 
 
@@ -100,6 +101,11 @@ def record_project(store: Store, table: str, record: dict) -> str | None:
                 row = store.get(parent_table, identifier)
                 if row:
                     if record["kind"] == "tracking_cost" and row["kind"] != "tracking_compare":
+                        return None
+                    if record["kind"] == "tracking_selection" and row["kind"] not in {
+                        "tracking_compare",
+                        "tracking_study",
+                    }:
                         return None
                     return record_project(store, parent_table, row)
         # Older job receipts and imported snapshots may omit params. Their

@@ -143,5 +143,9 @@ The [profile study workflow](tracking-studies.md) applies these same quality rul
 to explicit alternative profiles on frozen development/validation data. Repeated
 replays do not become additional human reference images.
 
-Training, application target-lock
-policies and qualification on independent recordings remain separate steps.
+[Selected-object scenarios](selected-object.md) separately assess a chosen
+object's continuity, substitutions and abstention through explicit selection
+policies. Those metrics do not replace the multi-object measures above.
+
+Training, application actuation rules and qualification on independent recordings
+remain separate steps.

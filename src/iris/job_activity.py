@@ -17,6 +17,7 @@ WORKSPACES = {
     "tracking_compare": "tracking",
     "tracking_cost": "tracking",
     "tracking_study": "tracking",
+    "tracking_selection": "tracking",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -32,6 +33,7 @@ NAMES = {
     "tracking_compare": "Visual tracking comparison",
     "tracking_cost": "Tracking pipeline measurement",
     "tracking_study": "Tracking profile study",
+    "tracking_selection": "Selected-object scenario",
 }
 
 
@@ -59,7 +61,7 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         sequence = store.get("temporal_sequences", target["sequence_id"])
         asset = store.get("assets", sequence["asset_id"]) if sequence else None
         session_id = asset["session_id"] if asset else None
-    elif target and job["kind"] == "tracking_cost":
+    elif target and job["kind"] in {"tracking_cost", "tracking_selection"}:
         sequence = store.get("temporal_sequences", job["params"]["sequence_id"])
         asset = store.get("assets", sequence["asset_id"]) if sequence else None
         session_id = asset["session_id"] if asset else None
@@ -121,6 +123,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             add(
                 "tracking_study",
                 "Complete profile studies",
+                int(job["status"] == "succeeded" and job["result"] is not None),
+                job["id"],
+            )
+        elif target and job["kind"] == "tracking_selection":
+            add(
+                "tracking_selection",
+                "Complete selected-object scenarios",
                 int(job["status"] == "succeeded" and job["result"] is not None),
                 job["id"],
             )
@@ -269,6 +278,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Reuse a complete cache or explicitly continue its remaining frames. "
             "Changed detector settings require a separate cache."
         ),
+        "tracking_selection": (
+            "Open the complete selected-object scenario or prepare a fresh selection. "
+            "Saved tracker observations and the application policy remain unchanged."
+        ),
         "tracking_study": (
             "Open the completed study or preview a new bounded run. "
             "The baseline remains unchanged; test sequences remain reserved."
@@ -293,14 +306,15 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Preview an explicit resume in the training results. It creates a new attempt "
             "with the same settings and dataset, restoring optimizer and random state."
         )
-    from iris.tracking_studies import public_job
+    from iris.tracking_selections import public_job
 
     return {
         "job": public_job(job),
         "context": {
             "name": (
                 job["params"].get("name")
-                if job["kind"] in {"tracking_compare", "tracking_cost", "tracking_study"}
+                if job["kind"]
+                in {"tracking_compare", "tracking_cost", "tracking_study", "tracking_selection"}
                 else None
             )
             or (target or {}).get("name")
@@ -337,6 +351,15 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             **(
                 {"tracking_study_id": job["id"], "dataset_id": job["params"]["dataset_id"]}
                 if job["kind"] == "tracking_study"
+                else {}
+            ),
+            **(
+                {
+                    "tracking_selection_id": job["id"],
+                    "sequence_id": job["params"]["sequence_id"],
+                    "source_job_id": job["params"]["source_job_id"],
+                }
+                if job["kind"] == "tracking_selection"
                 else {}
             ),
         },

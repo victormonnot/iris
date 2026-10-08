@@ -1254,7 +1254,8 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
   if (detail.next_action.workspace === "tracking") {
     const comparisonId = context.comparison_id;
     const sequenceId = context.sequence_id;
-    if (context.tracking_study_id) window.dispatchEvent(new CustomEvent("iris:tracking-study-open", { detail: { study_id: context.tracking_study_id } }));
+    if (context.tracking_selection_id) window.dispatchEvent(new CustomEvent("iris:tracking-selection-open", { detail: { selection_id: context.tracking_selection_id } }));
+    else if (context.tracking_study_id) window.dispatchEvent(new CustomEvent("iris:tracking-study-open", { detail: { study_id: context.tracking_study_id } }));
     else if (context.tracking_cost_id) window.dispatchEvent(new CustomEvent("iris:tracking-cost-open", { detail: { run_id: context.tracking_cost_id, comparison_id: comparisonId } }));
     else if (comparisonId) window.dispatchEvent(new CustomEvent("iris:tracking-comparison-open", { detail: { comparison_id: comparisonId } }));
     else if (sequenceId) window.dispatchEvent(new CustomEvent("iris:tracking-sequence-open", { detail: { sequence_id: sequenceId } }));

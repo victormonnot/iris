@@ -94,6 +94,10 @@ def run(root: Path, job_id: str, parent_pid: int):
             from iris.tracking_studies import run_tracking_study
 
             result = run_tracking_study(store, job_id, progress, cancelled)
+        elif job["kind"] == "tracking_selection":
+            from iris.tracking_selections import run_tracking_selection
+
+            result = run_tracking_selection(store, job_id, progress, cancelled)
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         elif job["kind"] == "dinox":
@@ -148,7 +152,8 @@ def run(root: Path, job_id: str, parent_pid: int):
             {
                 "status": status,
                 "result": None
-                if job["kind"] in {"tracking_compare", "tracking_cost", "tracking_study"}
+                if job["kind"]
+                in {"tracking_compare", "tracking_cost", "tracking_study", "tracking_selection"}
                 and status != "succeeded"
                 else result,
                 "finished_at": now(),
@@ -165,6 +170,9 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "tracking_compare": "Visual tracking comparison ready; no quality ranking",
                         "tracking_cost": "Fresh pipeline measurement ready; inspect its scope",
                         "tracking_study": "Profile study ready; baseline remains unchanged",
+                        "tracking_selection": (
+                            "Selected-object scenario ready; application policy unchanged"
+                        ),
                         "assist": "Annotation proposals ready for human review",
                         "dinox": "DINO-X proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
@@ -180,10 +188,15 @@ def run(root: Path, job_id: str, parent_pid: int):
                 else "Job stopped; saved artifacts are preserved",
             },
             require_uncancelled=job["kind"]
-            in {"tracking_compare", "tracking_cost", "tracking_study"}
+            in {"tracking_compare", "tracking_cost", "tracking_study", "tracking_selection"}
             and status == "succeeded",
         )
-        if not published and job["kind"] in {"tracking_compare", "tracking_cost", "tracking_study"}:
+        if not published and job["kind"] in {
+            "tracking_compare",
+            "tracking_cost",
+            "tracking_study",
+            "tracking_selection",
+        }:
             # Cancellation can arrive between the final read and this compare-and-swap.
             # Never retain a complete report on a cancelled attempt, even in that race.
             update_running(

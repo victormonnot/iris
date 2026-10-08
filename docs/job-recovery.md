@@ -72,6 +72,10 @@ budget is checked during execution. A cancelled, failed or time-limited attempt
 does not publish its tested subset as a completed comparison. A new launch keeps
 the earlier attempt in history and starts every selected profile again.
 
+[Selected-object scenarios](selected-object.md) follow the same complete-only
+publication rule. A fresh attempt replays the saved observations from its explicit
+initial selection; stopped jobs never carry selection state into another run.
+
 ## Prepare unfinished local batch images
 
 A stopped local annotation batch can prepare a **new batch** for its failed,

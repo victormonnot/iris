@@ -1,0 +1,27 @@
+.selection-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(240px,.6fr); gap: 20px; align-items: start; }
+.selection-view,.selection-controls { min-width: 0; }
+#selection-stage { aspect-ratio: 4 / 3; min-height: 0; }
+#selection-stage [data-detection] { cursor: pointer; }
+#selection-stage .selection-accepted { stroke: var(--annotation-selected); stroke-width: 4; }
+#selection-stage .selection-ineligible { opacity: .45; }
+.selection-state { border: 1px solid var(--line); padding: 12px; margin: 12px 0; background: var(--surface-raised); line-height: 1.7; font-size: 12px; }
+.selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0; }
+.selection-policies { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
+.selection-policies h3,.selection-controls h3 { font-size: 15px; font-weight: 500; }
+.selection-policies .tracking-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.selection-timeline { max-height: 280px; overflow: auto; border: 1px solid var(--line); }
+.selection-timeline button { width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: var(--surface); padding: 9px 12px; font: 12px/1.6 var(--font-mono); cursor: pointer; }
+.selection-timeline button:hover,.selection-timeline button[aria-current=true] { background: var(--hover); }
+.selection-table-scroll { width: 100%; overflow: auto; }
+.selection-table { width: 100%; border-collapse: collapse; font: 12px/1.7 var(--font-mono); }
+.selection-table th,.selection-table td { padding: 9px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.selection-table th { font-weight: 500; font-family: var(--font-sans); }
+#selection-result { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
+#selection-scrub { width: 100%; }
+#selection-source-summary,#selection-anchor,#selection-release,#selection-prepare-status,#selection-state,#selection-reference-summary { overflow-wrap: anywhere; }
+#selection-observations { max-height: 170px; overflow: auto; }
+#selection-candidates { max-height: 260px; overflow: auto; font: 11px/1.7 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.selection-readiness { margin-bottom: 18px; }
+@media(max-width:900px) { .selection-layout { grid-template-columns: minmax(0,1fr); }.selection-policies .tracking-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:480px) { .selection-policies .tracking-fields { grid-template-columns: minmax(0,1fr); } }
+#selection-stage [data-detection] rect { pointer-events: all; }

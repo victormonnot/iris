@@ -125,6 +125,13 @@ are withheld. Saved raw replays and derived metrics are checked without optional
 ML execution during reading and transfer. Schema 22 and historical T4/T6/T7
 protocols remain unchanged. See [profile studies](tracking-studies.md).
 
+IRIS 0.54 adds `tracking_selection` jobs over one saved comparison lane or study
+profile. A pure state machine replays initial selection and optional release
+through diagnostic ID-only and guarded geometric policies. The optional reference
+is used only by the evaluator. Sources, settings and results are pinned and
+recomputed during historical reads and transfer, without detector or tracker
+execution. Schema 22 remains unchanged. See [selected-object continuity](selected-object.md).
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared

@@ -1253,6 +1253,12 @@ def validate_database(
                     validate_tracking_study_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace tracking study records are invalid") from exc
+                from iris.tracking_selections import validate_tracking_selection_records
+
+                try:
+                    validate_tracking_selection_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace selected-object records are invalid") from exc
                 from iris.tracking_quality import validate_tracking_quality_records
 
                 try:

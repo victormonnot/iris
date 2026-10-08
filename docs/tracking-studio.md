@@ -125,3 +125,8 @@ Use [bounded profile studies](tracking-studies.md) to compare explicit threshold
 retention and camera-compensation settings on frozen development/validation
 references. The study previews its budget and withholds reserved test data. Its
 quality and tracker replay costs remain separate from fresh pipeline measurements.
+
+The [selected-object panel](selected-object.md) starts from a measured observation
+in a saved lane or study profile. It replays loss, ambiguity and recovery, with
+an optional explicit target identity from the human reference. State timelines
+and selected-object metrics complement the multi-object tracking scores.

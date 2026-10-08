@@ -91,6 +91,11 @@ reference pins, profiles, complete cached-input replays and computed results.
 Archive validation checks that reserved test entries were excluded and recomputes
 the saved quality/cost summaries without loading a tracker or detector.
 
+[Selected-object scenarios](selected-object.md) retain their source, initial
+observation, optional release, policy and explicit reference identity. Archive
+validation reproduces their state transitions and quality metrics from saved
+observations without executing optional inference or tracking runtimes.
+
 The CLI provides `iris workspace backup`, `inspect` and `restore`. CLI backup
 requires the source server to be stopped and uses its directory lock. Inspection
 and restoration need no running server. The destination's parent must exist.

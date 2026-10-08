@@ -44,6 +44,11 @@ settings on frozen development/validation references, keep reserved test data
 out of tuning, and show quality alongside tracker replay cost without
 automatically replacing the baseline.
 
+[Selected-object scenarios](docs/selected-object.md) replay a chosen observation
+through an ID-only policy and a guarded geometric policy. They make loss,
+ambiguity, recovery and release visible, and can assess substitutions and
+abstention against an explicitly selected human-reference identity.
+
 Further details:
 [temporal sources and identities](docs/temporal-data.md),
 [reusable temporal detections](docs/temporal-detections.md),
