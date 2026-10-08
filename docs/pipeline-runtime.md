@@ -196,3 +196,6 @@ It does not establish improved detection quality, reliable physical identity,
 real-time camera latency, performance on a laptop or independent qualification.
 CPU and CUDA numerical outputs may differ; compare each target against an explicit
 IRIS reference on that same target and record cross-device differences separately.
+
+For a new application, follow the [independent qualification protocol](pipeline-qualification.md)
+to separate portability checks from reference quality and target-device evidence.
