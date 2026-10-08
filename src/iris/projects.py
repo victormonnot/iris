@@ -64,6 +64,7 @@ JOB_PARENTS = {
     "model_export": ("model_exports", "export_id"),
     "temporal_detect": ("temporal_detection_caches", "cache_id"),
     "tracking_compare": ("temporal_detection_caches", "cache_id"),
+    "tracking_cost": ("jobs", "comparison_id"),
 }
 
 
@@ -97,6 +98,8 @@ def record_project(store: Store, table: str, record: dict) -> str | None:
             if identifier:
                 row = store.get(parent_table, identifier)
                 if row:
+                    if record["kind"] == "tracking_cost" and row["kind"] != "tracking_compare":
+                        return None
                     return record_project(store, parent_table, row)
         # Older job receipts and imported snapshots may omit params. Their
         # owning comparison/training/etc still provides an unambiguous link.

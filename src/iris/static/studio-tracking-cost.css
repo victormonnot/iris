@@ -1,0 +1,24 @@
+.cost-body { min-width: 0; }
+.cost-actions,.cost-result-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+.cost-result-heading h3 { margin: 0 auto 0 0; font-size: 18px; font-weight: 500; }
+.cost-result { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 8px; min-width: 0; }
+.cost-result h4 { font-size: 14px; font-weight: 500; margin: 22px 0 10px; }
+.cost-coverage { color: var(--accent-strong); font: 12px/1.8 var(--font-mono); }
+.cost-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.cost-card { border: 1px solid var(--line); background: var(--surface-raised); padding: 14px; min-width: 0; }
+.cost-card dt { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.cost-card dd { margin: 0; font: 18px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.cost-card small { display: block; color: var(--muted); font: 11px/1.6 var(--font-sans); margin-top: 6px; }
+.cost-table-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--line); margin: 12px 0; }
+.cost-table { border-collapse: collapse; width: 100%; font: 12px/1.6 var(--font-mono); }
+.cost-table caption { padding: 12px; text-align: left; font: 12px/1.6 var(--font-sans); background: var(--surface-raised); }
+.cost-table th,.cost-table td { text-align: left; border-top: 1px solid var(--line); padding: 10px 12px; vertical-align: top; white-space: nowrap; }
+.cost-table th { font-family: var(--font-sans); font-weight: 500; }
+.cost-table tbody th { font-weight: 400; white-space: normal; min-width: 180px; }
+.cost-table .cost-nested th { color: var(--muted); }
+.cost-table .cost-nested th::before { content: "↳ "; }
+#cost-file { max-width: 100%; }
+#cost-result-scope,#cost-drops,#cost-file-summary,#cost-limitations { overflow-wrap: anywhere; }
+#cost-limitations { font-size: 12px; line-height: 1.7; }
+#cost-provenance { max-height: 420px; }
+@media(max-width:600px) { .cost-cards { grid-template-columns: minmax(0,1fr); }.cost-result-heading .button,.cost-result-heading .text-button { flex-grow: 1; }.cost-table th,.cost-table td { padding: 9px; } }

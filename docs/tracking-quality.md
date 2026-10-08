@@ -135,5 +135,9 @@ lane for global IDF1. Both lanes share a deterministic matching-work budget of
 before the other limits. The saved JSON report is limited to 48 MiB.
 `GET /api/temporal/tracking-quality-status` exposes the protocol and these limits.
 
-Training, profile search, hardware cost measurements, application target-lock
+See [tracking cost measurements](tracking-cost.md) for separate fresh execution
+timings and cadence simulations; the saved comparison's quality scores do not
+describe a new run with dropped frames.
+
+Training, profile search, application target-lock
 policies and qualification on independent recordings remain separate steps.

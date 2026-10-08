@@ -58,6 +58,14 @@ Create a fresh cache to intentionally change the recipe. Each attempt records it
 own loading and warmup cost separately. Reading complete saved results needs no
 weights or ML runtime. See [temporal detector caches](temporal-detections.md).
 
+## Restart a tracking measurement
+
+Visual tracking comparisons and [tracking cost measurements](tracking-cost.md)
+publish complete reports only. A failed, cancelled or interrupted cost job does
+not retain a successful partial timing report. Start a new measurement to obtain
+fresh setup, warmup, tracker state and a complete set of repetitions. Previously
+completed reports remain unchanged; viewing them does not execute the pipeline.
+
 ## Prepare unfinished local batch images
 
 A stopped local annotation batch can prepare a **new batch** for its failed,

@@ -33,6 +33,10 @@ Saved **tracking quality reports** now compare both lanes with a pinned human
 reference: matches, misses, extra observations, continuity errors and IDF1 when
 the entire clip has sufficient reference coverage. Unknown intervals remain
 excluded, and reports do not claim an overall tracker winner. See
+the new [tracking cost measurements](docs/tracking-cost.md) for fresh detector,
+association and complete saved-frame pipeline timings, memory use and explicit
+latest-frame cadence simulation on CPU or CUDA. Measurements from other machines
+can be imported as declared evidence. Also see
 [temporal sources and identities](docs/temporal-data.md),
 [reusable temporal detections](docs/temporal-detections.md), and
 [native tracking and replay](docs/tracking.md), and the

@@ -292,3 +292,51 @@ suite (3,671 passed, eight skipped), subsequent targeted export/report checks an
 real desktop/mobile browser inspection. The application bridge and viewer have
 separate ARGOS tests. These checks establish the tested software cycle; new scenes
 and temporal identity annotations are needed to qualify tracking improvements.
+
+## Saved-frame tracking cost on CPU and CUDA
+
+On 2026-10-08, T7 ran eight fresh detector/tracker measurement jobs on a workstation
+with an Intel Core i5-12400F and NVIDIA RTX 4060. The source was an already known
+eight-frame analog-camera passage at 640 × 480 pixels. The frozen detector was
+official SSDLite320 MobileNet V3, full-image inference, batch one, native storage
+score floor 0.001 and person-only tracker classes. Both tracker profiles retained
+their existing thresholds; BoT-SORT used sparse optical-flow camera compensation
+without learned re-identification.
+
+Each job loaded a fresh detector and tracker, warmed up separately, and reset
+tracker state before each repetition. All-frame runs used three repetitions,
+giving 24 measured samples per configuration. Both CPU and CUDA inference used
+the Torch 2.10.0+cu128 / Torchvision 0.25.0+cu128 environment, with four Torch CPU
+threads. Native tracking remained on CPU for both detector devices.
+
+| Detector device / tracker | Detector call, median | Tracker call, median | Saved-frame pipeline, median | Pipeline p95 |
+| --- | ---: | ---: | ---: | ---: |
+| CPU / ByteTrack | 37.19 ms | 1.05 ms | 48.30 ms | 55.31 ms |
+| CPU / BoT-SORT + optical flow | 37.65 ms | 7.95 ms | 57.72 ms | 64.20 ms |
+| CUDA / ByteTrack | 42.19 ms | 1.19 ms | 55.11 ms | 75.46 ms |
+| CUDA / BoT-SORT + optical flow | 37.06 ms | 7.40 ms | 54.86 ms | 67.86 ms |
+
+The complete measured pipeline includes saved-PNG verification and decoding,
+fresh detector execution, filtering and tracker update. Stage medians need not
+sum to the pipeline median. CUDA did not provide a clear speed advantage for
+this small model and batch-one experiment. This is not a ranking of devices or
+a measurement of ARGOS's separate YOLOX deployment pipeline.
+
+Sampled process RSS peaks were about 748–752 MiB for CPU-detector jobs and
+1,412–1,422 MiB for CUDA-detector jobs. PyTorch CUDA allocator peaks were
+45.29 MiB allocated and 102 MiB reserved; these are not whole-board VRAM usage.
+Process lifetime high-water and boundary-sampled RSS remain distinct counters.
+
+At an assumed 30 FPS, the virtual latest-frame policy processed 18 of 24 available
+frame opportunities on CPU and 16 of 24 on CUDA across three BoT-SORT repetitions.
+At 120 FPS, CPU BoT-SORT processed six of 16 and dropped ten across two repetitions.
+A separate sparse-source run preserved four missing source frames per repetition
+and distinguished them from two simulated drops across both repetitions.
+The simulation used measured per-frame service times; it captured no live camera.
+
+The portable CLI also processed eight real frames while leaving its source
+database unchanged. Import preserved that report as declared execution and
+rejected altered summaries, scheduling, profiles and memory values. These trials
+validate the [measurement workflow](tracking-cost.md) on one desktop. They do not
+establish tracking accuracy, laptop or embedded performance, live flight latency,
+or generalization to new FPV footage.

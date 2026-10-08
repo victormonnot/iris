@@ -1240,6 +1240,12 @@ def validate_database(
                     validate_tracking_comparison_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace tracking comparison records are invalid") from exc
+                from iris.tracking_costs import validate_tracking_cost_records
+
+                try:
+                    validate_tracking_cost_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace tracking cost records are invalid") from exc
             if version >= 22:
                 from iris.tracking_quality import validate_tracking_quality_records
 

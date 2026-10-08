@@ -15,6 +15,7 @@ WORKSPACES = {
     "model_export": "training",
     "temporal_detect": "tracking",
     "tracking_compare": "tracking",
+    "tracking_cost": "tracking",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -28,6 +29,7 @@ NAMES = {
     "model_export": "Standalone model export",
     "temporal_detect": "Temporal detector cache",
     "tracking_compare": "Visual tracking comparison",
+    "tracking_cost": "Tracking pipeline measurement",
 }
 
 
@@ -53,6 +55,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         session_id = store.get("assets", target["asset_id"])["session_id"]
     elif target and table == "temporal_detection_caches":
         sequence = store.get("temporal_sequences", target["sequence_id"])
+        asset = store.get("assets", sequence["asset_id"]) if sequence else None
+        session_id = asset["session_id"] if asset else None
+    elif target and job["kind"] == "tracking_cost":
+        sequence = store.get("temporal_sequences", job["params"]["sequence_id"])
         asset = store.get("assets", sequence["asset_id"]) if sequence else None
         session_id = asset["session_id"] if asset else None
     session = store.get("sessions", session_id) if session_id else None
@@ -99,6 +105,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             add(
                 "tracking_comparison",
                 "Complete visual tracking comparisons",
+                int(job["status"] == "succeeded" and job["result"] is not None),
+                job["id"],
+            )
+        elif target and job["kind"] == "tracking_cost":
+            add(
+                "tracking_cost",
+                "Complete pipeline measurements",
                 int(job["status"] == "succeeded" and job["result"] is not None),
                 job["id"],
             )
@@ -247,6 +260,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Reuse a complete cache or explicitly continue its remaining frames. "
             "Changed detector settings require a separate cache."
         ),
+        "tracking_cost": (
+            "Open the complete pipeline measurement or launch a fresh run. "
+            "Imported declarations do not authenticate execution on a target machine."
+        ),
         "tracking_compare": (
             "Open the saved visual comparison or launch both trackers fresh from the same "
             "complete detector cache. Tracker state cannot resume in place."
@@ -263,12 +280,16 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Preview an explicit resume in the training results. It creates a new attempt "
             "with the same settings and dataset, restoring optimizer and random state."
         )
-    from iris.tracking_comparisons import public_job
+    from iris.tracking_costs import public_job
 
     return {
         "job": public_job(job),
         "context": {
-            "name": (job["params"].get("name") if job["kind"] == "tracking_compare" else None)
+            "name": (
+                job["params"].get("name")
+                if job["kind"] in {"tracking_compare", "tracking_cost"}
+                else None
+            )
             or (target or {}).get("name")
             or (target or {}).get("filename")
             or NAMES[job["kind"]],
@@ -289,6 +310,15 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                     "cache_id": job["params"]["cache_id"],
                 }
                 if job["kind"] == "tracking_compare"
+                else {}
+            ),
+            **(
+                {
+                    "comparison_id": job["params"]["comparison_id"],
+                    "sequence_id": job["params"]["sequence_id"],
+                    "tracking_cost_id": job["id"],
+                }
+                if job["kind"] == "tracking_cost"
                 else {}
             ),
         },

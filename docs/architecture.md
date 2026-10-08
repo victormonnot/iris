@@ -109,6 +109,14 @@ protocol, source hashes, local continuity diagnostics and dense-only global IDF1
 Archives revalidate computed results against the pinned inputs. Sparse and unknown
 intervals do not become negative evidence. See [tracking quality](tracking-quality.md).
 
+IRIS 0.52 measures fresh saved-frame detector and tracker execution in dedicated
+`tracking_cost` jobs, using the existing schema 22. Complete reports separate
+setup, warmup, nested stage timings, host/GPU memory and explicit virtual latest
+frame scheduling. Source gaps and simulated drops stay distinct. Read-only CLI
+measurements can be imported with declared-execution provenance; validation
+recomputes report aggregates without running model or tracker code. See
+[tracking cost](tracking-cost.md).
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared

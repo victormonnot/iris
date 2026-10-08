@@ -52,12 +52,53 @@ def main():
     replay.add_argument("--class-id", type=int, action="append", dest="class_ids")
     replay.add_argument("--repeats", type=int, default=2, choices=range(1, 6))
     replay.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
+    measure = tracking_actions.add_parser(
+        "measure", help="Measure a fresh detector and tracker pipeline"
+    )
+    measure.add_argument("--comparison-id", required=True)
+    measure.add_argument("--lane-index", type=int, choices=(0, 1), default=0)
+    measure.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    measure.add_argument("--repeats", type=int, default=1, choices=range(1, 6))
+    measure.add_argument(
+        "--policy", choices=("offline_all", "simulated_latest"), default="offline_all"
+    )
+    measure.add_argument("--cadence-fps", type=float)
+    measure.add_argument("--output", type=Path, required=True)
+    measure.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.command == "tracking":
         if args.tracking_action == "status":
             from iris.tracking import tracking_status
 
             print(json.dumps(tracking_status(), indent=2))
+            return
+        if args.tracking_action == "measure":
+            from iris.tracking_costs import measure_to_file
+            from iris.tracking_replay import ReadOnlyReplayStore
+
+            try:
+                report = measure_to_file(
+                    ReadOnlyReplayStore(args.data_dir),
+                    args.comparison_id,
+                    args.output,
+                    lane_index=args.lane_index,
+                    device=args.device,
+                    repeats=args.repeats,
+                    policy=args.policy,
+                    cadence_fps=args.cadence_fps,
+                )
+                print(
+                    json.dumps(
+                        {
+                            "report": str(args.output.absolute()),
+                            "complete": report["complete"],
+                            "summary": report["summary"],
+                        },
+                        indent=2,
+                    )
+                )
+            except (ValueError, KeyError, OSError, RuntimeError, ImportError) as exc:
+                parser.exit(1, f"Tracking measurement failed: {exc}\n")
             return
         from iris.tracking_replay import ReadOnlyReplayStore, replay_to_file
 

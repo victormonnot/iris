@@ -114,3 +114,9 @@ Proposals do not become validated references automatically.
 After review, calculate a [tracking quality report](tracking-quality.md) from an
 explicit saved revision. Both lanes share its coverage and class mapping; source
 gaps and incomplete reviews withhold the whole-clip identity score.
+
+The [tracking cost panel](tracking-cost.md) runs a fresh detector and one saved
+lane on CPU or CUDA. Measure all available frames or simulate an explicit input
+cadence with a latest-frame policy. It records cost and dropped frames separately
+from the saved comparison's quality. Reports measured on a compatible workspace
+copy can be imported as declared evidence from another machine.
