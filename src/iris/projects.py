@@ -67,6 +67,7 @@ JOB_PARENTS = {
     "tracking_cost": ("jobs", "comparison_id"),
     "tracking_study": ("temporal_datasets", "dataset_id"),
     "tracking_selection": ("jobs", "source_job_id"),
+    "pipeline_bundle": ("jobs", "source_job_id"),
 }
 
 
@@ -102,7 +103,9 @@ def record_project(store: Store, table: str, record: dict) -> str | None:
                 if row:
                     if record["kind"] == "tracking_cost" and row["kind"] != "tracking_compare":
                         return None
-                    if record["kind"] == "tracking_selection" and row["kind"] not in {
+                    if record["kind"] in {"tracking_selection", "pipeline_bundle"} and row[
+                        "kind"
+                    ] not in {
                         "tracking_compare",
                         "tracking_study",
                     }:

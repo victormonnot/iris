@@ -131,3 +131,7 @@ All API requests use the owning `project_id` query parameter:
 The source descriptor contains `kind` (`comparison` or `study`), `job_id`,
 `sequence_id` and `profile_sha256`. A saved report opens directly with
 `?project=PROJECT_ID&tracking_selection=JOB_ID`.
+
+A saved profile and optional selected-object settings can be packaged in a
+[versioned portable bundle](pipeline-bundles.md). The bundle records compatibility
+and provenance; standalone tracking execution remains a separate step.

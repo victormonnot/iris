@@ -4,3 +4,5 @@ src/iris/_vendor/botsort/** text eol=lf
 # Unified diffs require a literal context marker even on otherwise empty lines.
 src/iris/_vendor/bytetrack/adaptations.patch -whitespace
 src/iris/_vendor/botsort/adaptations.patch -whitespace
+# Preserve the checksummed upstream license text, including its trailing space.
+src/iris/_vendor/torchvision-LICENSE text eol=lf -whitespace

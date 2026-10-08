@@ -10,6 +10,7 @@
   kindNames.tracking_cost = "Pipeline cost measurement";
   kindNames.tracking_study = "Tracking profile study";
   kindNames.tracking_selection = "Selected-object scenario";
+  kindNames.pipeline_bundle = "Portable pipeline bundle";
   const continuationModes = { extract: "continue_extraction", temporal_detect: "continue_temporal_detection" };
   const statusName = (status) => String(status || "unknown").replaceAll("_", " ");
   function history(jobs, { status = "all", kind = "all", query = "", limit = 8 } = {}) {

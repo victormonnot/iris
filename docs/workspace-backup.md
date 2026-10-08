@@ -43,7 +43,7 @@ a restored workspace.
 - Ollama blobs, manifests and metadata stored inside the workspace.
 
 Only recognized IRIS artifacts are included. Locks, SQLite journals, temporary
-uploads, unfinished files, previous exports and backups are excluded. Unknown
+uploads, unfinished files and previous workspace-transfer archives are excluded. Unknown
 files, source code, software environments and configuration files are not a
 substitute for installing the application on a new machine. Models outside the
 workspace are not copied. API credentials supplied through environment variables
@@ -143,3 +143,7 @@ Browser checks cover desktop and mobile flows. Saved CPU fixture results can be
 transferred without executing their models again. These checks establish data
 recovery, not detector quality on real flights or runtime readiness on another
 machine.
+
+[Portable pipeline bundles](pipeline-bundles.md) are managed artifacts. Backup and
+restore preserve their saved jobs and exact ZIP bytes, validate their inventories
+and source bindings, and do not load their checkpoints.

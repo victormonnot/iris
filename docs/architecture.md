@@ -132,6 +132,14 @@ is used only by the evaluator. Sources, settings and results are pinned and
 recomputed during historical reads and transfer, without detector or tracker
 execution. Schema 22 remains unchanged. See [selected-object continuity](selected-object.md).
 
+IRIS 0.55 adds `pipeline_bundle` jobs with immutable, versioned detector/tracker
+archives. Packaging verifies local checkpoint bytes against the frozen temporal
+recipe, checks class and filtering compatibility, and retains an optional recovery
+policy without a selected identity. Inspection uses standard-library validators
+and never loads weights or executes a tracker. Workspace transfer retains the
+complete package and validates its source bindings. Schema 22 remains unchanged.
+See [portable pipeline bundles](pipeline-bundles.md).
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared

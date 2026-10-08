@@ -10,8 +10,9 @@ These are the T3 execution foundations. IRIS 0.49 adds a
 [Studio tracking comparator](tracking-studio.md), and IRIS 0.50 adds a separate
 [temporal identity editor](temporal-identities.md). IRIS 0.51 adds
 [quality reports against pinned reviewed references](tracking-quality.md).
-Tracker-profile export remains a planned step. Running a tracker does not validate its identities or
-establish that it is better than another tracker.
+Saved profiles can be included in [portable pipeline bundles](pipeline-bundles.md).
+Running a tracker does not validate its identities or establish that it is better
+than another tracker.
 
 ## Installation and readiness
 

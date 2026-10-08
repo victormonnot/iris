@@ -65,7 +65,21 @@ def main():
     measure.add_argument("--cadence-fps", type=float)
     measure.add_argument("--output", type=Path, required=True)
     measure.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
+    pipeline = commands.add_parser("pipeline", help="Inspect a portable experimental pipeline ZIP")
+    pipeline_actions = pipeline.add_subparsers(dest="pipeline_action", required=True)
+    pipeline_inspect = pipeline_actions.add_parser(
+        "inspect", help="Verify contracts and hashes without executing bundled code"
+    )
+    pipeline_inspect.add_argument("archive", type=Path)
     args = parser.parse_args()
+    if args.command == "pipeline":
+        from iris.pipeline_bundle_contracts import inspect_bundle
+
+        try:
+            print(json.dumps(inspect_bundle(args.archive), indent=2))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.exit(1, f"Pipeline inspection failed: {exc}\n")
+        return
     if args.command == "tracking":
         if args.tracking_action == "status":
             from iris.tracking import tracking_status

@@ -27,6 +27,7 @@ from iris.workspace_archive import (
     ArchiveLimitError,
     allowed_artifact_path,
     is_model_export_bundle,
+    is_pipeline_bundle,
     is_reference_document,
     safe_member_path,
     validate_database,
@@ -219,6 +220,7 @@ def _extract(archive, members, manifest, root, *, restore, progress, cancelled):
         or item["path"] == "iris.sqlite3"
         or is_reference_document(item["path"])
         or is_model_export_bundle(item["path"])
+        or is_pipeline_bundle(item["path"])
     ]
     required = sum(((item["size_bytes"] + 4095) // 4096 + 1) * 4096 for item in retained)
     if shutil.disk_usage(root).free < required + 1024**2:
@@ -228,7 +230,7 @@ def _extract(archive, members, manifest, root, *, restore, progress, cancelled):
         _cancel(cancelled)
         name = item["path"]
         reference = is_reference_document(name)
-        model_export = is_model_export_bundle(name)
+        model_export = is_model_export_bundle(name) or is_pipeline_bundle(name)
         if reference and item["size_bytes"] > MAX_REFERENCE_BYTES:
             raise ArchiveLimitError("A workspace reference document exceeds its size limit")
         if model_export and item["size_bytes"] > MAX_MODEL_EXPORT_BYTES:

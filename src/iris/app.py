@@ -1622,7 +1622,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/jobs")
     def list_jobs():
-        from iris.tracking_selections import public_job
+        from iris.pipeline_bundles import public_job
 
         return [public_job(job) for job in project_records(store, "jobs", active_project.get())]
 
@@ -1665,7 +1665,7 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel(job_id: str):
-        from iris.tracking_selections import public_job
+        from iris.pipeline_bundles import public_job
 
         require("jobs", job_id)
         return public_job(jobs.cancel(job_id))
@@ -1708,6 +1708,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     from iris.tracking_selection_api import install_tracking_selection_routes
 
     install_tracking_selection_routes(app, store, jobs, require, active_project)
+    from iris.pipeline_bundle_api import install_pipeline_bundle_routes
+
+    install_pipeline_bundle_routes(app, store, jobs, require, active_project)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)

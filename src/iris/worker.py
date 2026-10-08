@@ -98,6 +98,10 @@ def run(root: Path, job_id: str, parent_pid: int):
             from iris.tracking_selections import run_tracking_selection
 
             result = run_tracking_selection(store, job_id, progress, cancelled)
+        elif job["kind"] == "pipeline_bundle":
+            from iris.pipeline_bundles import run_pipeline_bundle
+
+            result = run_pipeline_bundle(store, job_id, progress, cancelled)
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         elif job["kind"] == "dinox":
@@ -229,6 +233,12 @@ def run(root: Path, job_id: str, parent_pid: int):
                 "message": "Job failed" if status == "failed" else "Job stopped",
             },
         )
+
+    finally:
+        if job["kind"] == "pipeline_bundle":
+            from iris.pipeline_bundles import cleanup_unpublished
+
+            cleanup_unpublished(store, job_id)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,8 @@
+{
+  "distribution": "torchvision",
+  "version": "0.25.0",
+  "source": "Official installed torchvision 0.25.0+cu128 wheel, dist-info/LICENSE",
+  "upstream_url": "https://github.com/pytorch/vision/blob/v0.25.0/LICENSE",
+  "sha256": "6502f676851cfe25f8af75531dfb32375b7325b73c37e7b43741fa422893e71d",
+  "scope": "Torchvision code license; this does not grant or establish rights to training data or pretrained weights."
+}

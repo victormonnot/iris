@@ -260,3 +260,8 @@ parity and summaries from the samples and checks the frozen protocol. It cannot
 authenticate execution or the claimed hardware of an imported JSON file.
 `simulation` reports remain explicitly simulated, and `external_execution`
 reports remain unverified declarations even when parity passes.
+
+To package a native detector together with a measured tracker profile and optional
+selection settings, use [portable pipeline bundles](pipeline-bundles.md). That
+format includes a standalone inspector; its tracking runtime and pipeline parity
+checks are separate from the detector-only runners documented here.

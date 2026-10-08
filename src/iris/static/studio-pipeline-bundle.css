@@ -1,0 +1,10 @@
+.bundle-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.bundle-summary { padding: 13px 15px; border: 1px solid var(--line); background: var(--surface-raised); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.bundle-summary p { margin: 5px 0; }
+#bundle-source-summary,#bundle-policy-summary,#bundle-prepare-status,#bundle-readiness,#bundle-result-scope { overflow-wrap: anywhere; }
+#bundle-history,#bundle-source,#bundle-selection { width: 100%; min-width: 0; }
+#bundle-result { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+#pipeline-bundle-panel .bundle-actions a { white-space: normal; }
+#bundle-limits { padding-left: 20px; font-size: 12px; line-height: 1.8; }
+#bundle-result-title { overflow-wrap: anywhere; }
+@media (max-width: 480px) { #pipeline-bundle-panel .panel-heading { flex-wrap: wrap; gap: 10px; } }

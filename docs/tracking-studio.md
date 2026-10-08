@@ -130,3 +130,7 @@ The [selected-object panel](selected-object.md) starts from a measured observati
 in a saved lane or study profile. It replays loss, ambiguity and recovery, with
 an optional explicit target identity from the human reference. State timelines
 and selected-object metrics complement the multi-object tracking scores.
+
+A saved profile and optional selected-object settings can be packaged in a
+[versioned portable bundle](pipeline-bundles.md). The bundle records compatibility
+and provenance; standalone tracking execution remains a separate step.

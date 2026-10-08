@@ -136,6 +136,7 @@ _CATEGORIES = {
     "benchmarks": "Frozen benchmark references and images",
     "models": "Detector checkpoints",
     "model_exports": "Standalone trained-model packages",
+    "pipeline_bundles": "Experimental detector and tracker pipeline packages",
     "training_checkpoints": "Training states for explicit continuation",
     "assistance": "Annotation review previews",
     "video_reviews": "Video review storyboards",
@@ -235,6 +236,8 @@ def allowed_artifact_path(value: str) -> bool:
             or (len(parts) == 2 and parts[-1].endswith((".pth", ".pth.json")))
             or (len(parts) == 3 and parts[1] == "trained" and parts[-1].endswith(".pth"))
         )
+    if root == "pipeline_bundles":
+        return len(parts) == 3 and parts[-1] == "pipeline.zip"
     if root == "model_exports":
         return len(parts) == 3 and parts[-1] == "model.zip"
     if root == "training_checkpoints":
@@ -269,6 +272,10 @@ def is_reference_document(value: str) -> bool:
         and parts[0] == "models"
         and parts[-1].endswith(".pth.json")
     )
+
+
+def is_pipeline_bundle(value: str) -> bool:
+    return value.startswith("pipeline_bundles/") and allowed_artifact_path(value)
 
 
 def is_model_export_bundle(value: str) -> bool:
@@ -1259,6 +1266,12 @@ def validate_database(
                     validate_tracking_selection_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace selected-object records are invalid") from exc
+                from iris.pipeline_bundles import validate_pipeline_bundle_records
+
+                try:
+                    validate_pipeline_bundle_records(connection, root, require)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace pipeline bundle records are invalid") from exc
                 from iris.tracking_quality import validate_tracking_quality_records
 
                 try:

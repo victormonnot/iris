@@ -135,3 +135,7 @@ table without rewriting previous training records or model files.
 Temporal detection caches add schema 21 without changing previous image annotations,
 temporal references or saved datasets. Workspace restoration never resumes a cache
 job automatically.
+
+[Pipeline packaging](pipeline-bundles.md) publishes a complete verified archive
+only. A cancelled or failed attempt cannot be downloaded as a successful bundle.
+Prepare a new explicit preview to retry; packaging never resumes model inference.

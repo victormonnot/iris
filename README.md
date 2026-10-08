@@ -57,6 +57,11 @@ Further details:
 [temporal identity review](docs/temporal-identities.md), and
 [tracking quality and its coverage rules](docs/tracking-quality.md).
 
+[Portable pipeline bundles](docs/pipeline-bundles.md) combine an unchanged native
+detector checkpoint, a saved tracker profile and optional selected-object policy.
+The versioned archive checks classes, filtering, coordinates, time and provenance;
+it remains experimental, with standalone tracking execution a separate step.
+
 ## Standalone model export
 
 **YOLOX-Nano** also supports a generic ONNX export for OpenCV CPU, with explicit

@@ -62,6 +62,9 @@ class JobManager:
         reconcile_dispatches(self.store)
         reconcile_requests(self.store)
         recover_timers(self.store)
+        from iris.pipeline_bundles import cleanup_unpublished
+
+        cleanup_unpublished(self.store)
 
     def close(self):
         self.stop_event.set()
@@ -191,3 +194,8 @@ class JobManager:
                         else None,
                     },
                 )
+
+            if job["kind"] == "pipeline_bundle":
+                from iris.pipeline_bundles import cleanup_unpublished
+
+                cleanup_unpublished(self.store, job["id"])

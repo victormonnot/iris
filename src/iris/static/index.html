@@ -33,6 +33,7 @@
     <link rel="stylesheet" href="/static/studio-tracking-cost.css" />
     <link rel="stylesheet" href="/static/studio-tracking-study.css" />
     <link rel="stylesheet" href="/static/studio-tracking-selection.css" />
+    <link rel="stylesheet" href="/static/studio-pipeline-bundle.css" />
     <link rel="stylesheet" href="/static/studio-temporal-identities.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
@@ -79,6 +80,8 @@
     <script src="/static/tracking-study.js" defer></script>
     <script src="/static/tracking-selection-tools.js" defer></script>
     <script src="/static/tracking-selection.js" defer></script>
+    <script src="/static/pipeline-bundle-tools.js" defer></script>
+    <script src="/static/pipeline-bundle.js" defer></script>
     <script src="/static/temporal-identity-tools.js" defer></script>
     <script src="/static/temporal-identity.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
@@ -2763,6 +2766,24 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 <section id="selection-result" hidden aria-label="Saved continuity result"><h3 id="selection-result-title"></h3><p id="selection-result-scope" class="field-hint"></p><p id="selection-result-warning" class="tracking-warning"></p><div class="selection-actions"><a id="selection-download" class="button button-secondary">Download review JSON</a><a id="selection-link" class="text-button">Link to this saved scenario</a></div><h4>Behavior on the available frames</h4><div id="selection-behavior"></div><h4>Assessment against the chosen human identity</h4><p id="selection-quality-note" class="field-hint"></p><p id="selection-origin" class="tracking-warning" hidden></p><div id="selection-quality"></div><h4>Selected policy timeline</h4><div id="selection-timeline" class="selection-timeline"></div><details class="tracking-provenance"><summary>Frozen rules, source and reference provenance</summary><ul id="selection-limitations"></ul><pre id="selection-provenance"></pre></details></section>
               </div>
             </section>
+            <section id="pipeline-bundle-panel" class="panel" aria-label="Portable detector and tracking bundle">
+              <div class="panel-heading"><div><h2>Portable pipeline bundle</h2><p>Package a saved detector and tracker profile for integration in another project.</p></div><button id="bundle-refresh" class="text-button" type="button">Refresh bundles &amp; sources</button></div>
+              <div class="tracking-body">
+                <p id="bundle-error" class="inline-error" role="alert" hidden></p><p id="bundle-readiness" class="field-hint" role="status">Open Tracking to load saved sources.</p>
+                <p class="tracking-warning">Experimental package. Weights, settings and compatibility contracts are frozen together. Standalone pipeline execution is not included yet; this package does not establish quality, speed or compatibility on another device.</p>
+                <section id="bundle-prepare" aria-label="Bundle settings">
+                  <div class="tracking-fields"><div><label for="bundle-source">Exact saved comparison lane or study profile</label><select id="bundle-source"><option value="">Choose a saved source</option></select></div><div><label for="bundle-name">Bundle name</label><input id="bundle-name" maxlength="160" value="Portable detector and tracking profile" /></div></div>
+                  <p id="bundle-source-summary" class="field-hint"></p>
+                  <div class="tracking-fields"><div><label for="bundle-target">Intended detector device</label><select id="bundle-target"><option value="cpu">CPU</option><option value="cuda">NVIDIA CUDA</option></select></div><div><label for="bundle-selection">Optional completed continuity policy · same source profile</label><select id="bundle-selection"><option value="">No selected-object policy</option></select></div></div>
+                  <p class="field-hint">Choose the detector target independently of the source device. The tracker uses CPU.</p><p id="bundle-policy-summary" class="field-hint"></p>
+                  <p id="bundle-prepare-status" class="field-hint" role="status"></p><div class="bundle-actions"><button id="bundle-preview" class="button button-secondary" type="button" disabled>Preview package</button><button id="bundle-run" class="button" type="button" disabled>Create portable bundle</button></div>
+                  <div id="bundle-preview-result" hidden><div id="bundle-preview-summary" class="bundle-summary"></div><p class="field-hint">Includes unchanged checkpoint bytes, frozen settings, an integrity inspector and license notices. No clips, source images, annotations or selected person identities are included.</p><ul id="bundle-limits"></ul><details class="tracking-provenance"><summary>Exact file inventory and compatibility contract</summary><pre id="bundle-preview-manifest"></pre></details></div>
+                </section>
+                <label for="bundle-history">Saved portable bundles</label><select id="bundle-history"><option value="">No saved bundles</option></select>
+                <div id="bundle-job" class="tracking-job" hidden><p id="bundle-job-status" role="status"></p><progress id="bundle-progress" max="100"></progress><button id="bundle-cancel" class="text-button" type="button" hidden>Cancel packaging</button><p class="field-hint">A download is published only after the complete package passes integrity checks.</p></div>
+                <section id="bundle-result" hidden aria-label="Saved portable pipeline bundle"><h3 id="bundle-result-title"></h3><p id="bundle-result-scope" class="tracking-warning"></p><div id="bundle-result-summary" class="bundle-summary"></div><div class="bundle-actions"><a id="bundle-download" class="button" download>Download bundle ZIP</a><a id="bundle-download-manifest" class="button button-secondary" download>Download manifest JSON</a><a id="bundle-link" class="text-button">Link to this saved bundle</a></div><p class="field-hint">Inspect the bundle without loading the model. Version, provenance and license details are saved below.</p><details class="tracking-provenance"><summary>Frozen manifest, provenance and license notices</summary><pre id="bundle-manifest"></pre></details></section>
+              </div>
+            </section>
           </section>
           <section id="identities-workspace" hidden aria-label="Temporal identity editor">
             <section class="panel">
@@ -3133,7 +3154,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
           </div>
           <div class="job-history-controls">
             <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
-            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="tracking_compare">Tracking comparison</option><option value="tracking_cost">Pipeline cost measurement</option><option value="tracking_study">Tracking profile study</option><option value="tracking_selection">Selected-object scenario</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="tracking_compare">Tracking comparison</option><option value="tracking_cost">Pipeline cost measurement</option><option value="tracking_study">Tracking profile study</option><option value="tracking_selection">Selected-object scenario</option><option value="pipeline_bundle">Portable pipeline bundle</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
             <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
             <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
           </div>

@@ -18,6 +18,7 @@ WORKSPACES = {
     "tracking_cost": "tracking",
     "tracking_study": "tracking",
     "tracking_selection": "tracking",
+    "pipeline_bundle": "tracking",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -34,6 +35,7 @@ NAMES = {
     "tracking_cost": "Tracking pipeline measurement",
     "tracking_study": "Tracking profile study",
     "tracking_selection": "Selected-object scenario",
+    "pipeline_bundle": "Portable pipeline package",
 }
 
 
@@ -61,7 +63,7 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
         sequence = store.get("temporal_sequences", target["sequence_id"])
         asset = store.get("assets", sequence["asset_id"]) if sequence else None
         session_id = asset["session_id"] if asset else None
-    elif target and job["kind"] in {"tracking_cost", "tracking_selection"}:
+    elif target and job["kind"] in {"tracking_cost", "tracking_selection", "pipeline_bundle"}:
         sequence = store.get("temporal_sequences", job["params"]["sequence_id"])
         asset = store.get("assets", sequence["asset_id"]) if sequence else None
         session_id = asset["session_id"] if asset else None
@@ -130,6 +132,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             add(
                 "tracking_selection",
                 "Complete selected-object scenarios",
+                int(job["status"] == "succeeded" and job["result"] is not None),
+                job["id"],
+            )
+        elif target and job["kind"] == "pipeline_bundle":
+            add(
+                "pipeline_bundle",
+                "Complete experimental pipeline packages",
                 int(job["status"] == "succeeded" and job["result"] is not None),
                 job["id"],
             )
@@ -278,6 +287,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Reuse a complete cache or explicitly continue its remaining frames. "
             "Changed detector settings require a separate cache."
         ),
+        "pipeline_bundle": (
+            "Download the complete experimental bundle or prepare a new package. "
+            "Packaging does not execute or qualify the pipeline."
+        ),
         "tracking_selection": (
             "Open the complete selected-object scenario or prepare a fresh selection. "
             "Saved tracker observations and the application policy remain unchanged."
@@ -306,7 +319,7 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Preview an explicit resume in the training results. It creates a new attempt "
             "with the same settings and dataset, restoring optimizer and random state."
         )
-    from iris.tracking_selections import public_job
+    from iris.pipeline_bundles import public_job
 
     return {
         "job": public_job(job),
@@ -314,7 +327,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "name": (
                 job["params"].get("name")
                 if job["kind"]
-                in {"tracking_compare", "tracking_cost", "tracking_study", "tracking_selection"}
+                in {
+                    "tracking_compare",
+                    "tracking_cost",
+                    "tracking_study",
+                    "tracking_selection",
+                    "pipeline_bundle",
+                }
                 else None
             )
             or (target or {}).get("name")
@@ -360,6 +379,15 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                     "source_job_id": job["params"]["source_job_id"],
                 }
                 if job["kind"] == "tracking_selection"
+                else {}
+            ),
+            **(
+                {
+                    "pipeline_bundle_id": job["id"],
+                    "sequence_id": job["params"]["sequence_id"],
+                    "source_job_id": job["params"]["source_job_id"],
+                }
+                if job["kind"] == "pipeline_bundle"
                 else {}
             ),
         },
