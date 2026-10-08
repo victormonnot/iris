@@ -139,10 +139,13 @@ def _sequence_record(conn, row):
 
 
 def _reference_record(conn, row, sequence=None):
+    from iris.temporal_identities import validate_origin
+
     sequence = sequence or _sequence_record(
         conn, _row(conn, "temporal_sequences", row["sequence_id"])
     )
     payload = validate_reference(row["payload"], sequence["manifest"])
+    validate_origin(conn, payload, sequence)
     if (
         payload["sequence_id"] != row["sequence_id"]
         or _digest(payload) != row["payload_sha256"]
@@ -346,7 +349,9 @@ def list_sequences(store, project_id=DEFAULT_PROJECT_ID):
     ]
 
 
-def save_reference(store, sequence_id, *, payload, expected_revision=0):
+def save_reference(store, sequence_id, *, payload, expected_revision=0, _identity_review=None):
+    from iris.temporal_identities import prepare_edit, validate_origin
+
     if type(expected_revision) is not int or expected_revision < 0:
         raise ValueError("Expected revision must be a nonnegative integer")
     with store.connect() as conn:
@@ -360,7 +365,18 @@ def save_reference(store, sequence_id, *, payload, expected_revision=0):
             raise TemporalConflict(
                 f"Temporal reference changed: expected revision {expected_revision}, found {actual}"
             )
+        if _identity_review is not None:
+            latest = conn.execute(
+                "SELECT * FROM temporal_references WHERE sequence_id=? "
+                "ORDER BY revision DESC LIMIT 1",
+                (sequence_id,),
+            ).fetchone()
+            previous = _reference_record(conn, _decode(latest), sequence) if latest else None
+            payload = prepare_edit(
+                payload, previous["payload"] if previous else None, sequence, **_identity_review
+            )
         payload = validate_reference(payload, sequence["manifest"])
+        validate_origin(conn, payload, sequence)
         _verify_sequence_media(store, conn, sequence)
         row = {
             "id": new_id(),

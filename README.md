@@ -25,11 +25,16 @@ Studio's **Tracking comparison** workspace can prepare sequences from selected
 video frames, compute a detector cache and compare ByteTrack with BoT-SORT in
 synchronized views. Observations, predictions, unassigned detections and source
 gaps remain distinct. Saved comparisons survive restarts and workspace backups;
-they do not establish identity accuracy without human temporal references. See
+they do not establish identity accuracy without human temporal references.
+**Temporal identities** now lets you prepare uncertain proposals from a saved
+tracker lane, correct boxes and identities, split or merge tracks, and explicitly
+review each frame. Immutable revisions retain authors and sparse/dense coverage;
+identity metrics remain a separate planned step. See
 [temporal sources and identities](docs/temporal-data.md),
 [reusable temporal detections](docs/temporal-detections.md), and
 [native tracking and replay](docs/tracking.md), and the
-[Studio tracking comparator](docs/tracking-studio.md).
+[Studio tracking comparator](docs/tracking-studio.md), and
+[temporal identity review](docs/temporal-identities.md).
 
 ## Standalone model export
 

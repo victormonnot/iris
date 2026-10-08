@@ -18,6 +18,7 @@ from iris.dataset_manifest import taxonomy_mappings
 
 SEQUENCE_SCHEMA = "iris-temporal-sequence-v1"
 REFERENCE_SCHEMA = "iris-temporal-reference-v1"
+REFERENCE_SCHEMA_V2 = "iris-temporal-reference-v2"
 MAX_SEQUENCE_FRAMES = 10_000
 MAX_CLIP_FRAMES = 1_000_000
 MAX_IDENTITIES = 10_000
@@ -246,6 +247,59 @@ def _box(value, frame: dict) -> list[float]:
     return coordinates
 
 
+def validate_reference_provenance(provenance, labels: set[str]) -> dict:
+    """Validate a seed snapshot, independently of subsequently edited identities."""
+    _object(provenance, {"author", "origin"}, "Reference provenance")
+    _text(provenance["author"], "Reference author", maximum=200, empty=True)
+    origin = provenance["origin"]
+    if origin is None:
+        return deepcopy(provenance)
+    _object(
+        origin,
+        {
+            "comparison_id",
+            "lane_index",
+            "cache_id",
+            "cache_fingerprint",
+            "result_sha256",
+            "profile_sha256",
+            "semantic_sha256",
+            "class_mapping",
+            "track_mapping",
+        },
+        "Reference seed origin",
+    )
+    for key in ("comparison_id", "cache_id"):
+        _text(origin[key], f"Seed {key}")
+    _integer(origin["lane_index"], "Seed lane index", maximum=1)
+    for key in ("cache_fingerprint", "result_sha256", "profile_sha256", "semantic_sha256"):
+        _digest(origin[key], f"Seed {key}")
+    mapping = origin["class_mapping"]
+    if not isinstance(mapping, dict) or not 1 <= len(mapping) <= 100:
+        raise ValueError("Seed class mapping requires 1–100 explicit native classes")
+    tracks = origin["track_mapping"]
+    if not isinstance(tracks, dict) or len(tracks) > MAX_IDENTITIES:
+        raise ValueError("Seed track mapping exceeds the reference identity limit")
+    for name, values in (("class", mapping), ("track", tracks)):
+        for native_id in values:
+            if (
+                not isinstance(native_id, str)
+                or not re.fullmatch(r"[1-9][0-9]{0,15}", native_id)
+                or int(native_id) > 2**53 - 1
+            ):
+                raise ValueError(f"Seed {name} IDs must be canonical positive native integers")
+    for label in mapping.values():
+        if label is not None:
+            _choice(label, labels, "Seed taxonomy label")
+    for identifier in tracks.values():
+        _text(identifier, "Seed reference identity ID")
+        if not identifier.startswith("ref_"):
+            raise ValueError("Seed identities must use separate reference IDs")
+    if len(set(tracks.values())) != len(tracks):
+        raise ValueError("Seed tracks require distinct reference identity IDs")
+    return deepcopy(provenance)
+
+
 def validate_reference(reference: dict, sequence_manifest: dict) -> dict:
     """Validate a temporal reference while preserving declared review provenance.
 
@@ -254,6 +308,9 @@ def validate_reference(reference: dict, sequence_manifest: dict) -> dict:
     or assistant-reviewed annotations never become dense human ground truth.
     """
     sequence = validate_sequence_manifest(sequence_manifest)
+    schema = reference.get("schema") if isinstance(reference, dict) else None
+    if schema not in (REFERENCE_SCHEMA, REFERENCE_SCHEMA_V2):
+        raise ValueError("Unsupported temporal reference schema")
     _object(
         reference,
         {
@@ -264,11 +321,10 @@ def validate_reference(reference: dict, sequence_manifest: dict) -> dict:
             "identities",
             "frames",
             "notes",
-        },
+        }
+        | ({"provenance"} if schema == REFERENCE_SCHEMA_V2 else set()),
         "Temporal reference",
     )
-    if reference["schema"] != REFERENCE_SCHEMA:
-        raise ValueError("Unsupported temporal reference schema")
     if reference["sequence_id"] != sequence["id"]:
         raise ValueError("Reference must belong to the exact sequence")
     _digest(reference["sequence_sha256"], "Reference sequence hash")
@@ -279,6 +335,8 @@ def validate_reference(reference: dict, sequence_manifest: dict) -> dict:
     _text(reference["notes"], "Reference notes", maximum=4000, empty=True, multiline=True)
     identities = _items(reference["identities"], "Reference identities", maximum=MAX_IDENTITIES)
     labels = {item["id"] for item in sequence["taxonomy"]["classes"]}
+    if schema == REFERENCE_SCHEMA_V2:
+        validate_reference_provenance(reference["provenance"], labels)
     identity_labels = {}
     for identity in identities:
         _object(identity, {"id", "label"}, "Reference identity")

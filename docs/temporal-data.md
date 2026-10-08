@@ -97,6 +97,13 @@ Saving requires `expected_revision` (0 for the first save). A stale save returns
 a conflict. Successful saves append revision 1, 2, ... and retain old payloads.
 A dataset pins one exact revision; later edits do not change its reference.
 
+IRIS 0.50 adds `iris-temporal-reference-v2` for the
+[Studio identity editor](temporal-identities.md). It retains the same identity,
+geometry and review semantics and adds the save author and optional frozen
+tracking-seed provenance. Existing version 1 payloads and their hashes remain
+unchanged. The editor resets reviews on changed frames and applies human review
+only through explicit frame-review actions.
+
 ## Temporal datasets and split protection
 
 `iris-temporal-dataset-v1` contains distinct sequence entries with their checksums,

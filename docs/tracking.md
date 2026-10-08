@@ -7,9 +7,9 @@ produce explicit observations, predictions and unassigned detections. The
 adapters do not depend on ARGOS or its target-selection or control rules.
 
 These are the T3 execution foundations. IRIS 0.49 adds a
-[Studio tracking comparator](tracking-studio.md). A temporal identity editor,
-tracking-quality metrics and tracker-profile export remain separate planned
-steps. Running a tracker does not validate its identities or
+[Studio tracking comparator](tracking-studio.md), and IRIS 0.50 adds a separate
+[temporal identity editor](temporal-identities.md). Tracking-quality metrics and
+tracker-profile export remain planned steps. Running a tracker does not validate its identities or
 establish that it is better than another tracker.
 
 ## Installation and readiness

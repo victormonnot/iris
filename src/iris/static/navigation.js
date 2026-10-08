@@ -36,6 +36,10 @@
       "08", "Tracking comparison", "Follow the observations.",
       "Replay ByteTrack and BoT-SORT on the same saved detections, and inspect identity continuity without assuming correctness.",
     ],
+    identities: [
+      "09", "Temporal identities", "Keep identity through time.",
+      "Correct identities and observed boxes, declare visibility, and record human review on each available source frame.",
+    ],
   };
   const sessionWorkspaces = new Set(["intake", "comparison", "annotation"]);
   const sidebar = $("#workspace-sidebar");

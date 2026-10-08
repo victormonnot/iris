@@ -36,6 +36,7 @@
     field("selection").textContent = selection.error || `${selection.frames.length} saved frames · ${selection.name} · ${selection.gap_count} omitted source frames will become unknown gaps.`;
     field("create-sequence").disabled = blocked || Boolean(selection.error) || !field("sequence-name").value.trim();
     field("refresh").disabled = blocked;
+    field("review-identities").disabled = blocked || !view.sequence;
     for (const name of ["sequence", "cache", "history"]) field(name).disabled = blocked || !field(name).value;
     field("run-cache").disabled = blocked || !view.sequence || !field("model").value || !field("cache-name").value.trim();
     const count = view.sequence?.manifest?.frames?.length || 0;
@@ -196,7 +197,9 @@
     field("scrub").max = report.sequence.frames.length - 1; field("scrub").value = "0";
     view.lanes = report.lanes.map((lane, index) => {
       const article = node("article", "tracking-lane"), header = node("header"), title = node("h3", "", lane.name);
-      header.append(title, node("p", "", `${lane.report.profile.algorithm} · IDs local to this lane · GMC ${lane.report.profile.gmc_method}`));
+      const review = node("button", "text-button", "Review identities"); review.type = "button";
+      review.addEventListener("click", () => window.dispatchEvent(new CustomEvent("iris:temporal-identities-open", { detail: { sequence_id: view.sequence.id, comparison_id: view.comparison.id, lane_index: index } })));
+      header.append(title, node("p", "", `${lane.report.profile.algorithm} · IDs local to this lane · GMC ${lane.report.profile.gmc_method}`), review);
       const stage = node("div", "tracking-stage"), summary = node("p", "tracking-lane-summary"), evidence = node("div", "tracking-lane-evidence");
       stage.setAttribute("aria-label", `${lane.name} source frame and tracking overlays`); article.append(header, stage, summary, evidence); field("lanes").append(article);
       const frames = lane.report.passes[0].frames;
@@ -306,6 +309,7 @@
     view.timer = setTimeout(() => showFrame(view.position + 1), Math.min(delay, 2147483647));
   }
   field("refresh").addEventListener("click", refresh);
+  field("review-identities").addEventListener("click", () => window.dispatchEvent(new CustomEvent("iris:temporal-identities-open", { detail: { sequence_id: view.sequence.id } })));
   field("sequence").addEventListener("change", () => selectSequence(field("sequence").value).catch(error));
   field("cache").addEventListener("change", () => selectCache(field("cache").value).catch(error));
   field("history").addEventListener("change", () => { invalidate(); error(null); loadComparison(field("history").value).catch(error); });

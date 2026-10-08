@@ -5,8 +5,10 @@ learned ReID**. Both trackers consume the same complete detector cache. You can
 inspect their boxes, identifiers and observed trails on synchronized source
 frames, save the comparison and reopen it after a restart.
 
-This is a visual inspection tool. It does not yet edit temporal identities,
-compute identity accuracy, tune tracker parameters, or qualify a tracker for a
+This is a visual inspection tool. The separate
+[Temporal identities editor](temporal-identities.md) now handles identity
+corrections and human review. This comparator does not compute identity accuracy,
+tune tracker parameters, or qualify a tracker for a
 deployment. Two tracks with the same number in different lanes need not represent
 the same object. An increasing track number alone does not establish an error.
 
@@ -102,7 +104,8 @@ omit that heavy payload. The source-image endpoint verifies the saved file and
 decoded pixel hashes; the viewer hides overlays if the matching image fails to
 load. A saved result can also be opened using `?project=PROJECT_ID&tracking_comparison=JOB_ID`.
 
-The next step is a separate human temporal identity editor. Reference identities,
-reviewer attribution and sparse/dense coverage already have a
-[versioned data contract](temporal-data.md); this comparator does not populate or
-validate them automatically.
+Use **Review identities** to open the separate
+[human temporal identity editor](temporal-identities.md). It can prepare proposals
+from this lane, while keeping reference identities, reviewer attribution and
+sparse/dense coverage in the [versioned data contract](temporal-data.md).
+Proposals do not become validated references automatically.

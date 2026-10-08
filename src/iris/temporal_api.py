@@ -37,6 +37,24 @@ class ReferenceCreate(StrictInput):
     payload: Metadata
 
 
+class IdentityProposalCreate(StrictInput):
+    comparison_id: Identifier
+    lane_index: int = Field(ge=0, le=1)
+    class_mapping: dict[Annotated[str, Field(min_length=1, max_length=16)], Identifier | None] = (
+        Field(min_length=1, max_length=100)
+    )
+
+
+class FrameReview(StrictInput):
+    frame_index: int = Field(ge=0, le=2**53 - 1)
+    coverage: Literal["complete", "partial"]
+
+
+class IdentityEditCreate(ReferenceCreate):
+    reviewer: str = Field(min_length=1, max_length=200)
+    reviewed_frames: list[FrameReview] = Field(max_length=10000)
+
+
 class DatasetEntry(StrictInput):
     sequence_id: Identifier
     split: Literal["train", "val", "test"]
@@ -92,6 +110,21 @@ def install_temporal_routes(app, store, require, active_project):
     def save_reference(sequence_id: RecordId, payload: ReferenceCreate):
         require("temporal_sequences", sequence_id)
         return action(lambda: temporal.save_reference(store, sequence_id, **payload.model_dump()))
+
+    @app.post("/api/temporal/sequences/{sequence_id}/identity-proposals")
+    def identity_proposal(sequence_id: RecordId, payload: IdentityProposalCreate):
+        from iris.temporal_identities import identity_proposal
+
+        require("temporal_sequences", sequence_id)
+        require("jobs", payload.comparison_id)
+        return action(lambda: identity_proposal(store, sequence_id, **payload.model_dump()))
+
+    @app.post("/api/temporal/sequences/{sequence_id}/identity-edits", status_code=201)
+    def identity_edits(sequence_id: RecordId, payload: IdentityEditCreate):
+        from iris.temporal_identities import save_identity_edits
+
+        require("temporal_sequences", sequence_id)
+        return action(lambda: save_identity_edits(store, sequence_id, **payload.model_dump()))
 
     @app.get("/api/temporal/references/{reference_id}")
     def reference(reference_id: RecordId):

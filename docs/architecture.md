@@ -16,8 +16,9 @@ current executable model task is bounding-box detection. Temporal sequences,
 reference identities, dataset versions and reusable detector outputs have separate
 Python/JSON API services. Optional native ByteTrack and BoT-SORT adapters replay
 complete detector caches through a standalone Python/CLI interface; temporal
-editing and tracking metrics remain planned. A Studio comparator now runs both
-trackers on the same saved detections and presents synchronized source frames.
+tracking metrics remain planned. A Studio comparator runs both trackers on the
+same saved detections and presents synchronized source frames. A separate
+temporal identity editor records corrections and explicit human frame reviews.
 Full segmentation workflows remain outside this version. No ARGOS or drone
 integration is required.
 
@@ -91,6 +92,14 @@ a project-scoped endpoint and semantically checked during workspace transfer.
 The Studio viewer distinguishes observed, predicted, unconfirmed and unassigned
 boxes, with source gaps and trails that do not bridge missing observations.
 See [the Studio tracking comparator](tracking-studio.md).
+
+IRIS 0.50 appends reference-v2 documents to the existing immutable temporal
+reference table. Seeded observations retain frozen comparison/cache/profile
+provenance and start uncertain and unreviewed. Editor saves use the same revision
+CAS transaction, preserve unchanged review evidence, reset changed frames and
+apply only explicit human-review actions. Split and merge affect draft identities
+without mutating native tracker results. Existing v1 references and dataset pins
+remain unchanged. See [temporal identity editing](temporal-identities.md).
 
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
