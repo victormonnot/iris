@@ -86,6 +86,11 @@ and profile without executing the optional model or tracker runtime. Importing
 or restoring a remote measurement does not authenticate its declared execution.
 See [tracking cost measurements](tracking-cost.md).
 
+Bounded [profile studies](tracking-studies.md) also retain their frozen dataset,
+reference pins, profiles, complete cached-input replays and computed results.
+Archive validation checks that reserved test entries were excluded and recomputes
+the saved quality/cost summaries without loading a tracker or detector.
+
 The CLI provides `iris workspace backup`, `inspect` and `restore`. CLI backup
 requires the source server to be stopped and uses its directory lock. Inspection
 and restoration need no running server. The destination's parent must exist.

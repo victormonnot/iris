@@ -66,6 +66,12 @@ not retain a successful partial timing report. Start a new measurement to obtain
 fresh setup, warmup, tracker state and a complete set of repetitions. Previously
 completed reports remain unchanged; viewing them does not execute the pipeline.
 
+[Profile studies](tracking-studies.md) also publish complete reports only. Their
+explicit frame-update budget is checked before launch, and their cooperative time
+budget is checked during execution. A cancelled, failed or time-limited attempt
+does not publish its tested subset as a completed comparison. A new launch keeps
+the earlier attempt in history and starts every selected profile again.
+
 ## Prepare unfinished local batch images
 
 A stopped local annotation batch can prepare a **new batch** for its failed,

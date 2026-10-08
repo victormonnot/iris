@@ -117,6 +117,14 @@ measurements can be imported with declared-execution provenance; validation
 recomputes report aggregates without running model or tracker code. See
 [tracking cost](tracking-cost.md).
 
+IRIS 0.53 adds bounded `tracking_study` jobs over frozen temporal datasets. The
+worker reuses detector caches, executes explicit tracker profiles, and evaluates
+their first replay pass against pinned references. Repetitions measure timing
+and observed repeatability. Development and validation stay separate; test entries
+are withheld. Saved raw replays and derived metrics are checked without optional
+ML execution during reading and transfer. Schema 22 and historical T4/T6/T7
+protocols remain unchanged. See [profile studies](tracking-studies.md).
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared

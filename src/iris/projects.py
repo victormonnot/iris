@@ -65,6 +65,7 @@ JOB_PARENTS = {
     "temporal_detect": ("temporal_detection_caches", "cache_id"),
     "tracking_compare": ("temporal_detection_caches", "cache_id"),
     "tracking_cost": ("jobs", "comparison_id"),
+    "tracking_study": ("temporal_datasets", "dataset_id"),
 }
 
 

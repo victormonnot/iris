@@ -32,15 +32,23 @@ review each frame. Immutable revisions retain authors and sparse/dense coverage.
 Saved **tracking quality reports** now compare both lanes with a pinned human
 reference: matches, misses, extra observations, continuity errors and IDF1 when
 the entire clip has sufficient reference coverage. Unknown intervals remain
-excluded, and reports do not claim an overall tracker winner. See
-the new [tracking cost measurements](docs/tracking-cost.md) for fresh detector,
+excluded, and reports do not claim an overall tracker winner.
+
+[Tracking cost measurements](docs/tracking-cost.md) provide fresh detector,
 association and complete saved-frame pipeline timings, memory use and explicit
 latest-frame cadence simulation on CPU or CUDA. Measurements from other machines
-can be imported as declared evidence. Also see
+can be imported as declared evidence.
+
+[Bounded profile studies](docs/tracking-studies.md) compare explicit tracker
+settings on frozen development/validation references, keep reserved test data
+out of tuning, and show quality alongside tracker replay cost without
+automatically replacing the baseline.
+
+Further details:
 [temporal sources and identities](docs/temporal-data.md),
-[reusable temporal detections](docs/temporal-detections.md), and
-[native tracking and replay](docs/tracking.md), and the
-[Studio tracking comparator](docs/tracking-studio.md), and
+[reusable temporal detections](docs/temporal-detections.md),
+[native tracking and replay](docs/tracking.md),
+[Studio tracking comparator](docs/tracking-studio.md),
 [temporal identity review](docs/temporal-identities.md), and
 [tracking quality and its coverage rules](docs/tracking-quality.md).
 

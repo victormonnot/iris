@@ -16,6 +16,7 @@ WORKSPACES = {
     "temporal_detect": "tracking",
     "tracking_compare": "tracking",
     "tracking_cost": "tracking",
+    "tracking_study": "tracking",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -30,6 +31,7 @@ NAMES = {
     "temporal_detect": "Temporal detector cache",
     "tracking_compare": "Visual tracking comparison",
     "tracking_cost": "Tracking pipeline measurement",
+    "tracking_study": "Tracking profile study",
 }
 
 
@@ -112,6 +114,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             add(
                 "tracking_cost",
                 "Complete pipeline measurements",
+                int(job["status"] == "succeeded" and job["result"] is not None),
+                job["id"],
+            )
+        elif target and job["kind"] == "tracking_study":
+            add(
+                "tracking_study",
+                "Complete profile studies",
                 int(job["status"] == "succeeded" and job["result"] is not None),
                 job["id"],
             )
@@ -260,6 +269,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Reuse a complete cache or explicitly continue its remaining frames. "
             "Changed detector settings require a separate cache."
         ),
+        "tracking_study": (
+            "Open the completed study or preview a new bounded run. "
+            "The baseline remains unchanged; test sequences remain reserved."
+        ),
         "tracking_cost": (
             "Open the complete pipeline measurement or launch a fresh run. "
             "Imported declarations do not authenticate execution on a target machine."
@@ -280,14 +293,14 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Preview an explicit resume in the training results. It creates a new attempt "
             "with the same settings and dataset, restoring optimizer and random state."
         )
-    from iris.tracking_costs import public_job
+    from iris.tracking_studies import public_job
 
     return {
         "job": public_job(job),
         "context": {
             "name": (
                 job["params"].get("name")
-                if job["kind"] in {"tracking_compare", "tracking_cost"}
+                if job["kind"] in {"tracking_compare", "tracking_cost", "tracking_study"}
                 else None
             )
             or (target or {}).get("name")
@@ -319,6 +332,11 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                     "tracking_cost_id": job["id"],
                 }
                 if job["kind"] == "tracking_cost"
+                else {}
+            ),
+            **(
+                {"tracking_study_id": job["id"], "dataset_id": job["params"]["dataset_id"]}
+                if job["kind"] == "tracking_study"
                 else {}
             ),
         },

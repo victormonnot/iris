@@ -139,5 +139,9 @@ See [tracking cost measurements](tracking-cost.md) for separate fresh execution
 timings and cadence simulations; the saved comparison's quality scores do not
 describe a new run with dropped frames.
 
-Training, profile search, application target-lock
+The [profile study workflow](tracking-studies.md) applies these same quality rules
+to explicit alternative profiles on frozen development/validation data. Repeated
+replays do not become additional human reference images.
+
+Training, application target-lock
 policies and qualification on independent recordings remain separate steps.

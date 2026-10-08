@@ -31,6 +31,7 @@
     <link rel="stylesheet" href="/static/studio-tracking.css" />
     <link rel="stylesheet" href="/static/studio-tracking-quality.css" />
     <link rel="stylesheet" href="/static/studio-tracking-cost.css" />
+    <link rel="stylesheet" href="/static/studio-tracking-study.css" />
     <link rel="stylesheet" href="/static/studio-temporal-identities.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
@@ -73,6 +74,8 @@
     <script src="/static/tracking-quality.js" defer></script>
     <script src="/static/trackingcost-tools.js" defer></script>
     <script src="/static/trackingcost.js" defer></script>
+    <script src="/static/tracking-study-tools.js" defer></script>
+    <script src="/static/tracking-study.js" defer></script>
     <script src="/static/temporal-identity-tools.js" defer></script>
     <script src="/static/temporal-identity.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
@@ -2714,6 +2717,24 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 </section>
               </div>
             </section>
+            <section id="tracking-study-panel" class="panel" aria-label="Bounded tracking profile study">
+              <div class="panel-heading"><div><h2>Compare tracking settings</h2><p>Explore a bounded set of profiles against saved human references. Keep the baseline until evidence supports a later decision.</p></div><button id="study-refresh" class="text-button" type="button">Refresh studies &amp; sources</button></div>
+              <div class="tracking-body study-body">
+                <p id="study-error" class="inline-error" role="alert" hidden></p><p id="study-readiness" class="field-hint" role="status">Open Tracking to load study sources.</p>
+                <details id="study-prepare" class="tracking-prepare"><summary>Prepare a bounded profile study</summary>
+                  <section class="study-step"><h3>1. Freeze the data roles</h3><p class="field-hint">Development and validation both inform tuning. Test sequences stay reserved and are never replayed or scored by this study. Related takes and overlapping frames cannot cross roles.</p><label for="study-dataset">Frozen temporal dataset</label><select id="study-dataset"><option value="">Choose a dataset</option></select><p id="study-dataset-summary" class="field-hint"></p>
+                    <details id="study-dataset-create" class="tracking-prepare"><summary>Create a frozen temporal dataset</summary><p class="field-hint">Select sequences, assign their roles and pin the reviewed reference revision. A single development sequence is allowed; it cannot establish performance on another take.</p><label for="study-dataset-name">Dataset name</label><input id="study-dataset-name" maxlength="160" value="Tracking development references" /><div id="study-dataset-entries"></div><button id="study-create-dataset" class="button button-secondary" type="button">Freeze selected sequences and roles</button></details>
+                    <div id="study-sources"></div>
+                  </section>
+                  <section class="study-step"><h3>2. Choose a baseline and candidates</h3><label for="study-baseline">Baseline lane · first development or validation source</label><select id="study-baseline"><option value="">Choose source comparisons first</option></select><p id="study-baseline-summary" class="field-hint"></p><div id="study-mapping" class="quality-mapping"></div><p class="field-hint">Explicitly map native detector classes to the frozen reference taxonomy. Mapping suggestions use saved taxonomy metadata.</p><button id="study-suggest" class="button button-secondary" type="button" disabled>Suggest editable candidates</button><p class="field-hint">Suggestions explore individual settings and the alternate tracker. Include the candidates you want and inspect their parameters below. No profile is applied automatically.</p><div id="study-candidates" class="study-profile-grid"></div>
+                  </section>
+                  <section class="study-step"><h3>3. Set the work budget</h3><div class="tracking-fields"><div><label for="study-name">Study name</label><input id="study-name" maxlength="160" value="Tracking profile study" /></div><div><label for="study-iou">Matching IoU threshold</label><input id="study-iou" type="number" min="0" max="1" step="any" value="0.5" /></div><div><label for="study-repeats">Tracker repetitions · 1–3</label><input id="study-repeats" type="number" min="1" max="3" step="1" value="2" /></div><div><label for="study-updates">Maximum tracker updates · up to 20,000</label><input id="study-updates" type="number" min="1" max="20000" step="1" value="5000" /></div><div><label for="study-seconds">Wall time limit · seconds</label><input id="study-seconds" type="number" min="1" max="600" step="1" value="120" /></div></div><p class="field-hint">Repetitions measure tracker cost and repeatability; they do not add ground-truth frames. Detector inference, pipeline latency, memory and camera cadence are not measured here.</p><p id="study-prepare-status" class="field-hint" role="status"></p><button id="study-preview" class="button button-secondary" type="button" disabled>Preview study and budget</button><div id="study-preview-result" class="study-preview" hidden><p id="study-preview-summary" class="study-evidence"></p><p id="study-preview-coverage" class="field-hint"></p><p class="field-hint">Run uses exactly this preview. Changing any setting requires a new preview. Cancellation, deadline or failure leaves no successful partial report.</p><button id="study-run" class="button button-primary" type="button" disabled>Run this bounded study</button></div></section>
+                </details>
+                <label for="study-history">Saved studies</label><select id="study-history"><option value="">No saved study selected</option></select>
+                <div id="study-job" class="tracking-job" hidden><p id="study-job-status" role="status"></p><progress id="study-progress" max="100"></progress><button id="study-cancel" class="button button-secondary" type="button" hidden>Cancel study</button></div>
+                <section id="study-result" class="study-result" hidden aria-label="Saved tracking profile study"><div class="cost-result-heading"><h3 id="study-result-title"></h3><a id="study-permalink" class="text-button" href="#">Link to this study</a><a id="study-download" class="button button-secondary" href="#" download>Download evidence JSON</a></div><p id="study-result-scope" class="field-hint"></p><p id="study-decision" class="tracking-warning"></p><p id="study-coverage" class="study-evidence"></p><p id="study-origin" class="tracking-warning" hidden></p><div id="study-results"></div><p class="field-hint">Quality uses the first replay pass. Tracker adapter timings include association and camera-motion compensation; these nested timings must not be added again. Source-image reading, setup and full replay wall time have separate scopes. No detector or full-pipeline performance claim is made.</p><details class="tracking-provenance"><summary>Source coverage, timing details and profile evidence</summary><div id="study-source-evidence"></div><div id="study-timing"></div><ul id="study-limitations"></ul><pre id="study-provenance"></pre></details></section>
+              </div>
+            </section>
           </section>
           <section id="identities-workspace" hidden aria-label="Temporal identity editor">
             <section class="panel">
@@ -3084,7 +3105,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
           </div>
           <div class="job-history-controls">
             <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
-            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="tracking_compare">Tracking comparison</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="tracking_compare">Tracking comparison</option><option value="tracking_cost">Pipeline cost measurement</option><option value="tracking_study">Tracking profile study</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
             <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
             <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
           </div>

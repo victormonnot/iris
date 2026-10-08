@@ -120,3 +120,8 @@ lane on CPU or CUDA. Measure all available frames or simulate an explicit input
 cadence with a latest-frame policy. It records cost and dropped frames separately
 from the saved comparison's quality. Reports measured on a compatible workspace
 copy can be imported as declared evidence from another machine.
+
+Use [bounded profile studies](tracking-studies.md) to compare explicit thresholds,
+retention and camera-compensation settings on frozen development/validation
+references. The study previews its budget and withholds reserved test data. Its
+quality and tracker replay costs remain separate from fresh pipeline measurements.

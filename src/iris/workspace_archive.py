@@ -1247,6 +1247,12 @@ def validate_database(
                 except ValueError as exc:
                     raise ArchiveError("Workspace tracking cost records are invalid") from exc
             if version >= 22:
+                from iris.tracking_studies import validate_tracking_study_records
+
+                try:
+                    validate_tracking_study_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace tracking study records are invalid") from exc
                 from iris.tracking_quality import validate_tracking_quality_records
 
                 try:

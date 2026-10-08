@@ -7,6 +7,8 @@
   const active = (job) => ["queued", "running"].includes(job.status);
   const kindNames = { extract: "Frame extraction", infer: "Model comparison", temporal_detect: "Temporal detector cache", assist: "Annotation assistance", dinox: "DINO-X cloud proposals", train: "Detector training", evaluate: "Quality evaluation", model_export: "Model export", video_review: "Video passage review", benchmark: "Preannotation benchmark" };
   kindNames.tracking_compare = "Tracking comparison";
+  kindNames.tracking_cost = "Pipeline cost measurement";
+  kindNames.tracking_study = "Tracking profile study";
   const continuationModes = { extract: "continue_extraction", temporal_detect: "continue_temporal_detection" };
   const statusName = (status) => String(status || "unknown").replaceAll("_", " ");
   function history(jobs, { status = "all", kind = "all", query = "", limit = 8 } = {}) {
