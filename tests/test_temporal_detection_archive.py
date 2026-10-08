@@ -18,6 +18,7 @@ from iris.store import (
     SCHEMA_VERSION,
     TABLES,
     TEMPORAL_DETECTION_TABLES,
+    TRACKING_QUALITY_TABLES,
     Store,
     new_id,
     now,
@@ -27,7 +28,7 @@ from iris.temporal_detection_contracts import TIMING_FIELDS, payload_hash, valid
 from iris.workspace_archive import ArchiveError, _inventory, create_archive, validate_database
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - TEMPORAL_DETECTION_TABLES
+OLD_TABLES = TABLES - TEMPORAL_DETECTION_TABLES - TRACKING_QUALITY_TABLES
 
 
 def rows(root, tables=OLD_TABLES):
@@ -82,7 +83,7 @@ def test_detection_migration_preserves_image_annotations_and_temporal_evidence(s
         assert artifacts(schema20) == files
         assert all(store.list(table) == [] for table in TEMPORAL_DETECTION_TABLES)
         with store.connect() as connection:
-            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 21
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 22
             assert not connection.execute("PRAGMA foreign_key_check").fetchall()
 
 

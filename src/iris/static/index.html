@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="/static/studio-dialogs.css" />
     <link rel="stylesheet" href="/static/studio-benchmark.css" />
     <link rel="stylesheet" href="/static/studio-tracking.css" />
+    <link rel="stylesheet" href="/static/studio-tracking-quality.css" />
     <link rel="stylesheet" href="/static/studio-temporal-identities.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
@@ -67,6 +68,8 @@
     <script src="/static/benchmark-editor.js" defer></script>
     <script src="/static/tracking-tools.js" defer></script>
     <script src="/static/tracking.js" defer></script>
+    <script src="/static/tracking-quality-tools.js" defer></script>
+    <script src="/static/tracking-quality.js" defer></script>
     <script src="/static/temporal-identity-tools.js" defer></script>
     <script src="/static/temporal-identity.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
@@ -2661,7 +2664,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
             <section id="tracking-viewer" class="panel tracking-viewer" hidden aria-label="Synchronized tracking replay">
               <div class="panel-heading"><div><h2 id="tracking-report-title">Tracking replay</h2><p>Solid boxes: detector observations. Dashed boxes: predictions without a current observation. Unconfirmed observations are labeled.</p></div></div>
               <div class="tracking-body">
-                <p class="tracking-warning">IDs are local to each lane. Matching numbers across lanes do not identify the same object. This view provides no quality score or ranking.</p>
+                <p class="tracking-warning">IDs are local to each lane. Matching numbers across lanes do not identify the same object. Replay overlays do not score quality. Reference-based metrics appear in the separate quality panel.</p>
                 <div class="tracking-transport"><button id="tracking-previous" class="button button-secondary" type="button" aria-label="Previous available frame">←</button><button id="tracking-play" class="button button-secondary" type="button">Play</button><button id="tracking-next" class="button button-secondary" type="button" aria-label="Next available frame">→</button><div><label for="tracking-speed">Playback speed</label><select id="tracking-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div><p id="tracking-position" role="status"></p></div>
                 <label for="tracking-scrub">Available source frames · missing frames receive no updates</label><input id="tracking-scrub" type="range" min="0" max="0" value="0" step="1" />
                 <p id="tracking-frame-gap" class="tracking-warning" hidden></p><p id="tracking-image-status" class="field-hint" role="status"></p>
@@ -2669,6 +2672,26 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 <div id="tracking-lanes" class="tracking-lanes"></div>
                 <div class="tracking-event-heading"><h3>Continuity inspection</h3><label for="tracking-event-filter">Show events</label><select id="tracking-event-filter"><option value="all">All observations and gaps</option><option value="disappearance">Observation disappears</option><option value="return">Same ID returns</option><option value="new_id">First observation of an ID</option><option value="overlap">Overlapping boxes / possible crossing</option><option value="source_gap">Missing source frames</option></select></div><p class="field-hint">A loss followed by a different ID is not proof of the same real object. Occlusion, crossing and identity continuity require independent review.</p><div id="tracking-events" class="tracking-events"></div>
                 <details class="tracking-provenance"><summary>Saved profiles, timing and provenance</summary><p>Replay timing excludes detector inference. One pass leaves repeatability unchecked; elapsed time does not establish tracking quality.</p><pre id="tracking-provenance"></pre></details>
+              </div>
+            </section>
+            <section id="tracking-quality-panel" class="panel" aria-label="Tracking quality against a saved human reference">
+              <div class="panel-heading"><div><h2>Tracking quality</h2><p>Compare the saved lanes against one frozen human reference revision.</p></div><button id="quality-refresh" class="text-button" type="button" disabled>Refresh references &amp; reports</button></div>
+              <div class="tracking-body quality-body">
+                <p id="quality-error" class="inline-error" role="alert" hidden></p><p id="quality-context" class="field-hint" role="status">Choose a completed tracking comparison to inspect or calculate its quality reports.</p>
+                <p class="field-hint">Only confirmed, measured observations and complete human-reviewed, scorable frames enter the metrics. Playback filters do not change the calculation. Opening a saved report creates no new report and runs no detector or tracker.</p>
+                <div class="tracking-fields"><div><label for="quality-reference">Saved temporal reference revision</label><select id="quality-reference" disabled><option value="">Choose a completed comparison first</option></select></div><div><label for="quality-iou">Matching IoU threshold · greater than 0, up to 1</label><input id="quality-iou" type="number" min="0" max="1" step="any" value="0.5" disabled /></div></div>
+                <p id="quality-reference-summary" class="field-hint"></p><div id="quality-mapping" class="quality-mapping"></div><p class="field-hint">Review each native detector class mapping. “Ignore” removes that class from the evaluated scope. Suggestions use frozen taxonomy metadata; class names alone do not establish a mapping.</p>
+                <div class="quality-actions"><button id="quality-calculate" class="button button-primary" type="button" disabled>Calculate and save quality report</button><button id="quality-open-reference" class="button button-secondary" type="button" disabled>Open temporal identities</button></div><p id="quality-config-status" class="field-hint" role="status"></p><p id="quality-runtime-limits" class="field-hint"></p>
+                <label for="quality-history">Saved quality reports · each pins its original reference revision</label><select id="quality-history" disabled><option value="">No saved report selected</option></select>
+                <section id="quality-result" class="quality-result" hidden aria-label="Saved tracking quality report">
+                  <div class="quality-result-heading"><h3 id="quality-result-title"></h3><a id="quality-permalink" class="text-button" href="#">Link to this saved report</a></div><p id="quality-result-scope" class="field-hint"></p><p id="quality-coverage" class="quality-coverage" role="status"></p><p id="quality-origin" class="tracking-warning" hidden></p><p id="quality-empty" class="tracking-warning" hidden></p>
+                  <div id="quality-metrics" class="quality-table-scroll" tabindex="0" role="region" aria-label="Side by side tracking metrics"></div>
+                  <p class="field-hint">Detection and identity-event counts cover evaluated frames only. Excluded predictions, unconfirmed observations and unassigned detections below are diagnostics across all available frames. Undefined rates are shown explicitly. These metrics do not select a winner.</p>
+                  <div id="quality-diagnostics" class="quality-diagnostics"></div>
+                  <details class="tracking-provenance"><summary>Frame matches, errors and continuity events</summary><div class="quality-actions"><label for="quality-frame">Source frame</label><select id="quality-frame"></select><button id="quality-show-frame" class="button button-secondary" type="button">Show source frame in replay</button></div><p class="field-hint">Switches and fragments are counted only inside contiguous evaluated source frames. Gaps and excluded frames reset continuity. Class-confusion pairs remain false positives and false negatives.</p><div id="quality-frame-evidence" class="quality-frame-evidence"></div></details>
+                  <details class="tracking-provenance"><summary>Excluded frames and reasons</summary><ul id="quality-excluded"></ul></details>
+                  <details class="tracking-provenance"><summary>Protocol limits and provenance</summary><ul id="quality-limitations"></ul><pre id="quality-provenance"></pre></details>
+                </section>
               </div>
             </section>
           </section>
@@ -2681,7 +2704,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
                 <p id="identity-sequence-summary" class="field-hint"></p><p id="identity-saved" class="identity-status" role="status">Choose a frozen sequence to begin.</p>
                 <p id="identity-summary" class="field-hint" role="status"></p><p id="identity-gaps" class="identity-warning" hidden></p>
                 <details class="identity-details"><summary>Reference provenance</summary><pre id="identity-provenance"></pre></details>
-                <div class="identity-actions"><button id="identity-reload" class="button button-secondary" type="button" disabled>Reload latest revision</button><button id="identity-undo" class="button button-secondary" type="button" disabled>Undo</button><button id="identity-redo" class="button button-secondary" type="button" disabled>Redo</button></div>
+                <div class="identity-actions"><button id="identity-reload" class="button button-secondary" type="button" disabled>Reload latest revision</button><button id="identity-undo" class="button button-secondary" type="button" disabled>Undo</button><button id="identity-redo" class="button button-secondary" type="button" disabled>Redo</button><button id="identity-open-quality" class="button button-secondary" type="button" disabled>Compare tracking with this saved revision</button></div>
                 <p id="identity-conflict" class="identity-warning" role="alert" hidden>A newer revision exists or this draft conflicts with saved evidence. Your draft is retained. Reload the latest revision to discard this draft, or keep it open while resolving the conflict.</p>
                 <details id="identity-seed-panel" class="identity-details"><summary>Start a draft from saved tracking observations</summary><p class="field-hint">Choose a lane and explicitly map its native classes. Only measured observations are copied; predictions are excluded. Every proposal remains uncertain and unreviewed until you inspect it. Seeding replaces the current draft and is available before the first saved reference.</p><div class="identity-fields"><div><label for="identity-comparison">Saved tracking comparison</label><select id="identity-comparison"><option value="">No saved comparisons</option></select></div><div><label for="identity-lane">Tracker lane</label><select id="identity-lane"><option value="0">Lane 1</option><option value="1">Lane 2</option></select></div></div><div id="identity-mapping" class="identity-mapping"></div><button id="identity-seed" class="button button-secondary" type="button" disabled>Seed an unreviewed draft from this lane</button><p id="identity-seed-summary" class="field-hint" role="status"></p></details>
               </div>

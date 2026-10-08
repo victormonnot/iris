@@ -15,10 +15,11 @@ dataset versions, fine-tuning, and comparison against earlier checkpoints. The
 current executable model task is bounding-box detection. Temporal sequences,
 reference identities, dataset versions and reusable detector outputs have separate
 Python/JSON API services. Optional native ByteTrack and BoT-SORT adapters replay
-complete detector caches through a standalone Python/CLI interface; temporal
-tracking metrics remain planned. A Studio comparator runs both trackers on the
+complete detector caches through a standalone Python/CLI interface. A Studio comparator runs both trackers on the
 same saved detections and presents synchronized source frames. A separate
 temporal identity editor records corrections and explicit human frame reviews.
+Pinned quality reports evaluate confirmed observations against those references,
+with coverage-gated identity scores and explicit unknown intervals.
 Full segmentation workflows remain outside this version. No ARGOS or drone
 integration is required.
 
@@ -100,6 +101,13 @@ CAS transaction, preserve unchanged review evidence, reset changed frames and
 apply only explicit human-review actions. Split and merge affect draft identities
 without mutating native tracker results. Existing v1 references and dataset pins
 remain unchanged. See [temporal identity editing](temporal-identities.md).
+
+IRIS 0.51 adds schema 22's immutable `tracking_quality_reports`. A bounded pure
+Python evaluator compares both saved lanes against one frozen reference revision,
+without executing detector or tracker runtimes. It records coverage, matching
+protocol, source hashes, local continuity diagnostics and dense-only global IDF1.
+Archives revalidate computed results against the pinned inputs. Sparse and unknown
+intervals do not become negative evidence. See [tracking quality](tracking-quality.md).
 
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;

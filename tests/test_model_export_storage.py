@@ -19,6 +19,7 @@ from iris.store import (
     TABLES,
     TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
+    TRACKING_QUALITY_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -41,6 +42,7 @@ OLD_TABLES = (
     - DINOX_TABLES
     - TEMPORAL_TABLES
     - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
 )
 
 
@@ -136,6 +138,7 @@ def test_schema16_and17_archives_preserve_exact_saved_database(
         - DINOX_TABLES
         - TEMPORAL_TABLES
         - TEMPORAL_DETECTION_TABLES
+        - TRACKING_QUALITY_TABLES
     )
     original = rows(schema16, tables)
     saved = create_archive(schema16, tmp_path / "historical.zip")

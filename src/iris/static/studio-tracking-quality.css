@@ -1,0 +1,25 @@
+.quality-body { min-width: 0; }
+.quality-mapping { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 16px; }
+.quality-mapping label { display: block; margin: 8px 0 6px; }
+.quality-mapping select, #quality-history { width: 100%; }
+.quality-actions, .quality-result-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+.quality-result-heading h3 { margin: 0 auto 0 0; font-size: 18px; font-weight: 500; }
+.quality-result { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 8px; }
+.quality-coverage { font: 12px/1.8 var(--font-mono); color: var(--accent-strong); }
+.quality-table-scroll { overflow: auto; border: 1px solid var(--line); margin-top: 18px; }
+.quality-metrics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.quality-metrics-table caption { text-align: left; padding: 12px; font-weight: 500; background: var(--surface-raised); }
+.quality-metrics-table th, .quality-metrics-table td { text-align: left; padding: 11px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+.quality-metrics-table thead th { background: var(--surface-raised); font-weight: 500; }
+.quality-metrics-table tbody th { font-weight: 400; color: var(--muted); min-width: 150px; }
+.quality-metrics-table td { min-width: 130px; font-family: var(--font-mono); }
+.quality-metrics-table td small { display: block; font: 11px/1.6 var(--font-sans); color: var(--muted); margin-top: 5px; max-width: 300px; }
+.quality-diagnostics, .quality-frame-evidence { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.quality-diagnostics article, .quality-frame-evidence article { min-width: 0; background: var(--surface-raised); border: 1px solid var(--line); padding: 14px; }
+.quality-diagnostics h4, .quality-frame-evidence h4 { margin: 0 0 10px; font-size: 14px; font-weight: 500; }
+.quality-diagnostics p, .quality-frame-evidence p, #quality-excluded li, #quality-limitations li { font-size: 12px; line-height: 1.7; }
+.quality-frame-evidence ul { padding-left: 18px; font: 11px/1.8 var(--font-mono); overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+#quality-provenance { max-height: 380px; }
+#quality-history { margin-top: 6px; }
+#quality-result [hidden] { display: none !important; }
+@media(max-width:700px) { .quality-mapping, .quality-diagnostics, .quality-frame-evidence { grid-template-columns: minmax(0,1fr); }.quality-actions .button { flex-grow: 1; }.quality-result-heading .text-button { flex-basis: 100%; }.quality-metrics-table th,.quality-metrics-table td { padding: 10px; } }

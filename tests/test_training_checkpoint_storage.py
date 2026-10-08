@@ -17,6 +17,7 @@ from iris.store import (
     TABLES,
     TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
+    TRACKING_QUALITY_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -34,7 +35,12 @@ from iris.workspace_archive import (
 from iris.workspace_restore import inspect_archive, restore_archive
 
 OLD_TABLES = (
-    TABLES - TRAINING_CHECKPOINT_TABLES - DINOX_TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES
+    TABLES
+    - TRAINING_CHECKPOINT_TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
 )
 
 

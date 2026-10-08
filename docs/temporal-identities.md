@@ -3,8 +3,9 @@
 IRIS 0.50 adds **Temporal identities** to Studio. It edits a sequence's reference
 identities and observed boxes, separately from tracker outputs and ordinary image
 annotations. This is the human review step after the
-[tracking comparator](tracking-studio.md); tracking-quality metrics remain a
-separate step.
+[tracking comparator](tracking-studio.md). The separate
+[quality report](tracking-quality.md) evaluates saved outputs against an explicit
+reviewed revision.
 
 ## Start a reference
 

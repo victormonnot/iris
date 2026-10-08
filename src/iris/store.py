@@ -16,7 +16,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 DEFAULT_PROJECT_ID = "default"
 
 # Keep the previous layout available for strict, read-only archive validation.
@@ -361,7 +361,7 @@ CREATE INDEX IF NOT EXISTS temporal_datasets_project ON temporal_datasets(projec
 )
 
 TEMPORAL_DETECTION_TABLES = {"temporal_detection_caches", "temporal_detection_frames"}
-SCHEMA = (
+SCHEMA_V21 = (
     SCHEMA_V20
     + """
 CREATE TABLE IF NOT EXISTS temporal_detection_caches (
@@ -378,6 +378,24 @@ CREATE TABLE IF NOT EXISTS temporal_detection_frames (
     UNIQUE(cache_id,frame_id)
 );
 CREATE INDEX IF NOT EXISTS temporal_detection_frames_cache ON temporal_detection_frames(cache_id);
+"""
+)
+
+TRACKING_QUALITY_TABLES = {"tracking_quality_reports"}
+SCHEMA = (
+    SCHEMA_V21
+    + """
+CREATE TABLE IF NOT EXISTS tracking_quality_reports (
+    id TEXT PRIMARY KEY, comparison_id TEXT NOT NULL REFERENCES jobs(id),
+    sequence_id TEXT NOT NULL REFERENCES temporal_sequences(id),
+    reference_id TEXT NOT NULL REFERENCES temporal_references(id),
+    config TEXT NOT NULL, report TEXT NOT NULL, report_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tracking_quality_reports_comparison
+    ON tracking_quality_reports(comparison_id);
+CREATE INDEX IF NOT EXISTS tracking_quality_reports_sequence
+    ON tracking_quality_reports(sequence_id);
 """
 )
 
@@ -448,6 +466,7 @@ JSON_FIELDS = {
     "segments",
     "manifest",
     "payload",
+    "report",
 }
 BOOL_FIELDS = {"selected", "cancel_requested"}
 TABLES = (
@@ -457,6 +476,7 @@ TABLES = (
     | DINOX_TABLES
     | TEMPORAL_TABLES
     | TEMPORAL_DETECTION_TABLES
+    | TRACKING_QUALITY_TABLES
     | {
         "projects",
         "taxonomy_versions",
@@ -640,7 +660,7 @@ class Store:
         self._check(table, data)
         if table == "taxonomy_versions":
             raise ValueError("Published taxonomy versions are immutable; publish a new version")
-        if table in TEMPORAL_TABLES | TEMPORAL_DETECTION_TABLES:
+        if table in TEMPORAL_TABLES | TEMPORAL_DETECTION_TABLES | TRACKING_QUALITY_TABLES:
             raise ValueError("Published temporal records are immutable; publish a new version")
         if not data or "id" in data:
             raise ValueError("An update must contain fields and cannot change the ID")

@@ -92,13 +92,14 @@ records format and application versions, database schema, time, table counts and
 each payload file's size and SHA-256. It does not hash itself. A separate SHA-256
 identifies the whole completed ZIP.
 
-This version supports SQLite schemas 12 through 21 and Linux publication semantics.
+This version supports SQLite schemas 12 through 22 and Linux publication semantics.
 Each schema is checked against its own expected tables, columns, indexes and
 references. Restoration preserves the archived database and files without
 migrating them. Opening an older restored workspace in the current application
-then migrates it to schema 21, assigning pre-project work to **Default project**,
+then migrates it to schema 22, assigning pre-project work to **Default project**,
 pinning historical frames to the original class definitions, and adding empty
-tables introduced by subsequent versions, including temporal records and detector caches,
+tables introduced by subsequent versions, including temporal records, detector caches
+and pinned tracking quality reports,
 without rewriting saved annotations or results.
 Archives with unsupported schema versions are rejected. Backups include all projects;
 the current project selection never limits their contents. Symlinks, special files, encrypted or

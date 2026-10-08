@@ -21,6 +21,7 @@ from iris.store import (
     TABLES,
     TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
+    TRACKING_QUALITY_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     Store,
     new_id,
@@ -35,6 +36,7 @@ LEGACY_TABLES = (
     - DINOX_TABLES
     - TEMPORAL_TABLES
     - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
     - {"projects", "taxonomy_versions"}
 )
 

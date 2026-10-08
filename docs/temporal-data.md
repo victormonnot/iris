@@ -104,6 +104,10 @@ tracking-seed provenance. Existing version 1 payloads and their hashes remain
 unchanged. The editor resets reviews on changed frames and applies human review
 only through explicit frame-review actions.
 
+The [quality evaluator](tracking-quality.md) pins one such revision together with
+the saved tracker outputs. Dense declared coverage is necessary for its IDF1
+score, but frames with an unlocalized in-scope reference remain unscorable.
+
 ## Temporal datasets and split protection
 
 `iris-temporal-dataset-v1` contains distinct sequence entries with their checksums,

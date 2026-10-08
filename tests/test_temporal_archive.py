@@ -19,6 +19,7 @@ from iris.store import (
     TABLES,
     TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
+    TRACKING_QUALITY_TABLES,
     Store,
 )
 from iris.workspace_archive import (
@@ -31,7 +32,7 @@ from iris.workspace_archive import (
 )
 from iris.workspace_restore import inspect_archive, restore_archive
 
-OLD_TABLES = TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES
+OLD_TABLES = TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES - TRACKING_QUALITY_TABLES
 
 
 def rows(root, tables=OLD_TABLES):

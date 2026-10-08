@@ -59,6 +59,7 @@
     field("sequence").disabled = blocked || !view.sequences.length;
     field("history").disabled = blocked || !view.references.length;
     field("reload").disabled = blocked || !view.sequence;
+    field("open-quality").disabled = blocked || !view.recordID || !view.comparisons.length || dirty();
     field("undo").disabled = !canEdit || !view.undo.length;
     field("redo").disabled = !canEdit || !view.redo.length;
     field("previous").disabled = blocked || !view.draft || view.position === 0;
@@ -264,7 +265,9 @@
       const [sequence, references, caches] = await Promise.all([api(`/api/temporal/sequences/${safe(id)}`), api(`/api/temporal/sequences/${safe(id)}/references`), api(`/api/temporal/sequences/${safe(id)}/detection-caches`)]);
       if (generation !== view.generation || !view.visible) return;
       view.sequence = sequence; view.references = references; view.latest = references[0] || sequence.latest_reference || null; view.position = 0;
-      field("sequence").value = id; renderHistory(); setDraft(view.latest);
+      const requestedReference = request.reference_id ? references.find((record) => record.id === request.reference_id) : view.latest;
+      if (request.reference_id && !requestedReference) throw new Error("The requested saved reference revision is unavailable for this sequence.");
+      field("sequence").value = id; renderHistory(requestedReference?.id); setDraft(requestedReference, Boolean(requestedReference && requestedReference.id !== view.latest?.id));
       // History discovery does not launch cache inference or tracker work.
       const histories = await Promise.allSettled(caches.map((cache) => api(`/api/temporal/detection-caches/${safe(cache.id)}/tracking-comparisons`)));
       if (generation !== view.generation || !view.visible) return;
@@ -338,6 +341,12 @@
   field("refresh").addEventListener("click", () => refresh());
   field("sequence").addEventListener("change", () => { const id = field("sequence").value; if (!consentDiscard()) { field("sequence").value = view.sequence?.id || ""; return; } loadSequence(id); });
   field("reload").addEventListener("click", () => { if (consentDiscard("Discard this unsaved draft and reload the latest saved reference?")) loadSequence(view.sequence.id); });
+  field("open-quality").addEventListener("click", () => {
+    if (!view.recordID || dirty() || !view.comparisons.length) return;
+    const originID = view.draft.provenance?.origin?.comparison_id;
+    const comparison = view.comparisons.find((item) => item.id === originID) || view.comparison || view.comparisons[0];
+    window.dispatchEvent(new CustomEvent("iris:tracking-quality-open", { detail: { comparison_id: comparison.id, reference_id: view.recordID } }));
+  });
   field("history").addEventListener("change", () => {
     const id = field("history").value;
     if (!consentDiscard()) { renderHistory(view.recordID); return; }

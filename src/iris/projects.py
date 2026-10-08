@@ -39,6 +39,7 @@ PARENTS = {
     "model_exports": ("trained_models", "trained_model_id"),
     "model_export_measurements": ("model_exports", "export_id"),
     "temporal_references": ("temporal_sequences", "sequence_id"),
+    "tracking_quality_reports": ("temporal_sequences", "sequence_id"),
     "temporal_detection_caches": ("temporal_sequences", "sequence_id"),
     "temporal_detection_frames": ("temporal_detection_caches", "cache_id"),
 }

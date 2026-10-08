@@ -16,6 +16,7 @@
   function resetReport() {
     stopPlayback(); view.imageGeneration++; view.report = null; view.imagesReady = false;
     view.lanes = []; view.events = []; field("lanes").replaceChildren(); field("events").replaceChildren(); field("viewer").hidden = true;
+    window.dispatchEvent(new CustomEvent("iris:tracking-quality-context", { detail: null }));
   }
   function options(select, rows, label, placeholder, selected) {
     select.replaceChildren();
@@ -211,6 +212,7 @@
         cache_fingerprint: lane.report.cache.fingerprint, result_sha256: lane.report.cache.result_sha256,
         repeatability: lane.report.repeatability, timing_scope: lane.report.timing_scope, replay_timing: lane.report.passes[0].timing, runtime: lane.report.passes[0].metadata })) }, null, 2);
     renderEvents(); showFrame(0);
+    window.dispatchEvent(new CustomEvent("iris:tracking-quality-context", { detail: { sequence: view.sequence, comparison: view.comparison, report } }));
   }
   function renderEvents() {
     const filter = field("event-filter").value;
@@ -276,6 +278,10 @@
     const url = projectURL(`/api/temporal/sequences/${safe(view.sequence.id)}/frames/${safe(frame.frame_id)}/image`);
     const loaded = view.lanes.map((lane) => {
       lane.stage.classList.remove("tracking-stage-loaded"); lane.stage.replaceChildren(); lane.svg = null; drawLane(lane);
+      // Reserve the frozen image geometry while verification is in flight so a
+      // deep-linked quality result below the replay does not jump after loading.
+      lane.stage.style.aspectRatio = `${frame.width} / ${frame.height}`;
+      lane.stage.style.minHeight = "0";
       const image = node("img"); lane.image = image; image.alt = `Source frame ${frame.frame_index}, ${lane.name}`;
       // Keep new images detached until both lanes load. Old pixels disappear immediately.
       return new Promise((resolve, reject) => {
@@ -366,12 +372,19 @@
   });
   function openComparison(id) {
     view.requestedComparison = id;
-    if (view.visible) refresh(); else window.IRISNavigation.open("tracking");
+    if (view.visible) { refresh(); return true; }
+    return window.IRISNavigation.open("tracking");
   }
   window.addEventListener("iris:tracking-comparison-open", (event) => openComparison(event.detail.comparison_id));
   window.addEventListener("iris:tracking-sequence-open", (event) => {
     view.requestedSequence = event.detail.sequence_id;
     if (view.visible) refresh(); else window.IRISNavigation.open("tracking");
+  });
+  window.addEventListener("iris:tracking-show-source-frame", (event) => {
+    if (!view.visible || event.detail.comparison_id !== view.comparison?.id) return;
+    const position = view.report?.sequence.frames.findIndex((frame) => frame.frame_index === event.detail.frame_index) ?? -1;
+    if (position < 0) return;
+    stopPlayback(); showFrame(position); field("viewer").scrollIntoView({ block: "start", behavior: "smooth" });
   });
   window.addEventListener("iris:project-initialized", () => { if (view.requestedComparison) window.IRISNavigation.open("tracking"); });
   window.IRISTracking = Object.freeze({ open: openComparison });

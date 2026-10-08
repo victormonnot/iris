@@ -7,9 +7,10 @@ frames, save the comparison and reopen it after a restart.
 
 This is a visual inspection tool. The separate
 [Temporal identities editor](temporal-identities.md) now handles identity
-corrections and human review. This comparator does not compute identity accuracy,
-tune tracker parameters, or qualify a tracker for a
-deployment. Two tracks with the same number in different lanes need not represent
+corrections and human review. The [quality panel](tracking-quality.md) evaluates
+saved observations against a chosen reviewed reference revision. It does not
+tune tracker parameters or qualify a tracker for a deployment.
+Two tracks with the same number in different lanes need not represent
 the same object. An increasing track number alone does not establish an error.
 
 ## Prepare and compare
@@ -109,3 +110,7 @@ Use **Review identities** to open the separate
 from this lane, while keeping reference identities, reviewer attribution and
 sparse/dense coverage in the [versioned data contract](temporal-data.md).
 Proposals do not become validated references automatically.
+
+After review, calculate a [tracking quality report](tracking-quality.md) from an
+explicit saved revision. Both lanes share its coverage and class mapping; source
+gaps and incomplete reviews withhold the whole-clip identity score.

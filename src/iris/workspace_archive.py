@@ -34,10 +34,12 @@ from iris.store import (
     SCHEMA_V18,
     SCHEMA_V19,
     SCHEMA_V20,
+    SCHEMA_V21,
     SCHEMA_VERSION,
     TABLES,
     TEMPORAL_DETECTION_TABLES,
     TEMPORAL_TABLES,
+    TRACKING_QUALITY_TABLES,
     TRAINING_CHECKPOINT_TABLES,
     now,
 )
@@ -55,6 +57,7 @@ SCHEMAS = {
     18: SCHEMA_V18,
     19: SCHEMA_V19,
     20: SCHEMA_V20,
+    21: SCHEMA_V21,
     SCHEMA_VERSION: SCHEMA,
 }
 SCHEMA_TABLES = {
@@ -65,6 +68,7 @@ SCHEMA_TABLES = {
     - DINOX_TABLES
     - TEMPORAL_TABLES
     - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
     - {"projects", "taxonomy_versions"},
     13: TABLES
     - BENCHMARK_TABLES
@@ -73,6 +77,7 @@ SCHEMA_TABLES = {
     - DINOX_TABLES
     - TEMPORAL_TABLES
     - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
     - {"taxonomy_versions"},
     14: TABLES
     - BENCHMARK_TABLES
@@ -80,28 +85,37 @@ SCHEMA_TABLES = {
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
-    - TEMPORAL_DETECTION_TABLES,
+    - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES,
     15: TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
     - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES
     - {"benchmark_reports"},
     16: TABLES
     - MODEL_EXPORT_TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
-    - TEMPORAL_DETECTION_TABLES,
+    - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES,
     17: TABLES
     - TRAINING_CHECKPOINT_TABLES
     - DINOX_TABLES
     - TEMPORAL_TABLES
-    - TEMPORAL_DETECTION_TABLES,
-    18: TABLES - DINOX_TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES,
-    19: TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES,
-    20: TABLES - TEMPORAL_DETECTION_TABLES,
+    - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES,
+    18: TABLES
+    - DINOX_TABLES
+    - TEMPORAL_TABLES
+    - TEMPORAL_DETECTION_TABLES
+    - TRACKING_QUALITY_TABLES,
+    19: TABLES - TEMPORAL_TABLES - TEMPORAL_DETECTION_TABLES - TRACKING_QUALITY_TABLES,
+    20: TABLES - TEMPORAL_DETECTION_TABLES - TRACKING_QUALITY_TABLES,
+    21: TABLES - TRACKING_QUALITY_TABLES,
     SCHEMA_VERSION: TABLES,
 }
 CHUNK_BYTES = 1024 * 1024
@@ -1226,6 +1240,13 @@ def validate_database(
                     validate_tracking_comparison_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace tracking comparison records are invalid") from exc
+            if version >= 22:
+                from iris.tracking_quality import validate_tracking_quality_records
+
+                try:
+                    validate_tracking_quality_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace tracking quality records are invalid") from exc
             active = connection.execute(
                 "SELECT count(*) FROM jobs WHERE status IN ('queued','running')"
             ).fetchone()[0]

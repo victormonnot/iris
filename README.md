@@ -28,13 +28,17 @@ gaps remain distinct. Saved comparisons survive restarts and workspace backups;
 they do not establish identity accuracy without human temporal references.
 **Temporal identities** now lets you prepare uncertain proposals from a saved
 tracker lane, correct boxes and identities, split or merge tracks, and explicitly
-review each frame. Immutable revisions retain authors and sparse/dense coverage;
-identity metrics remain a separate planned step. See
+review each frame. Immutable revisions retain authors and sparse/dense coverage.
+Saved **tracking quality reports** now compare both lanes with a pinned human
+reference: matches, misses, extra observations, continuity errors and IDF1 when
+the entire clip has sufficient reference coverage. Unknown intervals remain
+excluded, and reports do not claim an overall tracker winner. See
 [temporal sources and identities](docs/temporal-data.md),
 [reusable temporal detections](docs/temporal-detections.md), and
 [native tracking and replay](docs/tracking.md), and the
 [Studio tracking comparator](docs/tracking-studio.md), and
-[temporal identity review](docs/temporal-identities.md).
+[temporal identity review](docs/temporal-identities.md), and
+[tracking quality and its coverage rules](docs/tracking-quality.md).
 
 ## Standalone model export
 
