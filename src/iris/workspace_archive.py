@@ -1220,6 +1220,12 @@ def validate_database(
                     validate_detection_records(connection)
                 except ValueError as exc:
                     raise ArchiveError("Workspace temporal detection records are invalid") from exc
+                from iris.tracking_comparisons import validate_tracking_comparison_records
+
+                try:
+                    validate_tracking_comparison_records(connection)
+                except ValueError as exc:
+                    raise ArchiveError("Workspace tracking comparison records are invalid") from exc
             active = connection.execute(
                 "SELECT count(*) FROM jobs WHERE status IN ('queued','running')"
             ).fetchone()[0]

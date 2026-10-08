@@ -21,10 +21,15 @@ interruptions, and support stricter score/class filters without further inferenc
 These Python/JSON API services are included in workspace backups. Optional
 ByteTrack and BoT-SORT adapters can now replay complete caches locally, preserving
 observations, predictions and unassigned detections in standalone JSON reports.
-They add no temporal editor or tracking comparator to Studio yet. See
+Studio's **Tracking comparison** workspace can prepare sequences from selected
+video frames, compute a detector cache and compare ByteTrack with BoT-SORT in
+synchronized views. Observations, predictions, unassigned detections and source
+gaps remain distinct. Saved comparisons survive restarts and workspace backups;
+they do not establish identity accuracy without human temporal references. See
 [temporal sources and identities](docs/temporal-data.md),
 [reusable temporal detections](docs/temporal-detections.md), and
-[native tracking and replay](docs/tracking.md).
+[native tracking and replay](docs/tracking.md), and the
+[Studio tracking comparator](docs/tracking-studio.md).
 
 ## Standalone model export
 

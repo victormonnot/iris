@@ -126,6 +126,7 @@ def replay_detection_cache(
     class_ids=None,
     repeats=2,
     cancelled=None,
+    progress=None,
 ):
     """Produce a complete report using identical saved inputs in every pass.
 
@@ -175,6 +176,13 @@ def replay_detection_cache(
             _stop(cancelled)
             frame_results.append(deepcopy(result))
             image_reads.append({"frame_id": frame["frame_id"], "image_read_ms": image_read_ms})
+            if progress is not None:
+                progress(
+                    (pass_index * len(view["frames"]) + position + 1)
+                    / (repeats * len(view["frames"])),
+                    f"Replay pass {pass_index + 1}/{repeats}: "
+                    f"frame {position + 1}/{len(view['frames'])}",
+                )
         replay_ms = (time.perf_counter() - replay_start) * 1000
         _stop(cancelled)
         tracker.verify_runtime()
@@ -251,7 +259,10 @@ def replay_detection_cache(
         },
         "timing_scope": {
             "adapter_setup_ms": "Adapter creation and sequence reset, including first imports",
-            "replay_ms": "Frame loop with optional verified image reads, tracker and result copies",
+            "replay_ms": (
+                "Frame loop with optional verified image reads, tracker, result copies "
+                "and progress callbacks when supplied"
+            ),
             "source_image_read_ms": "PNG/pixel verification, decode and BGR copy",
             "excluded": "Detector inference, cache/runtime verification and report writing",
         },

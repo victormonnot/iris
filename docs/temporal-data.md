@@ -5,8 +5,10 @@ one video clip and its already extracted frames. A **reference revision** record
 which real objects appear across those frames. A **temporal dataset version** pins
 sequences, optional reference revisions and train/validation/test assignments.
 
-These are local Python/JSON API services. T1 does not add a Studio tracking panel,
-extract new frames, run trackers, compute tracking scores or train a model.
+These are local Python/JSON API services. The separate
+[Studio tracking comparator](tracking-studio.md) can now create and inspect
+sequences. These data contracts do not extract new frames, run trackers, compute
+tracking scores or train a model.
 Ordinary image annotations remain independent and unchanged. No optional ML
 runtime, external provider or ARGOS integration is required.
 

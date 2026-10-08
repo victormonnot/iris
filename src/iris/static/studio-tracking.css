@@ -1,0 +1,54 @@
+/* Tracking uses the shared Studio palette in both appearances. */
+#tracking-workspace { display: grid; gap: 24px; min-width: 0; }
+#tracking-workspace[hidden], #tracking-workspace [hidden] { display: none !important; }
+.tracking-body { padding: 22px 24px; }
+.tracking-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-bottom: 16px; }
+.tracking-fields > div { min-width: 0; }
+.tracking-fields select, .tracking-fields input, #tracking-history, #tracking-scrub { width: 100%; }
+.tracking-body label { color: var(--muted); font-size: 12px; }
+.tracking-body > label, .tracking-fields label { display: block; margin-bottom: 7px; }
+.tracking-prepare, .tracking-provenance { padding: 16px 0; border-top: 1px solid var(--line); }
+.tracking-prepare summary, .tracking-provenance summary { font-size: 14px; font-weight: 500; cursor: pointer; margin-bottom: 12px; }
+.tracking-warning { padding: 10px 13px; color: var(--warning); background: var(--warning-soft); border-left: 2px solid var(--warning); font-size: 12px; line-height: 1.6; }
+.tracking-classes { border: 1px solid var(--line); padding: 10px 12px; margin-bottom: 12px; }
+.tracking-classes legend { padding: 0 6px; font-size: 12px; color: var(--muted); }
+#tracking-classes { display: flex; flex-wrap: wrap; gap: 10px 20px; max-height: 160px; overflow: auto; }
+#tracking-classes label, .tracking-display-options label { display: flex; align-items: center; gap: 7px; }
+.tracking-job { padding: 10px 13px; background: var(--surface-raised); margin: 12px 0; }
+.tracking-job p { font-size: 12px; white-space: pre-line; }
+.tracking-job progress { width: min(360px,70%); accent-color: var(--accent); }
+.tracking-transport { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
+.tracking-transport > div { display: grid; gap: 4px; }
+.tracking-transport p { margin: auto 0 auto auto; font: 12px var(--font-mono); color: var(--muted); }
+.tracking-display-options { display: flex; flex-wrap: wrap; gap: 16px; padding: 14px 0; }
+#tracking-display-score { width: 72px; }
+.tracking-lanes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.tracking-lane { min-width: 0; border: 1px solid var(--line); background: var(--surface-raised); }
+.tracking-lane > header, .tracking-lane-summary, .tracking-lane-evidence { padding: 12px; }
+.tracking-lane h3 { margin: 0; font-size: 16px; }
+.tracking-lane > header p { font: 11px var(--font-mono); color: var(--muted); margin: 6px 0 0; }
+.tracking-stage { position: relative; display: grid; background: var(--canvas); min-height: 140px; overflow: hidden; }
+.tracking-stage-loaded { min-height: 0; }
+.tracking-stage img { display: block; width: 100%; height: auto; grid-area: 1/1; }
+.tracking-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tracking-stage [data-track-id] { cursor: pointer; }
+.tracking-stage .tracking-box { fill: none; stroke: var(--annotation); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.tracking-stage .tracking-prediction { stroke: var(--annotation-proposal); stroke-dasharray: 7 5; }
+.tracking-stage .tracking-unassigned { stroke: var(--overlay-ink); stroke-dasharray: 2 4; opacity: .8; }
+.tracking-stage .tracking-trail { fill: none; stroke: var(--annotation); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: .75; }
+.tracking-stage .tracking-selected { stroke: var(--annotation-selected); stroke-width: 4; }
+.tracking-stage text { font-family: var(--font-mono); fill: var(--overlay-ink); stroke: var(--overlay-bg); stroke-width: 4; paint-order: stroke; stroke-linejoin: round; }
+.tracking-lane-summary { border-top: 1px solid var(--line); margin: 0; font: 11px var(--font-mono); line-height: 1.7; }
+.tracking-lane-evidence { border-top: 1px solid var(--line); max-height: 210px; overflow: auto; }
+.tracking-lane-evidence p { font-size: 11px; margin: 6px 0; line-height: 1.6; }
+.tracking-evidence-button { display: block; text-align: left; padding: 6px 0; color: var(--ink); width: 100%; font-size: 11px; background: none; border: 0; cursor: pointer; }
+.tracking-evidence-button[aria-pressed=true] { color: var(--accent-strong); font-weight: 500; }
+.tracking-event-heading { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 24px; }
+.tracking-event-heading h3 { margin: 0 auto 0 0; font-size: 16px; }
+.tracking-events { max-height: 280px; overflow: auto; border: 1px solid var(--line); margin: 12px 0 20px; }
+.tracking-event { display: block; width: 100%; text-align: left; background: var(--surface); border: 0; border-bottom: 1px solid var(--line); color: var(--ink); padding: 10px 12px; font-size: 12px; line-height: 1.5; cursor: pointer; }
+.tracking-event:hover, .tracking-event[aria-current=true] { background: var(--hover); }
+.tracking-event strong { color: var(--accent-strong); }
+.tracking-provenance pre { font: 11px/1.6 var(--font-mono); max-height: 360px; overflow: auto; padding: 12px; background: var(--field); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .tracking-lanes { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 600px) { .tracking-body { padding: 16px; } .tracking-fields { grid-template-columns: minmax(0,1fr); } .tracking-transport p { flex-basis: 100%; } }

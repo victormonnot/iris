@@ -32,6 +32,10 @@
       "07", "Preannotation benchmark", "Measure the work behind the labels.",
       "Freeze an independent human reference, separate tuning from evaluation and measure corrections to candidate proposals.",
     ],
+    tracking: [
+      "08", "Tracking comparison", "Follow the observations.",
+      "Replay ByteTrack and BoT-SORT on the same saved detections, and inspect identity continuity without assuming correctness.",
+    ],
   };
   const sessionWorkspaces = new Set(["intake", "comparison", "annotation"]);
   const sidebar = $("#workspace-sidebar");

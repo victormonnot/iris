@@ -1251,6 +1251,13 @@ async function openJobWorkspace({ results = false, batch = false } = {}) {
     if (!opened) { notify("The saved benchmark trial could not be opened. Check the selected reference or use Refresh to try again.", true); return; }
   }
   $(`#${detail.next_action.workspace}-workspace`)?.scrollIntoView({ block: "start" });
+  if (detail.next_action.workspace === "tracking") {
+    const comparisonId = context.comparison_id;
+    const sequenceId = context.sequence_id;
+    if (comparisonId) window.dispatchEvent(new CustomEvent("iris:tracking-comparison-open", { detail: { comparison_id: comparisonId } }));
+    else if (sequenceId) window.dispatchEvent(new CustomEvent("iris:tracking-sequence-open", { detail: { sequence_id: sequenceId } }));
+    return;
+  }
   if ((batch || (results && detail.job.kind === "dinox")) && context.batch_id) {
     window.dispatchEvent(new CustomEvent(detail.job.kind === "dinox" ? "iris:dinox-batch-open" : "iris:assistance-batch-open", { detail: { batch_id: context.batch_id } }));
     return;

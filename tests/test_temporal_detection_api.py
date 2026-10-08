@@ -196,7 +196,8 @@ def test_partial_cache_exposes_coverage_and_activity_then_common_recovery_contin
     assert activity.json()["context"]["session_id"] == source["manifest"]["asset"]["session_id"]
     assert activity.json()["context"]["name"] == cache["name"]
     assert activity.json()["recovery"]["can_check"] is True
-    assert activity.json()["next_action"]["workspace"] == "comparison"
+    assert activity.json()["next_action"]["workspace"] == "tracking"
+    assert activity.json()["context"]["sequence_id"] == source["id"]
     assert {row["kind"]: row["count"] for row in activity.json()["artifacts"]} == {
         "temporal_detection_frames": 1,
         "temporal_detection_attempt_frames": 1,

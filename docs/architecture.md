@@ -16,7 +16,8 @@ current executable model task is bounding-box detection. Temporal sequences,
 reference identities, dataset versions and reusable detector outputs have separate
 Python/JSON API services. Optional native ByteTrack and BoT-SORT adapters replay
 complete detector caches through a standalone Python/CLI interface; temporal
-editing, a Studio tracker comparator and tracking metrics are not implemented yet.
+editing and tracking metrics remain planned. A Studio comparator now runs both
+trackers on the same saved detections and presents synchronized source frames.
 Full segmentation workflows remain outside this version. No ARGOS or drone
 integration is required.
 
@@ -78,8 +79,18 @@ explicit continuation creates a new job for the remaining frames. Read-only
 score/class filters preserve source indices and never run inference. Archive
 validation checks recipes, output hashes and attempt lineage without requiring
 weights or the producing runtime. These caches do not implement association,
-tracking metrics or a Studio tracking panel. See
+tracking metrics. The Studio panel reuses this cache through separate tracking
+comparison jobs. See
 [temporal detector caches](temporal-detections.md).
+
+IRIS 0.49 stores `tracking_compare` jobs in the existing schema 21 job table.
+Parameters freeze the detector-cache identity and both native tracker profiles;
+only a complete pair of replay reports is published. Ordinary job polling and
+comparison history return lightweight summaries. Full reports are served through
+a project-scoped endpoint and semantically checked during workspace transfer.
+The Studio viewer distinguishes observed, predicted, unconfirmed and unassigned
+boxes, with source gaps and trails that do not bridge missing observations.
+See [the Studio tracking comparator](tracking-studio.md).
 
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;

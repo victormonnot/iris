@@ -6,9 +6,10 @@ without running its detector again. A Python interface and command-line replay
 produce explicit observations, predictions and unassigned detections. The
 adapters do not depend on ARGOS or its target-selection or control rules.
 
-This is the T3 execution foundation. A Studio tracking comparator, temporal
-identity editor, tracking-quality metrics and tracker-profile export remain
-separate planned steps. Running a tracker does not validate its identities or
+These are the T3 execution foundations. IRIS 0.49 adds a
+[Studio tracking comparator](tracking-studio.md). A temporal identity editor,
+tracking-quality metrics and tracker-profile export remain separate planned
+steps. Running a tracker does not validate its identities or
 establish that it is better than another tracker.
 
 ## Installation and readiness

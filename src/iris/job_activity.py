@@ -13,7 +13,8 @@ WORKSPACES = {
     "video_review": "intake",
     "benchmark": "benchmark",
     "model_export": "training",
-    "temporal_detect": "comparison",
+    "temporal_detect": "tracking",
+    "tracking_compare": "tracking",
 }
 NAMES = {
     "extract": "Frame extraction",
@@ -26,6 +27,7 @@ NAMES = {
     "benchmark": "Annotation benchmark",
     "model_export": "Standalone model export",
     "temporal_detect": "Temporal detector cache",
+    "tracking_compare": "Visual tracking comparison",
 }
 
 
@@ -92,6 +94,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
                 "Frames saved by this attempt",
                 own_count,
                 target["id"],
+            )
+        elif target and job["kind"] == "tracking_compare":
+            add(
+                "tracking_comparison",
+                "Complete visual tracking comparisons",
+                int(job["status"] == "succeeded" and job["result"] is not None),
+                job["id"],
             )
         elif target and job["kind"] == "assist":
             count = conn.execute(
@@ -238,6 +247,10 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Reuse a complete cache or explicitly continue its remaining frames. "
             "Changed detector settings require a separate cache."
         ),
+        "tracking_compare": (
+            "Open the saved visual comparison or launch both trackers fresh from the same "
+            "complete detector cache. Tracker state cannot resume in place."
+        ),
     }[job["kind"]]
     if preannotation:
         next_reason = (
@@ -250,10 +263,13 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "Preview an explicit resume in the training results. It creates a new attempt "
             "with the same settings and dataset, restoring optimizer and random state."
         )
+    from iris.tracking_comparisons import public_job
+
     return {
-        "job": job,
+        "job": public_job(job),
         "context": {
-            "name": (target or {}).get("name")
+            "name": (job["params"].get("name") if job["kind"] == "tracking_compare" else None)
+            or (target or {}).get("name")
             or (target or {}).get("filename")
             or NAMES[job["kind"]],
             "session_id": session_id,
@@ -261,6 +277,20 @@ def job_detail(store: Store, job_id: str, project_id: str = DEFAULT_PROJECT_ID) 
             "target_type": table,
             "target_id": target["id"] if target else None,
             "batch_id": batch_id,
+            **(
+                {"sequence_id": target["sequence_id"]}
+                if job["kind"] == "temporal_detect" and target
+                else {}
+            ),
+            **(
+                {
+                    "comparison_id": job["id"],
+                    "sequence_id": job["params"]["sequence_id"],
+                    "cache_id": job["params"]["cache_id"],
+                }
+                if job["kind"] == "tracking_compare"
+                else {}
+            ),
         },
         "artifacts": artifacts,
         "dispatch": dispatch_summary(store, job),

@@ -4,7 +4,9 @@ IRIS 0.47 adds durable detector caches for [frozen temporal sequences](temporal-
 Calculate the available frames once, retain the original detector output order,
 and reuse the saved results for stricter confidence or class selection. This is
 the input foundation for later tracker comparisons; it assigns no track IDs,
-computes no tracking metrics and adds no dedicated Studio cache or tracking panel.
+computes no tracking metrics. The [Studio tracking comparator](tracking-studio.md)
+now provides sequence/cache controls and replays these saved detections with
+separate native tracker jobs.
 
 The Python/JSON API supports installed official and trained Faster R-CNN,
 SSDLite and YOLOX-Nano detectors, on CPU or NVIDIA CUDA, with full-image or tiled

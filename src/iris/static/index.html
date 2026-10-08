@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/static/studio-exports.css" />
     <link rel="stylesheet" href="/static/studio-dialogs.css" />
     <link rel="stylesheet" href="/static/studio-benchmark.css" />
+    <link rel="stylesheet" href="/static/studio-tracking.css" />
     <script src="/static/project-scope.js" defer></script>
     <script src="/static/taxonomy-tools.js" defer></script>
     <script src="/static/dataset-tools.js" defer></script>
@@ -63,6 +64,8 @@
     <script src="/static/benchmark-navigation.js" defer></script>
     <script src="/static/benchmark.js" defer></script>
     <script src="/static/benchmark-editor.js" defer></script>
+    <script src="/static/tracking-tools.js" defer></script>
+    <script src="/static/tracking.js" defer></script>
     <script src="/static/workspace-backup.js" defer></script>
     <script src="/static/dataset-import.js" defer></script>
   </head>
@@ -146,6 +149,7 @@
         <span>06</span> Experiments
       </button>
       <button id="workspace-benchmark" class="workspace-tab" type="button" aria-pressed="false" aria-controls="benchmark-workspace"><span>07</span> Benchmark</button>
+      <button id="workspace-tracking" class="workspace-tab" type="button" aria-pressed="false" aria-controls="tracking-workspace"><span>08</span> Tracking</button>
     </nav>
     <div class="shell" data-sidebar-open="true">
       <aside id="workspace-sidebar" class="sidebar" aria-label="Projects and sessions">
@@ -2634,6 +2638,36 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
               </div>
             </section>
           </section>
+          <section id="tracking-workspace" hidden aria-label="Tracking comparison">
+            <section class="panel tracking-library">
+              <div class="panel-heading"><div><h2>One sequence. Two tracking histories.</h2><p>Reuse saved detector outputs. Each tracker keeps its own local IDs.</p></div><button id="tracking-refresh" class="text-button" type="button">Refresh</button></div>
+              <div class="tracking-body">
+                <p id="tracking-error" class="inline-error" role="alert" hidden></p>
+                <div class="tracking-fields"><div><label for="tracking-sequence">Frozen video sequence</label><select id="tracking-sequence"><option value="">No saved sequences</option></select></div><div><label for="tracking-cache">Saved detector cache</label><select id="tracking-cache"><option value="">Choose a sequence</option></select></div></div>
+                <p id="tracking-sequence-summary" class="field-hint" role="status"></p><p id="tracking-clock" class="field-hint"></p><p id="tracking-gaps" class="tracking-warning" hidden></p>
+                <details class="tracking-prepare"><summary>Freeze selected video frames</summary><p class="field-hint">In Data intake, select at least two saved frames from one video. The sequence keeps their source order and records omitted frames as unknown gaps.</p><p id="tracking-selection" class="field-hint"></p><div class="tracking-fields"><div><label for="tracking-sequence-name">Sequence name</label><input id="tracking-sequence-name" maxlength="160" placeholder="Courtyard crossing" /></div><div><label for="tracking-take-group">Take group · optional</label><input id="tracking-take-group" maxlength="160" placeholder="Related recordings share a group" /></div></div><button id="tracking-create-sequence" class="button button-secondary" type="button" disabled>Freeze selected frames</button></details>
+                <details class="tracking-prepare"><summary>Calculate a detector cache</summary><p class="field-hint">A new calculation runs only when you press the button. The saved score floor is 0.001; detector filtering and detection caps still apply.</p><div class="tracking-fields"><div><label for="tracking-model">Ready local detector</label><select id="tracking-model"><option value="">No ready detector</option></select></div><div><label for="tracking-device">Device</label><select id="tracking-device"><option value="cpu">CPU</option><option value="cuda">NVIDIA CUDA</option></select></div><div><label for="tracking-mode">Inference</label><select id="tracking-mode"><option value="full">Full image</option><option value="tiled">Overlapping tiles</option></select></div><div><label for="tracking-cache-name">Cache name</label><input id="tracking-cache-name" maxlength="160" value="Tracking detector baseline" /></div></div><div id="tracking-tiles" class="tracking-fields" hidden><div><label for="tracking-tile-size">Tile size · pixels</label><input id="tracking-tile-size" type="number" min="128" max="2048" step="1" value="640" /></div><div><label for="tracking-overlap">Tile overlap</label><input id="tracking-overlap" type="number" min="0" max="0.5" step="0.05" value="0.2" /></div></div><button id="tracking-run-cache" class="button button-secondary" type="button" disabled>Calculate detector cache</button></details>
+                <p id="tracking-cache-summary" class="field-hint" role="status"></p>
+                <div id="tracking-cache-job" class="tracking-job" hidden><p id="tracking-cache-job-status" role="status"></p><progress id="tracking-cache-progress" max="100"></progress><button id="tracking-cancel-cache" class="text-button" type="button">Cancel detector job</button></div>
+                <details id="tracking-new-comparison" class="tracking-prepare" open><summary>Run a tracking comparison</summary><p id="tracking-readiness" class="field-hint" role="status">Checking tracker runtime…</p><p class="field-hint">Default ByteTrack and BoT-SORT profiles · high 0.5 / low 0.1 · lost buffer 30 analyzed updates · no learned ReID · one replay pass · maximum 500 available frames.</p><div class="tracking-fields"><div><label for="tracking-name">Comparison name</label><input id="tracking-name" maxlength="160" value="ByteTrack / BoT-SORT" /></div><div><label for="tracking-gmc">BoT-SORT camera motion compensation</label><select id="tracking-gmc"><option value="none">None · no camera compensation</option><option value="sparseOptFlow">Sparse optical flow · verified source images</option></select></div></div><fieldset class="tracking-classes"><legend>Native detector classes</legend><div id="tracking-classes"></div></fieldset><p id="tracking-launch-hint" class="field-hint"></p><button id="tracking-run" class="button button-primary" type="button" disabled>Run ByteTrack + BoT-SORT</button></details>
+                <label for="tracking-history">Saved comparisons</label><select id="tracking-history"><option value="">No saved comparisons</option></select>
+                <div id="tracking-job" class="tracking-job" hidden><p id="tracking-job-status" role="status"></p><progress id="tracking-progress" max="100"></progress><button id="tracking-cancel" class="text-button" type="button">Cancel tracking job</button></div>
+              </div>
+            </section>
+            <section id="tracking-viewer" class="panel tracking-viewer" hidden aria-label="Synchronized tracking replay">
+              <div class="panel-heading"><div><h2 id="tracking-report-title">Tracking replay</h2><p>Solid boxes: detector observations. Dashed boxes: predictions without a current observation. Unconfirmed observations are labeled.</p></div></div>
+              <div class="tracking-body">
+                <p class="tracking-warning">IDs are local to each lane. Matching numbers across lanes do not identify the same object. This view provides no quality score or ranking.</p>
+                <div class="tracking-transport"><button id="tracking-previous" class="button button-secondary" type="button" aria-label="Previous available frame">←</button><button id="tracking-play" class="button button-secondary" type="button">Play</button><button id="tracking-next" class="button button-secondary" type="button" aria-label="Next available frame">→</button><div><label for="tracking-speed">Playback speed</label><select id="tracking-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div><p id="tracking-position" role="status"></p></div>
+                <label for="tracking-scrub">Available source frames · missing frames receive no updates</label><input id="tracking-scrub" type="range" min="0" max="0" value="0" step="1" />
+                <p id="tracking-frame-gap" class="tracking-warning" hidden></p><p id="tracking-image-status" class="field-hint" role="status"></p>
+                <div class="tracking-display-options"><label><input id="tracking-show-predictions" type="checkbox" checked /> Show predictions</label><label><input id="tracking-show-trails" type="checkbox" checked /> Observation trails</label><label><input id="tracking-show-unassigned" type="checkbox" /> Show unassigned detections</label><label for="tracking-display-score">Unassigned display score ≥ <input id="tracking-display-score" type="number" min="0" max="1" step="0.05" value="0" /></label></div><p class="field-hint">Display settings never rerun tracking or change its input. Trails break on missing observations and missing source frames. Prediction age uses analyzed updates; seconds are shown only when source time is known.</p>
+                <div id="tracking-lanes" class="tracking-lanes"></div>
+                <div class="tracking-event-heading"><h3>Continuity inspection</h3><label for="tracking-event-filter">Show events</label><select id="tracking-event-filter"><option value="all">All observations and gaps</option><option value="disappearance">Observation disappears</option><option value="return">Same ID returns</option><option value="new_id">First observation of an ID</option><option value="overlap">Overlapping boxes / possible crossing</option><option value="source_gap">Missing source frames</option></select></div><p class="field-hint">A loss followed by a different ID is not proof of the same real object. Occlusion, crossing and identity continuity require independent review.</p><div id="tracking-events" class="tracking-events"></div>
+                <details class="tracking-provenance"><summary>Saved profiles, timing and provenance</summary><p>Replay timing excludes detector inference. One pass leaves repeatability unchecked; elapsed time does not establish tracking quality.</p><pre id="tracking-provenance"></pre></details>
+              </div>
+            </section>
+          </section>
           <section id="benchmark-workspace" hidden aria-label="Preannotation benchmark">
             <div class="benchmark-intro"><div class="eyebrow">Independent evidence</div><p>Freeze a reviewed reference, tune candidate approaches, then compare their saved results.</p></div>
             <details id="benchmark-prepare" class="panel benchmark-prepare">
@@ -2976,7 +3010,7 @@ python run.py measure --output ../measurement.json --repeats 3</pre>
           </div>
           <div class="job-history-controls">
             <div><label for="jobs-status">Status</label><select id="jobs-status"><option value="all">All statuses</option><option value="active">Queued or running</option><option value="attention">Failed or interrupted</option><option value="succeeded">Succeeded</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option><option value="interrupted">Interrupted</option></select></div>
-            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
+            <div><label for="jobs-kind">Task type</label><select id="jobs-kind"><option value="all">All task types</option><option value="extract">Frame extraction</option><option value="infer">Model comparison</option><option value="temporal_detect">Temporal detector cache</option><option value="tracking_compare">Tracking comparison</option><option value="assist">Annotation assistance</option><option value="dinox">DINO-X cloud proposals</option><option value="train">Detector training</option><option value="evaluate">Quality evaluation</option><option value="model_export">Model export</option><option value="benchmark">Preannotation benchmark</option><option value="video_review">Video passage review</option></select></div>
             <div><label for="jobs-search">Search saved jobs</label><input id="jobs-search" type="search" placeholder="Job ID, type or message" /></div>
             <button id="jobs-refresh" class="button button-secondary" type="button">Refresh history</button>
           </div>

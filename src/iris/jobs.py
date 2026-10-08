@@ -13,14 +13,15 @@ from iris.store import Store, _encode, new_id, now
 ACTIVE = {"queued", "running"}
 
 
-def update_running(store: Store, job_id: str, changes: dict) -> bool:
+def update_running(store: Store, job_id: str, changes: dict, *, require_uncancelled=False) -> bool:
     """A late worker cannot rewrite an attempt already stopped by the supervisor."""
     encoded = _encode(changes)
     with store.connect() as conn:
         return bool(
             conn.execute(
                 f"UPDATE jobs SET {','.join(f'{key}=?' for key in encoded)} "
-                "WHERE id=? AND status='running'",
+                "WHERE id=? AND status='running'"
+                + (" AND cancel_requested=0" if require_uncancelled else ""),
                 (*encoded.values(), job_id),
             ).rowcount
         )

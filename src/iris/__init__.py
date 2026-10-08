@@ -1,3 +1,3 @@
 """IRIS local vision workbench."""
 
-__version__ = "0.48.0"
+__version__ = "0.49.0"

@@ -62,6 +62,7 @@ JOB_PARENTS = {
     "benchmark": ("benchmark_trials", "trial_id"),
     "model_export": ("model_exports", "export_id"),
     "temporal_detect": ("temporal_detection_caches", "cache_id"),
+    "tracking_compare": ("temporal_detection_caches", "cache_id"),
 }
 
 

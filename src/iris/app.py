@@ -1622,7 +1622,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.get("/api/jobs")
     def list_jobs():
-        return project_records(store, "jobs", active_project.get())
+        from iris.tracking_comparisons import public_job
+
+        return [public_job(job) for job in project_records(store, "jobs", active_project.get())]
 
     @app.get("/api/jobs/{job_id}")
     def job_get(job_id: str):
@@ -1663,8 +1665,10 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel(job_id: str):
+        from iris.tracking_comparisons import public_job
+
         require("jobs", job_id)
-        return jobs.cancel(job_id)
+        return public_job(jobs.cancel(job_id))
 
     @app.get("/api/jobs/{job_id}/log")
     def job_log(job_id: str):
@@ -1689,6 +1693,9 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     from iris.temporal_detection_api import install_temporal_detection_routes
 
     install_temporal_detection_routes(app, store, jobs, require, active_project)
+    from iris.tracking_comparison_api import install_tracking_comparison_routes
+
+    install_tracking_comparison_routes(app, store, jobs, require, active_project)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)

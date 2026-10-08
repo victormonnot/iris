@@ -82,6 +82,10 @@ def run(root: Path, job_id: str, parent_pid: int):
                 saved = get_detection_cache(store, job["params"]["cache_id"])
                 if saved["coverage"]["remaining_count"]:
                     raise RuntimeError("Temporal detector stopped before every frame was saved")
+        elif job["kind"] == "tracking_compare":
+            from iris.tracking_comparisons import run_tracking_comparison
+
+            result = run_tracking_comparison(store, job_id, progress, cancelled)
         elif job["kind"] == "assist":
             result = run_assistance(store, job["params"]["assistance_id"], progress, cancelled)
         elif job["kind"] == "dinox":
@@ -130,12 +134,14 @@ def run(root: Path, job_id: str, parent_pid: int):
             if isinstance(preannotation, dict)
             else None
         )
-        update_running(
+        published = update_running(
             store,
             job_id,
             {
                 "status": status,
-                "result": result,
+                "result": None
+                if job["kind"] == "tracking_compare" and status != "succeeded"
+                else result,
                 "finished_at": now(),
                 "error": "No image returned usable proposals; inspect the saved per-image results"
                 if preannotation_failed
@@ -147,6 +153,7 @@ def run(root: Path, job_id: str, parent_pid: int):
                         "extract": "Extraction complete",
                         "infer": "Comparison complete",
                         "temporal_detect": "Temporal detections saved; cache ready for reuse",
+                        "tracking_compare": "Visual tracking comparison ready; no quality ranking",
                         "assist": "Annotation proposals ready for human review",
                         "dinox": "DINO-X proposals ready for human review",
                         "train": "Training complete; checkpoint available in the comparator",
@@ -161,7 +168,21 @@ def run(root: Path, job_id: str, parent_pid: int):
                 if status == "succeeded" or preannotation_failed
                 else "Job stopped; saved artifacts are preserved",
             },
+            require_uncancelled=job["kind"] == "tracking_compare" and status == "succeeded",
         )
+        if not published and job["kind"] == "tracking_compare":
+            # Cancellation can arrive between the final read and this compare-and-swap.
+            # Never retain a complete report on a cancelled attempt, even in that race.
+            update_running(
+                store,
+                job_id,
+                {
+                    "status": "cancelled",
+                    "result": None,
+                    "finished_at": now(),
+                    "message": "Tracking comparison stopped; launch a fresh comparison to retry",
+                },
+            )
     except Exception as exc:
         traceback.print_exc()
         current = store.get("jobs", job_id)
