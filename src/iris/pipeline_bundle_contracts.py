@@ -30,7 +30,7 @@ FORMAT = "iris-pipeline-bundle-v1"
 MAX_JSON_BYTES = 2 * 1024**2
 MAX_CHECKPOINT_BYTES = 1024**3
 MAX_ARCHIVE_BYTES = MAX_CHECKPOINT_BYTES + 32 * 1024**2
-MAX_ENTRIES = 32
+MAX_ENTRIES = 128
 MAX_DIRECTORY_BYTES = 128 * 1024
 INTERFACE = {
     "input": "original_oriented_image_with_source_frame_index_and_optional_timestamp_seconds",
@@ -169,7 +169,13 @@ def canonicalize_request(payload):
     return result
 
 
-def required_paths(architecture):
+def required_paths(architecture, *, format=FORMAT):
+    if format == "iris-pipeline-bundle-v2":
+        from .pipeline_bundle_runtime_contracts import runtime_required_paths
+
+        return runtime_required_paths(architecture)
+    if format != FORMAT:
+        raise ValueError("Unsupported pipeline bundle format")
     if architecture not in ARCHITECTURES:
         raise ValueError("Unsupported pipeline detector architecture")
     return _BASE_PATHS | ({"licenses/detector-NOTICE"} if architecture == YOLOX else set())
@@ -236,7 +242,7 @@ def _source(value, profile):
         raise ValueError("Unsupported source repeatability declaration")
 
 
-def validate_manifest(manifest):
+def _validate_v1_manifest(manifest):
     """Validate the full portable contract without weights, ML imports or network."""
     _json_value(manifest)
     if len(canonical(manifest)) > MAX_JSON_BYTES:
@@ -349,6 +355,33 @@ def validate_manifest(manifest):
     ):
         raise ValueError("Tracker license bytes differ from the recorded tracker provenance")
     return deepcopy(manifest)
+
+
+def validate_manifest(manifest):
+    """Dispatch immutable v1 contracts and the versioned native runtime extension."""
+    _json_value(manifest)
+    if len(canonical(manifest)) > MAX_JSON_BYTES:
+        raise ValueError("Pipeline manifest exceeds its bounded size")
+    if isinstance(manifest, dict) and manifest.get("format") == "iris-pipeline-bundle-v2":
+        from .pipeline_bundle_runtime_contracts import validate_v2_manifest
+
+        try:
+            return validate_v2_manifest(manifest)
+        except (KeyError, TypeError, IndexError) as exc:
+            raise ValueError("Version-two runtime contract is incomplete or invalid") from exc
+    return _validate_v1_manifest(manifest)
+
+
+def validate_directory(directory, expected_manifest=None, checkpoint=None):
+    from .pipeline_bundle_runtime_contracts import validate_directory as validate
+
+    return validate(directory, expected_manifest=expected_manifest, checkpoint=checkpoint)
+
+
+def extract_bundle(archive, destination, checkpoint=None):
+    from .pipeline_bundle_runtime_contracts import extract_bundle as extract
+
+    return extract(archive, destination, checkpoint=checkpoint)
 
 
 def _directory_preflight(stream, size):
@@ -506,6 +539,10 @@ def inspect_bundle(path, expected_manifest=None, checkpoint=None):
                         raise ValueError(
                             "Pipeline member bytes differ from their frozen fingerprint"
                         )
+                if manifest["format"] == "iris-pipeline-bundle-v2":
+                    from .pipeline_bundle_runtime_contracts import validate_runtime_payloads
+
+                    validate_runtime_payloads(manifest, archive.read)
             stream.seek(0)
             archive_hash, archive_bytes = hashlib.sha256(), 0
             while block := stream.read(1024**2):

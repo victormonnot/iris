@@ -140,6 +140,15 @@ and never loads weights or executes a tracker. Workspace transfer retains the
 complete package and validates its source bindings. Schema 22 remains unchanged.
 See [portable pipeline bundles](pipeline-bundles.md).
 
+IRIS 0.56 adds v2 bundles with a package-relative native runtime, vendored trackers,
+pinned dependencies and a bounded image/video CLI. A pure selected-object state
+machine is shared by IRIS diagnostics and portable inference. Runtime code and
+checkpoint hashes are verified separately from historical source metadata; explicit
+run and parity reports never change packaging validation or establish independent
+quality. v1 archives retain their original contracts. Extraction publishes a new
+directory atomically without executing package code. See the
+[standalone runtime](pipeline-runtime.md). Schema 22 is unchanged.
+
 SQLite schema 20 adds `temporal_sequences`, `temporal_references` and
 `temporal_datasets`. Sequence and dataset manifests are immutable hashed JSON;
 reference revisions use optimistic concurrency and preserve their declared

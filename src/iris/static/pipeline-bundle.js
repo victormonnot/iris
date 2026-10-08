@@ -87,7 +87,9 @@
     if (record.job.status !== "succeeded" || !manifest) { clearResult(); return; }
     field("result").hidden = false; field("result-title").textContent = record.name;
     renderManifest(manifest, field("result-summary"));
-    field("result-scope").textContent = "Experimental · package integrity verified · target execution not tested.";
+    const executable = manifest.format === "iris-pipeline-bundle-v2";
+    field("runtime-help").hidden = !executable;
+    field("result-scope").textContent = executable ? "Experimental · standalone runtime included · this saved package has no attached execution or quality results." : "Historical v1 package · inspection only · create a new bundle to include the runtime.";
     field("manifest").textContent = JSON.stringify(manifest, null, 2);
     field("download").href = projectURL(`/api/temporal/pipeline-bundles/${safe(record.id)}/download`);
     field("download-manifest").href = projectURL(`/api/temporal/pipeline-bundles/${safe(record.id)}/manifest`);

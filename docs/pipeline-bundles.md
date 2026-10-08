@@ -1,13 +1,14 @@
 # Portable detector and tracking bundles
 
-IRIS 0.55 packages a saved detector recipe, its unchanged checkpoint, a tracker
+IRIS 0.56 packages a saved detector recipe, its unchanged checkpoint, a tracker
 profile and an optional selected-object recovery policy into a versioned local
 archive. A consumer can inspect the package without IRIS, detector dependencies,
 a workspace or network access.
 
-This step defines and validates the exchange format. The package does not yet
-provide the standalone video/frame tracking runtime planned for the next step.
-An existing detector-only export remains a separate workflow with its own runner.
+New `iris-pipeline-bundle-v2` packages include a [standalone runtime](pipeline-runtime.md)
+for images, timestamped frames and local video, plus a Python integration example.
+Historical v1 packages remain readable and inspectable; create a new bundle to
+include the runtime. Existing detector-only exports remain a separate workflow.
 
 ## Prepare a bundle
 
@@ -108,14 +109,16 @@ open or modify a workspace:
 iris pipeline inspect /path/to/pipeline.zip
 ```
 
-To inspect it on a machine without IRIS, copy `inspect.py` and the `iris_bundle`
+To inspect it on a machine without IRIS, copy `inspect_bundle.py` and the `iris_bundle`
 directory from a trusted generated package into the same directory, then run:
 
 ```sh
-python inspect.py /path/to/pipeline.zip
+python -B inspect_bundle.py /path/to/pipeline.zip
 ```
 
-Both commands inspect the ZIP as data and report its manifest and checksums.
+The v1 inspector was named `inspect.py`; v2 avoids that name to prevent it from
+shadowing Python’s standard library during inference. Both commands inspect the
+ZIP as data and report its manifest and checksums.
 The copied inspector needs only the Python standard library. It neither imports
 nor executes code from the ZIP it is inspecting. Inspecting an externally supplied
 package with the installed IRIS command avoids running that package's scripts.
@@ -141,9 +144,12 @@ contains `kind` (`comparison` or `study`), `job_id`, `sequence_id` and
 `profile_sha256`. Saved bundles open with
 `?project=PROJECT_ID&pipeline_bundle=JOB_ID`.
 
-The `iris-pipeline-bundle-v1` archive contains `manifest.json`,
+The original `iris-pipeline-bundle-v1` archive contains `manifest.json`,
 `detector/model.pth`, `README.md`, the inspector modules and license notices.
-The manifest hashes every other file. Checkpoints are capped at 1 GiB, individual
+Version two adds the native runtime, vendored tracker implementations, integration
+example, pinned dependency list and a binding between the original tracker adapter
+and its package-relative import adaptation. The historical source runtime stays
+separate from the deployed runtime. The manifest hashes every other file. Checkpoints are capped at 1 GiB, individual
 text resources at 2 MiB, and the complete archive at 1 GiB plus 32 MiB. The format
 uses uncompressed ZIP entries with an exact inventory; it rejects ZIP64,
 encryption, unsupported member types and extraneous or hidden data.

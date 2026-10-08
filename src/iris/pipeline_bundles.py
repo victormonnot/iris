@@ -26,6 +26,15 @@ from iris.pipeline_bundle_contracts import (
     required_paths,
     validate_manifest,
 )
+from iris.pipeline_bundle_runtime_contracts import (
+    FORMAT_V2,
+    RUNTIME_MODULES,
+    TRACKER_FILES,
+    YOLOX_FILES,
+    portable_tracking_bytes,
+    requirements_bytes,
+    runtime_descriptor,
+)
 from iris.prediction_taxonomy import output_contract
 from iris.store import DEFAULT_PROJECT_ID, _encode, new_id, now
 from iris.temporal import _insert, _row
@@ -39,7 +48,7 @@ LIMITATIONS = [
     "Experimental package: pipeline execution, parity and independent quality are not qualified.",
     "Packaging copies verified native checkpoint bytes; it does not deserialize or run them.",
     "The target CPU/CUDA family is separate from the historical detector runtime device.",
-    "No standalone pipeline runtime is included in this format milestone.",
+    "The bundle includes a standalone native runtime; packaging does not execute it.",
     "No source images, reference identities, selected object IDs "
     "or ground-truth boxes are included.",
     "Code licences do not establish rights to model weights or training data.",
@@ -95,7 +104,86 @@ physical identity certainty or publisher authentication.
 """
 
 
-def _resources(detector, profile):
+RUNTIME_README = b"""# IRIS experimental native pipeline runtime
+
+Version two includes native detector weights, the frozen recipe, native trackers
+and optional guarded selected-object policy. It contains no source images,
+selected person identities or ground-truth boxes.
+
+Inspect and extract using trusted installed IRIS code:
+
+    iris pipeline inspect pipeline.zip
+    iris pipeline extract pipeline.zip --to ./new-runtime
+
+Extraction creates a new directory and never executes packaged code. inspect_bundle.py
+also checks a ZIP using only Python's standard library. Hashes verify integrity,
+not publisher authenticity. Execute code only from sources you trust.
+
+Prepare Python 3.12 or 3.13 on Linux with the exact requirements.txt packages and
+Torch/Torchvision builds appropriate to the frozen CPU/CUDA target. No command
+automatically installs dependencies or downloads files.
+
+    python -B run.py --bundle . check-runtime
+    python -B run.py --bundle . frames /data/inputs.json --output /data/frame-results.json
+    python -B run.py --bundle . video /data/input.mp4 --output /data/video-results.json
+    python -B run.py --bundle . compare /data/ref.json /data/actual.json --output /data/parity.json
+
+Keep all inputs and outputs outside the extracted bundle. Output files must be
+new. A frame input manifest has this shape; image paths are relative to its own
+directory, cannot escape it and must name regular files without symbolic links:
+
+    {"schema":"iris-pipeline-input-v1","sequence_id":"flight-01",
+     "clock_kind":"provided","frames":[
+       {"frame_id":"frame-0000","frame_index":0,"timestamp_seconds":0.0,
+        "path":"frames/0000.png","file_sha256":"REPLACE_WITH_IMAGE_SHA256",
+        "input_size":{"width":640,"height":480}}]}
+
+The hash is the complete 64-character SHA256 of the encoded image file. Image
+dimensions describe RGB pixels after EXIF orientation. Frame IDs must be unique;
+source indices and finite nonnegative timestamps must strictly increase. With
+clock_kind "unknown", all timestamp_seconds must instead be null. Optional
+select_detection_index and release fields express explicit per-frame decisions.
+
+For video, --events /data/events.json accepts zero-based decoded frame indices:
+
+    {"schema":"iris-pipeline-events-v1","events":[
+       {"frame_index":0,"select_detection_index":0},
+       {"frame_index":120,"release":true}]}
+
+Video timestamps default to index / nominal FPS, not certified capture time;
+--clock unknown emits null timestamps. --max-frames 500 processes a bounded
+prefix. Selection addresses a confirmed measured detection's detection_index,
+not a track number. No target is selected automatically. Pipelines are bounded
+to 10000 updates per reset; reset clears identities and selected-object state.
+
+Use --device cuda:0 only for a CUDA-target bundle; there is no CPU fallback.
+Historical detector device/runtime metadata is separate from the target runtime.
+See example.py for a frame-by-frame consumer. Direct imports and example.py must
+run with python -B or PYTHONDONTWRITEBYTECODE=1 set before importing the package.
+All __pycache__ directories and .pyc files are rejected: validating source hashes
+cannot authenticate cached bytecode. run.py disables bytecode before its imports.
+Reset starts a fresh sequence,
+predictions remain separate from measured observations, and selecting an object
+requires an explicit measured box. A track number does not prove identity.
+
+Runtime/parity reports are separate evidence and never promote this manifest to
+qualified status. Performance and independent quality require their own tests.
+Review licence texts and NOTICE: code licences do not establish checkpoint or
+training-data rights, and packaging creates no additional IRIS licence grant.
+"""
+RUNTIME_LAUNCHER = b"""import sys
+sys.dont_write_bytecode = True
+from iris_bundle.pipeline_runner import main
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+"""
+RUNTIME_INIT = b"""import sys
+sys.dont_write_bytecode = True
+"""
+
+
+def _resources(detector, profile, *, bundle_format=FORMAT_V2):
     base = Path(__file__).parent
     architecture = detector["architecture"]
     result = {"README.md": README, "inspect.py": INSPECT, "iris_bundle/__init__.py": b""}
@@ -117,7 +205,35 @@ def _resources(detector, profile):
     result["licenses/NOTICE.txt"] = NOTICE
     if architecture == "yolox_nano":
         result["licenses/detector-NOTICE"] = (base / "_vendor/yolox/NOTICE").read_bytes()
-    if set(result) | {"detector/model.pth"} != required_paths(architecture):
+    if bundle_format == FORMAT_V2:
+        result["README.md"] = RUNTIME_README
+        result.pop("inspect.py")
+        result["inspect_bundle.py"] = b"import sys\nsys.dont_write_bytecode = True\n" + INSPECT
+        result["iris_bundle/__init__.py"] = RUNTIME_INIT
+        result["run.py"] = RUNTIME_LAUNCHER
+        result["example.py"] = (base / "pipeline_example.py").read_bytes()
+        result["requirements.txt"] = requirements_bytes()
+        for name in RUNTIME_MODULES:
+            raw = (base / name).read_bytes()
+            result[f"iris_bundle/{name}"] = (
+                portable_tracking_bytes(raw) if name == "tracking.py" else raw
+            )
+        result["provenance/tracking-original.py.txt"] = (base / "tracking.py").read_bytes()
+        result["iris_bundle/_vendor/__init__.py"] = b""
+        result["iris_bundle/_vendor/tracking-provenance.json"] = (
+            base / "_vendor/tracking-provenance.json"
+        ).read_bytes()
+        for algorithm, names in TRACKER_FILES.items():
+            for name in names:
+                result[f"iris_bundle/_vendor/{algorithm}/{name}"] = (
+                    base / "_vendor" / algorithm / name
+                ).read_bytes()
+        if architecture == "yolox_nano":
+            for name in YOLOX_FILES:
+                result[f"iris_bundle/_vendor/yolox/{name}"] = (
+                    base / "_vendor/yolox" / name
+                ).read_bytes()
+    if set(result) | {"detector/model.pth"} != required_paths(architecture, format=bundle_format):
         raise ValueError("Pipeline package resources do not match the versioned inventory")
     return result
 
@@ -220,7 +336,7 @@ def _evidence(conn, payload, *, store=None, project_id=None):
     }
 
 
-def _manifest(evidence, identifier, created_at, *, files, producer):
+def _manifest(evidence, identifier, created_at, *, files, producer, bundle_format=FORMAT_V2):
     replay = evidence["replay"]
     binding = evidence["source_binding"]
     config = replay["cache"]["config"]["detector"]
@@ -239,7 +355,7 @@ def _manifest(evidence, identifier, created_at, *, files, producer):
     source["descriptor"] = deepcopy(evidence["request"]["source"])
     source["repeatability"] = replay["repeatability"]["status"]
     result = {
-        "format": "iris-pipeline-bundle-v1",
+        "format": bundle_format,
         "id": identifier,
         "name": evidence["request"]["name"],
         "created_at": created_at,
@@ -262,6 +378,8 @@ def _manifest(evidence, identifier, created_at, *, files, producer):
         "licenses": license_contract(config),
         "files": files,
     }
+    if bundle_format == FORMAT_V2:
+        result["deployment_runtime"] = runtime_descriptor(files)
     return validate_manifest(result)
 
 
@@ -308,7 +426,8 @@ def _prepare(
 
 def status():
     return {
-        "format": "iris-pipeline-bundle-v1",
+        "format": FORMAT_V2,
+        "supported_formats": ["iris-pipeline-bundle-v1", FORMAT_V2],
         "target_devices": ["cpu", "cuda"],
         "max_checkpoint_bytes": MAX_CHECKPOINT_BYTES,
         "validation": deepcopy(VALIDATION),
@@ -416,7 +535,12 @@ def _checked_bundle(conn, job_id, *, store=None, root=None, project_id=None):
     evidence = _evidence(conn, params["request"], store=store, project_id=project_id)
     saved = validate_manifest(params["manifest"])
     expected = _manifest(
-        evidence, job["id"], job["created_at"], files=saved["files"], producer=saved["producer"]
+        evidence,
+        job["id"],
+        job["created_at"],
+        files=saved["files"],
+        producer=saved["producer"],
+        bundle_format=saved["format"],
     )
     if (
         digest(saved) != digest(expected)
@@ -574,7 +698,9 @@ def run_pipeline_bundle(store, job_id, progress, cancelled):
 
     checkpoint()
     resources = _resources(
-        evidence["replay"]["cache"]["config"]["detector"], evidence["replay"]["profile"]
+        evidence["replay"]["cache"]["config"]["detector"],
+        evidence["replay"]["profile"],
+        bundle_format=manifest["format"],
     )
     if any(_facts(raw) != manifest["files"][name] for name, raw in resources.items()):
         raise ValueError("Packaging resources changed after preview; prepare a new package")

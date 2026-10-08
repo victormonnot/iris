@@ -60,7 +60,9 @@ Further details:
 [Portable pipeline bundles](docs/pipeline-bundles.md) combine an unchanged native
 detector checkpoint, a saved tracker profile and optional selected-object policy.
 The versioned archive checks classes, filtering, coordinates, time and provenance;
-it remains experimental, with standalone tracking execution a separate step.
+new packages include a [standalone image/video runtime](docs/pipeline-runtime.md)
+and a Python integration example. Execution parity and independent quality remain
+separate evidence; packaging alone does not qualify a pipeline.
 
 ## Standalone model export
 

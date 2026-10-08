@@ -42,7 +42,8 @@ test("deep-linked bundle opens via reads only and exposes project-scoped downloa
   const calls = [], f = fixture(async (path, options) => { calls.push({ path, options }); return common(path, ["saved"], [record("saved")]) || record("saved"); }, { query: "&pipeline_bundle=saved" });
   f.window.dispatchEvent(new Event("iris:project-initialized")); await settle();
   assert.equal(f.$("#bundle-result").hidden, false); assert.equal(f.$("#bundle-result-title").textContent, "Bundle saved");
-  assert.match(f.$("#bundle-result-scope").textContent, /target execution not tested/);
+  assert.match(f.$("#bundle-result-scope").textContent, /Historical v1 package.*inspection only/);
+  assert.equal(f.$("#bundle-runtime-help").hidden, true);
   assert.equal(f.$("#bundle-download").href, "/api/temporal/pipeline-bundles/saved/download?project=default");
   assert.equal(f.$("#bundle-download-manifest").href, "/api/temporal/pipeline-bundles/saved/manifest?project=default");
   assert.ok(calls.every(({ options }) => !options?.method)); assert.equal(f.$("#bundle-run").disabled, true);
@@ -107,4 +108,13 @@ test("a pending catalogue refresh restores the latest opened bundle instead of i
   f.window.IRISNavigation.open("tracking"); await settle(); f.window.IRISPipelineBundle.open("old"); await settle();
   delayed = true; f.click("refresh"); f.window.IRISPipelineBundle.open("current"); await settle(); catalogue.resolve({ sources: [source("old"), source("current")] }); await settle();
   assert.equal(f.$("#bundle-source").value, tools.sourceKey(descriptor("current"))); assert.equal(f.$("#bundle-result-title").textContent, "Bundle current"); assert.equal(f.$("#bundle-name").value, "Bundle current");
+});
+
+test("v2 saved bundles expose integration help without claiming saved runtime qualification", async () => {
+  const saved = record("v2"), calls = []; saved.bundle.manifest.format = "iris-pipeline-bundle-v2";
+  const f = fixture(async (path, options) => { calls.push({ path, options }); return common(path, ["v2"], [saved]) || saved; }, { query: "&pipeline_bundle=v2" });
+  f.window.dispatchEvent(new Event("iris:project-initialized")); await settle();
+  assert.equal(f.$("#bundle-runtime-help").hidden, false);
+  assert.match(f.$("#bundle-result-scope").textContent, /standalone runtime included.*no attached execution or quality results/);
+  assert.ok(calls.every(({ options }) => !options?.method));
 });

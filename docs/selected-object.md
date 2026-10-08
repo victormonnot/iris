@@ -134,4 +134,5 @@ The source descriptor contains `kind` (`comparison` or `study`), `job_id`,
 
 A saved profile and optional selected-object settings can be packaged in a
 [versioned portable bundle](pipeline-bundles.md). The bundle records compatibility
-and provenance; standalone tracking execution remains a separate step.
+and provenance. The [standalone runtime](pipeline-runtime.md) applies the same
+state transitions to explicit consumer selection/release events without IRIS.

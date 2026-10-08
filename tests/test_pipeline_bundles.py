@@ -256,8 +256,8 @@ def test_worker_rejects_changed_resources_and_removes_partial_outputs(client, pa
     record = launch(client, payload)
     original = pipeline_bundles._resources
 
-    def changed(*args):
-        resources = original(*args)
+    def changed(*args, **kwargs):
+        resources = original(*args, **kwargs)
         resources["README.md"] += b"changed"
         return resources
 

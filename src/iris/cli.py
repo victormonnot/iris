@@ -71,14 +71,24 @@ def main():
         "inspect", help="Verify contracts and hashes without executing bundled code"
     )
     pipeline_inspect.add_argument("archive", type=Path)
+    pipeline_extract = pipeline_actions.add_parser(
+        "extract", help="Verify and extract to a new directory without executing bundled code"
+    )
+    pipeline_extract.add_argument("archive", type=Path)
+    pipeline_extract.add_argument("--to", type=Path, required=True, dest="destination")
     args = parser.parse_args()
     if args.command == "pipeline":
-        from iris.pipeline_bundle_contracts import inspect_bundle
+        from iris.pipeline_bundle_contracts import extract_bundle, inspect_bundle
 
         try:
-            print(json.dumps(inspect_bundle(args.archive), indent=2))
+            result = (
+                extract_bundle(args.archive, args.destination)
+                if args.pipeline_action == "extract"
+                else inspect_bundle(args.archive)
+            )
+            print(json.dumps(result, indent=2))
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            parser.exit(1, f"Pipeline inspection failed: {exc}\n")
+            parser.exit(1, f"Pipeline inspection/extraction failed: {exc}\n")
         return
     if args.command == "tracking":
         if args.tracking_action == "status":
