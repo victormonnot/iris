@@ -292,7 +292,13 @@ def package_metadata(tmp_path, monkeypatch):
         read_text=lambda name: json.dumps(direct),
         locate_file=lambda path: tokenizer,
     )
-    monkeypatch.setattr(worker.sys, "prefix", "/isolated-fixture")
+    # The separate SAM interpreter stays on 3.12 regardless of the app's Python version.
+    monkeypatch.setattr(
+        worker,
+        "sys",
+        SimpleNamespace(version_info=(3, 12, 10), prefix="/isolated-fixture", base_prefix="/base"),
+    )
+    monkeypatch.setattr(worker, "platform", SimpleNamespace(python_version=lambda: "3.12.10"))
     monkeypatch.setattr(worker.importlib.metadata, "version", lambda name: worker.PACKAGES[name])
     monkeypatch.setattr(worker.importlib.metadata, "distribution", lambda name: distribution)
     return direct, tokenizer
@@ -301,6 +307,7 @@ def package_metadata(tmp_path, monkeypatch):
 def test_installed_code_provenance_and_tokenizer_are_checked_without_weights(package_metadata):
     direct, tokenizer = package_metadata
     actual = worker._package_identity()
+    assert actual["python"] == "3.12.10"
     assert actual["tokenizer_sha256"] == hashlib.sha256(tokenizer.read_bytes()).hexdigest()
     direct["dir_info"] = {"editable": True}
     with pytest.raises(RuntimeError, match="noneditable"):

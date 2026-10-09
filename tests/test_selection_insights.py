@@ -2,6 +2,8 @@
 
 import json
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
+from itertools import count
 
 import pytest
 from PIL import Image
@@ -17,7 +19,13 @@ from iris.taxonomies import TAXONOMY, publish_taxonomy
 
 
 @pytest.fixture
-def workspace(tmp_path):
+def workspace(tmp_path, monkeypatch):
+    # Saved-source order must not depend on adjustments to the host's wall clock.
+    ticks = count()
+    origin = datetime(2026, 1, 1, tzinfo=UTC)
+    monkeypatch.setattr(
+        f"{__name__}.now", lambda: (origin + timedelta(seconds=next(ticks))).isoformat()
+    )
     store = Store(tmp_path / "workspace")
     session = add_session(store)
     return store, session
