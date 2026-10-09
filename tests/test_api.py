@@ -3,6 +3,7 @@
 import io
 import threading
 import time
+from contextlib import contextmanager
 
 import cv2
 import numpy as np
@@ -137,6 +138,94 @@ def test_duplicate_upload_is_idempotent_and_warns_across_sessions(client, image_
         assert frame["asset_id"] == asset["id"]
         assert frame["session_id"] == flight["id"]
         assert frame["duplicate_count"] == 1
+
+
+def test_frame_listing_keeps_rows_and_global_duplicate_counts_in_one_snapshot(
+    client, image_bytes, monkeypatch
+):
+    first = session(client, name="Flight A")
+    second = session(client, name="Flight B")
+    upload(client, first["id"], image_bytes)
+    upload(client, second["id"], image_bytes)
+    store = client.app.state.store
+    (original,) = store.list("frames", session_id=first["id"])
+    (other,) = store.list("frames", session_id=second["id"])
+    store.update("frames", original["id"], {"created_at": "2026-01-02T00:00:00+00:00"})
+    earlier = store.insert(
+        "frames",
+        {
+            **original,
+            "id": "z-existing-frame",
+            "frame_index": 1,
+            "sha256": "a" * 64,
+            "created_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    new_frame = {**earlier, "id": "a-new-frame", "frame_index": 2, "sha256": "b" * 64}
+    additions = [
+        new_frame,
+        {**other, "id": "other-original-duplicate", "frame_index": 1},
+        {**other, "id": "other-new-duplicate", "frame_index": 2, "sha256": new_frame["sha256"]},
+    ]
+    connect = store.connect
+    inserted = False
+
+    class ConcurrentInsertConnection:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def execute(self, sql, *args):
+            nonlocal inserted
+            cursor = self.connection.execute(sql, *args)
+            query = " ".join(sql.upper().split())
+            if not inserted and query.startswith("SELECT") and "FROM FRAMES" in query:
+                # execute() has already stepped the read cursor and fixed its WAL snapshot.
+                # Commit on another connection before the endpoint consumes the remaining rows.
+                inserted = True
+                with connect() as writer:
+                    for frame in additions:
+                        writer.execute(
+                            "INSERT INTO frames (id,session_id,asset_id,frame_index,width,height,"
+                            "sha256,perceptual_hash,path,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                            tuple(
+                                frame[key]
+                                for key in (
+                                    "id",
+                                    "session_id",
+                                    "asset_id",
+                                    "frame_index",
+                                    "width",
+                                    "height",
+                                    "sha256",
+                                    "perceptual_hash",
+                                    "path",
+                                    "created_at",
+                                )
+                            ),
+                        )
+            return cursor
+
+    @contextmanager
+    def concurrent_connect():
+        with connect() as connection:
+            yield ConcurrentInsertConnection(connection)
+
+    monkeypatch.setattr(store, "connect", concurrent_connect)
+    endpoint = f"/api/sessions/{first['id']}/frames"
+    response = client.get(endpoint)
+    assert inserted
+    assert response.status_code == 200, response.text
+    assert [(frame["id"], frame["duplicate_count"]) for frame in response.json()] == [
+        (earlier["id"], 0),
+        (original["id"], 1),
+    ]
+    response = client.get(endpoint)
+    assert response.status_code == 200, response.text
+    assert [(frame["id"], frame["duplicate_count"]) for frame in response.json()] == [
+        (new_frame["id"], 1),
+        (earlier["id"], 0),
+        (original["id"], 2),
+    ]
 
 
 def test_invalid_uploads_and_missing_resources_do_not_leave_data(client):

@@ -89,7 +89,7 @@ from iris.projects import create_project, project_records, record_project
 from iris.review_queue import review_queue
 from iris.selection import SelectionConflict, set_selection
 from iris.selection_insights import selection_insights
-from iris.store import DEFAULT_PROJECT_ID, Store, new_id, now
+from iris.store import DEFAULT_PROJECT_ID, Store, _decode, new_id, now
 from iris.taxonomies import TaxonomyConflict, get_taxonomy, list_taxonomies, publish_taxonomy
 from iris.training import create_training, preview_training, training_detail
 from iris.video_reviews import (
@@ -1227,11 +1227,18 @@ def create_app(data_dir: Path | None = None, *, run_jobs: bool = True) -> FastAP
     def frames(session_id: str):
         require("sessions", session_id)
         with store.connect() as conn:
-            counts = dict(conn.execute("SELECT sha256, COUNT(*) - 1 FROM frames GROUP BY sha256"))
-        return [
-            {**public(frame), "duplicate_count": counts[frame["sha256"]]}
-            for frame in store.list("frames", session_id=session_id)
-        ]
+            # Extraction may insert frames while this response is being read.
+            # Keep frame rows and global duplicate counts in the same snapshot.
+            return [
+                public(_decode(row))
+                for row in conn.execute(
+                    "SELECT f.*, counted.duplicate_count FROM frames AS f "
+                    "JOIN (SELECT sha256, COUNT(*) - 1 AS duplicate_count "
+                    "FROM frames GROUP BY sha256) AS counted ON counted.sha256 = f.sha256 "
+                    "WHERE f.session_id = ? ORDER BY f.created_at, f.id",
+                    (session_id,),
+                )
+            ]
 
     @app.get("/api/sessions/{session_id}/selection-insights")
     def frame_insights(session_id: str):
