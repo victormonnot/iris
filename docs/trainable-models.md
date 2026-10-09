@@ -1,32 +1,36 @@
 # Trainable detector choices
 
-**YOLOX-Nano** is a third supported trainable family, with CPU/CUDA training,
-the same three scope choices and durable recovery. Its portable export targets
-OpenCV CPU through ONNX. See [its pinned training recipe](yolox-training.md) and
-[export contract](yolox-onnx.md). The comparison below describes the original
-two Torchvision families; export capabilities depend on the architecture.
+[Documentation](README.md)
 
-IRIS can fine-tune **Faster R-CNN MobileNetV3-Large 320 FPN** and
-**SSDLite320 MobileNetV3-Large**, including their compatible trained descendants.
-Both accept frozen custom classes, CPU or NVIDIA CUDA training, durable recovery,
-held-out evaluation and standalone native PyTorch CPU/CUDA export. Annotation
-providers such as SAM and multimodal APIs remain separate from these deployable
-detectors.
+IRIS can fine-tune three detector architectures and their compatible trained
+descendants. All three accept frozen custom classes, CPU or NVIDIA CUDA training,
+light/partial/full training depths, durable recovery and held-out evaluation.
+Their input formats and standalone exports differ:
 
-## Why these two candidates
+| Architecture | Image input | Standalone export |
+| --- | --- | --- |
+| Faster R-CNN MobileNetV3-Large 320 FPN | Aspect-preserving resize and region proposals | Native PyTorch CPU or CUDA |
+| SSDLite320 MobileNetV3-Large | Fixed 320 × 320 resize | Native PyTorch CPU or CUDA |
+| YOLOX-Nano | Fixed 416 × 416 with aspect-preserving resize and padding | ONNX with an OpenCV CPU runner |
 
-SSDLite extends an existing inference adapter and uses the same pinned
-PyTorch 2.10.0 / Torchvision 0.25.0 runtime. Its official checkpoint is about
-13.4 MiB, compared with about 74.2 MiB for the existing Faster R-CNN checkpoint.
+Annotation providers such as SAM and multimodal APIs remain separate from these
+deployable detectors. See the [YOLOX training recipe](yolox-training.md) and
+[ONNX export contract](yolox-onnx.md) for its preprocessing and deployment details.
+
+## Choosing a candidate
+
+All three use the pinned PyTorch 2.10.0 / Torchvision 0.25.0 runtime inside IRIS.
+SSDLite's official checkpoint is about 13.4 MiB, compared with about 74.2 MiB for
+the existing Faster R-CNN checkpoint.
 This makes it a useful smaller candidate to evaluate for constrained targets.
 Weight-file size does not measure peak RAM, GPU memory, latency or trained quality.
 IRIS does not select a winner automatically.
 
 SSDLite resizes the image to a fixed 320 × 320 rectangle. Small objects can lose
 detail, and aspect ratios are resized before boxes are restored to original-image
-coordinates. Faster R-CNN uses its existing aspect-preserving resize and region
-proposal pipeline. Compare both on exactly the same frozen validation images,
-with the same output classes and operating thresholds. Confidence scores are not
+coordinates. YOLOX preserves aspect ratio within a padded 416 × 416 input.
+Compare candidates on exactly the same frozen validation images, with the same
+output classes and operating thresholds. Confidence scores are not
 calibrated across architectures. Keep the test split for the final independent
 audit, and measure exported latency and memory on the intended target.
 
@@ -43,44 +47,50 @@ those conditions or the obligations associated with your own training data.
 
 1. Freeze a dataset with human-reviewed boxes, useful negative images and scene
    groups separated into training, validation and test splits.
-2. In **Dataset & training**, select a local parent from either architecture.
+2. In **Dataset & training**, select a local parent from a supported architecture.
    Choose a training depth, CPU or NVIDIA GPU, steps, learning rate and seed.
    The preview lists the actual modules and negative-image policy for that model.
 3. Run training, or explicitly continue a stopped attempt from its saved optimizer
    state. A completed checkpoint appears in the model catalog with its own class
    definitions and training provenance.
-4. Train the other architecture using that same dataset. For classes outside
+4. Train another candidate using that same dataset. For classes outside
    COCO, compare the two trained checkpoints; an official COCO checkpoint cannot
    stand in for a missing custom category.
 5. In **Quality evaluation**, select both checkpoints on the same validation
    split. Inspect metrics, errors and saved images. Training loss values from
-   the two architectures are different objectives and cannot rank model quality.
+   different architectures are different objectives and cannot rank model quality.
 6. Export each trained model with a completed full-image reference evaluation.
-   Select the destination CPU/CUDA family independently of its training device.
-   Run the bundle's runtime check and measurement procedure on the destination,
-   then import its evidence. Parity failures remain failures.
+   Choose CPU or CUDA for a native Torchvision bundle, or CPU for YOLOX ONNX.
+   Run the bundle's documented inspection and measurement procedure on the
+   destination, then import its evidence. Parity failures remain failures.
 
 Official weights are provisioned explicitly using the existing model setup
-commands. Training, preview and export never download them. No additional ML
-package is required for SSDLite. See [compute setup](compute-targets.md) and
-[model export](model-export.md) for target requirements, including embedded
-systems. These two profiles do not convert to ONNX or TensorRT. The separate
+commands. Training, preview and export never download them. Neither SSDLite nor
+YOLOX training needs an extra package beyond the IRIS `ml` environment; YOLOX
+ONNX conversion additionally needs the `onnx` extra. See
+[compute setup](compute-targets.md) and [model export](model-export.md) for target
+requirements, including embedded systems. The native Torchvision profiles do not
+convert to ONNX or TensorRT. The separate
 [YOLOX ONNX profile](yolox-onnx.md) targets OpenCV CPU; no profile establishes
 blanket embedded-board support.
 
 ## Training contracts
 
-| Depth | Faster R-CNN | SSDLite |
-| --- | --- | --- |
-| Light | ROI classifier and box predictor | Classification and regression heads at all six scales |
-| Partial | Last MobileNet stage, FPN, RPN and ROI heads | Final MobileNet feature block, extra scales and detection heads |
-| Full | All learnable parameters | All learnable parameters |
+| Depth | Faster R-CNN | SSDLite | YOLOX-Nano |
+| --- | --- | --- | --- |
+| Light | ROI classifier and box predictor | Classification and regression heads at all six scales | Class, box and objectness projection layers |
+| Partial | Last MobileNet stage, FPN, RPN and ROI heads | Final MobileNet feature block, extra scales and detection heads | Final CSP backbone stage and complete detection head |
+| Full | All learnable parameters | All learnable parameters | All learnable parameters |
 
 These names describe different module layouts. Configurations freeze the selected
 architecture, scope and adapter policy; continuation cannot switch architectures.
 Starting a new run from a completed model keeps its architecture and requires
 exactly matching frozen class definitions. Legacy Faster R-CNN configurations
 without an architecture field retain their original meaning.
+
+During Faster R-CNN training, IRIS sets the RPN score threshold to zero to retain
+background proposals on negative images; saved inference uses its own original
+proposal threshold, and both settings are recorded in the training metadata.
 
 SSDLite's classifier has one set of background/object slots per anchor at each
 scale. Only explicitly mapped COCO rows are copied into the new class slots;
@@ -104,15 +114,21 @@ This is an explicit training policy, not a claim of improved quality; assess
 false positives and recall on held-out data. Inference and exported runners
 use the native architecture without this training-only loss adapter.
 
+YOLOX has no background class: its head contains one foreground channel per
+frozen class. Empty images contribute objectness loss, and BatchNorm running
+statistics remain frozen at every depth. Its versioned training recipe also
+clips finite gradients before SGD. See [YOLOX training](yolox-training.md) for
+the full loss policy and the differences from upstream COCO training.
+
 ## Validation boundary
 
 Software tests use synthetic datasets, fake detector engines, tiny CPU tensor
 fixtures and mocked CUDA interfaces. They cover class/anchor initialization,
 negative-image gradients, frozen normalization, training scopes, durable recovery,
 architecture identity, evaluation, export profiles and archive preservation.
-Real 40-step acceptance trials covered both architectures with light training on
-CPU and all three depths on an RTX 4060 using PyTorch 2.10.0 / Torchvision 0.25.0
-`cu128`. The trials used a small human-reviewed person dataset with negative images
+Real 40-step acceptance trials covered the two Torchvision architectures with
+light training on CPU and all three depths on an RTX 4060 using PyTorch 2.10.0 /
+Torchvision 0.25.0 `cu128`. The trials used a small human-reviewed person dataset with negative images
 and separate training and validation source contexts. Completed inference
 checkpoints were reloaded and evaluated in separate workers. Light-scope runs
 also continued after cancellation and forced worker termination on CPU and CUDA,
@@ -130,7 +146,14 @@ See [export validation evidence and timing limits](model-export.md#what-is-verif
 
 This small pilot does not establish general quality gains. Full training is not
 necessarily better than lighter scopes; using the same learning rate across
-architectures and depths can cause regressions. Longer runs, partial/full training
-on CPU, partial/full-scope recovery, server restart or power-loss recovery and
-other hardware remain to be tested. Export parity, latency and memory need fresh
-measurement for a different model or deployment environment.
+architectures and depths can cause regressions. For these Torchvision trials,
+longer runs, partial/full training on CPU, partial/full-scope recovery, server
+restart or power-loss recovery and other hardware remain untested.
+
+The later [YOLOX acceptance cycle](acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
+completed 400-step head-only and 800-step partial-backbone CUDA runs, CPU reload
+and ONNX export. Its small validation set had already been used during development;
+it is not an independent benchmark. The ONNX conversion passed its numerical
+check, while exact saved-prediction parity failed and was retained as a failure.
+Export parity, latency and memory need fresh measurement for a different model
+or deployment environment.

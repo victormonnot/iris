@@ -1,5 +1,7 @@
 # Try Iris on two street scenes
 
+[Documentation](README.md)
+
 Start with two photos and their existing boxes. You will import them, review an
 annotation and, optionally, compare two detectors on the same images.
 

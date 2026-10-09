@@ -1,5 +1,7 @@
 # Temporal sources and reference identities
 
+[Documentation](README.md)
+
 IRIS 0.46 adds the data foundation for evaluating tracking. A **sequence** freezes
 one video clip and its already extracted frames. A **reference revision** records
 which real objects appear across those frames. A **temporal dataset version** pins

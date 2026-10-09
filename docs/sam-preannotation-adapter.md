@@ -1,5 +1,7 @@
 # SAM 3 image adapter
 
+[Documentation](README.md)
+
 Benchmark approach B uses **SAM 3 image concept detection**, locally, with one
 explicit short text phrase per frozen class. The independent human reference,
 correction notes, candidate boxes and previous predictions are never model input.

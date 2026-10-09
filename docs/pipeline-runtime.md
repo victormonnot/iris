@@ -1,5 +1,7 @@
 # Standalone detector and tracking runtime
 
+[Documentation](README.md)
+
 IRIS 0.56 exports a complete native image/frame/video pipeline in each new
 [v2 pipeline bundle](pipeline-bundles.md). The consumer runs the frozen detector,
 ByteTrack or BoT-SORT and optional selected-object policy without an IRIS server,

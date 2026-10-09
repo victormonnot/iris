@@ -1,15 +1,21 @@
 # CPU, CUDA and embedded compute targets
 
+[Documentation](README.md)
+
 Choose the training device for the machine doing the optimization, then choose
 the inference or export target for the machine using the completed model. These
-choices are independent:
+choices are independent. All three trainable architectures support CPU and CUDA
+inference inside IRIS. Standalone export depends on the architecture:
 
 | Training device | Completed-model inference target | Supported software path |
 | --- | --- | --- |
-| CPU | CPU | CPU training and CPU inference/export |
-| NVIDIA CUDA GPU | CPU | GPU training, CPU checkpoint tensors, CPU inference/export |
-| CPU | NVIDIA CUDA GPU | CPU training, CUDA inference/export |
-| NVIDIA CUDA GPU | NVIDIA CUDA GPU | GPU training and CUDA inference/export, including another compatible GPU |
+| CPU | CPU | CPU inference; native Torchvision or YOLOX ONNX export |
+| NVIDIA CUDA GPU | CPU | CPU checkpoint tensors and inference; native Torchvision or YOLOX ONNX export |
+| CPU | NVIDIA CUDA GPU | CUDA inference; native Torchvision export |
+| NVIDIA CUDA GPU | NVIDIA CUDA GPU | CUDA inference, including another compatible GPU; native Torchvision export |
+
+YOLOX's standalone ONNX profile currently targets OpenCV CPU. CUDA training or
+inference inside IRIS does not add a CUDA export target to that profile.
 
 This table describes the implemented paths, not hardware certification. In
 addition to synthetic software checks, real 40-step acceptance trials covered
@@ -29,10 +35,14 @@ controls using new references from the target device passed exact parity while
 preserving the original failures. See the
 [export validation evidence](model-export.md#what-is-verified).
 
-These trials do not establish general quality gains or portable performance.
-Longer runs, partial/full training on CPU, partial/full-scope recovery, server
-restart or power-loss recovery, other hardware and embedded deployment remain
-to be tested. The managed `ml` environment continues to use CPU wheels.
+These Torchvision trials do not establish general quality gains or portable
+performance. Longer runs, partial/full training on CPU, partial/full-scope recovery,
+server restart or power-loss recovery, other hardware and embedded deployment
+remain untested for those trials. A later
+[YOLOX cycle](acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
+completed 400- and 800-step CUDA runs, CPU reload and ONNX export; it does not
+extend the recovery or embedded-hardware evidence. The managed `ml` environment
+continues to use CPU wheels.
 
 ## Select execution devices
 
@@ -115,8 +125,9 @@ recovery and storage contract.
 
 ## Export and verify the destination
 
-In **Model exports**, select a CPU or CUDA target independently of the training
-device. A completed full-image evaluation supplies saved reference predictions
+In **Model exports**, select a CPU or CUDA target for a Torchvision checkpoint,
+or CPU for YOLOX ONNX, independently of the training device. A completed
+full-image evaluation supplies saved reference predictions
 from CPU or CUDA. Native Torchvision exports preserve the original weights, classes, input/output
 recipe and reference device, without running inference while being packaged.
 YOLOX-Nano uses a separate [ONNX conversion profile](yolox-onnx.md): it runs a
@@ -141,7 +152,8 @@ executing inference. A successful check is followed by explicit real inference
 and measurement on the target; it is not a performance or compatibility
 certification. The target device must match the bundle's CPU/CUDA profile.
 
-Parity remains an exact comparison against the saved reference. Different devices
+For native Torchvision bundles, parity is an exact comparison against the saved
+reference. Different devices
 or runtimes can produce different boxes or scores; those differences stay visible
 as failed parity, including when crossing from a CPU reference to a CUDA target.
 Import the full measurement report into IRIS and assess it alongside independent
@@ -150,11 +162,13 @@ timing scopes and report interpretation.
 
 ## Embedded and ARM targets
 
-A target must provide the runner's Python version, pinned Torch/Torchvision/Pillow
-versions, matching native detection operators and sufficient memory. CPU and CUDA
+For a native Torchvision bundle, the target must provide the runner's Python
+version, pinned Torch/Torchvision/Pillow versions, matching native detection
+operators and sufficient memory. CPU and CUDA
 are execution families, not declarations that every processor or board can run
 the bundle. An embedded Linux CPU or compatible NVIDIA GPU target can use the
-same weights when those requirements are satisfied.
+same weights when those requirements are satisfied. A YOLOX ONNX destination
+instead needs its bundle's OpenCV, NumPy and Pillow versions, without PyTorch.
 
 For Jetson, the available vendor runtime depends on the board, JetPack release,
 Python version and compatible PyTorch/Torchvision builds. Use NVIDIA's

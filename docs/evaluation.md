@@ -1,5 +1,7 @@
 # Detection evaluation protocol
 
+[Documentation](README.md)
+
 An IRIS evaluation measures one or two checkpoint/inference runs on every image in a frozen
 dataset's validation or test split. It is separate from the visual comparator,
 which can inspect unannotated session frames. Both views save predictions and

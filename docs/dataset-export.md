@@ -1,5 +1,7 @@
 # Frozen datasets and COCO export
 
+[Documentation](README.md)
+
 In **Dataset & training**, select the saved class version for a release. Candidates
 are selected images whose latest annotation is human-validated, with every proposal
 resolved, using that exact class version. Images using other definitions remain

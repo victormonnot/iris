@@ -1,7 +1,10 @@
 # Longer CPU/CUDA training and explicit continuation
 
+[Documentation](README.md)
+
 IRIS supports 1 to 10,000 optimizer steps for Faster R-CNN MobileNetV3-Large
-320 FPN, SSDLite320 MobileNetV3-Large and their compatible trained descendants.
+320 FPN, SSDLite320 MobileNetV3-Large, YOLOX-Nano and their compatible trained
+descendants.
 Training uses CPU or one selected
 NVIDIA CUDA device, float32, batch size one, and the selected light, partial or
 full depth. The frozen
@@ -13,18 +16,24 @@ inference: see [compute targets and CUDA setup](compute-targets.md).
 
 The software checks use synthetic data, tiny CPU PyTorch modules and mocked CUDA
 interfaces to exercise state persistence and continuation. Real 40-step acceptance
-trials covered both architectures with light training on CPU and all three depths
-on an RTX 4060 using PyTorch 2.10.0 / Torchvision 0.25.0 `cu128`. Completed inference
+trials covered the two Torchvision architectures with light training on CPU and
+all three depths on an RTX 4060 using PyTorch 2.10.0 / Torchvision 0.25.0 `cu128`. Completed inference
 checkpoints were reloaded and evaluated in separate workers.
 
-For light training on both architectures and devices, the trials separately
+For light training on those two architectures and devices, the trials separately
 cancelled or forcibly terminated the worker, then explicitly continued from a
 saved state on the original device and runtime. The resulting weights matched
 the corresponding uninterrupted run in these trials; this does not guarantee
-bit-for-bit CUDA reproducibility elsewhere. Longer runs, partial/full training on
-CPU, partial/full-scope recovery, server restart and power-loss recovery remain
-untested. The pilot does not establish general quality gains or performance on
-other machines.
+bit-for-bit CUDA reproducibility elsewhere. For those Torchvision trials, longer
+runs, partial/full training on CPU, partial/full-scope recovery, server restart
+and power-loss recovery remain untested. The pilot does not establish general
+quality gains or performance on other machines.
+
+A later [YOLOX acceptance cycle](acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
+completed 400-step head-only and 800-step partial-backbone CUDA runs. Those runs
+do not establish YOLOX interruption or continuation parity. Its
+[versioned training recipe](yolox-training.md) defines the loss and gradient
+clipping policy; a stopped attempt cannot resume under a different recipe.
 
 ## Prepare a run
 

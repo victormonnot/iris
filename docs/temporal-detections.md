@@ -1,5 +1,7 @@
 # Reusable temporal detections
 
+[Documentation](README.md)
+
 IRIS 0.47 adds durable detector caches for [frozen temporal sequences](temporal-data.md).
 Calculate the available frames once, retain the original detector output order,
 and reuse the saved results for stricter confidence or class selection. This is

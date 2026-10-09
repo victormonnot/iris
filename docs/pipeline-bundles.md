@@ -1,5 +1,7 @@
 # Portable detector and tracking bundles
 
+[Documentation](README.md)
+
 IRIS 0.56 packages a saved detector recipe, its unchanged checkpoint, a tracker
 profile and an optional selected-object recovery policy into a versioned local
 archive. A consumer can inspect the package without IRIS, detector dependencies,

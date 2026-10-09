@@ -1,5 +1,7 @@
 # Native tracking over saved detections
 
+[Documentation](README.md)
+
 IRIS 0.48 adds local **ByteTrack** and **BoT-SORT without learned ReID** adapters.
 Both consume the same complete [temporal detector cache](temporal-detections.md)
 without running its detector again. A Python interface and command-line replay

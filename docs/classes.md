@@ -1,5 +1,7 @@
 # Class versions
 
+[Documentation](README.md)
+
 Use **Manage classes** in the project sidebar to define the objects you want to
 annotate. Every class needs a stable ID, a display name and a written definition.
 Describe what belongs to the class, what to exclude and which visible extent to
@@ -58,8 +60,9 @@ validated images using that version. Other versions remain selectable; there is
 no implicit relabeling or merging of different definitions. The release records
 the complete class snapshot and its internal and export numeric mappings.
 
-Custom releases also support Faster R-CNN and SSDLite training, inference, evaluation, error
-analysis and experiment reports. Trained parents must share the exact saved class
+Custom releases also support Faster R-CNN, SSDLite and YOLOX-Nano training,
+inference, evaluation, error analysis and experiment reports. Trained parents
+must share the exact saved class
 version. Official evaluation baselines require an explicit COCO mapping for every
 target class. Matching trained predictions can become reviewable proposals without
 COCO mappings. Direct [preannotation](preannotation.md) can generate those proposals

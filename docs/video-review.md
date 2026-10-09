@@ -1,9 +1,13 @@
 # Video passage review
 
+[Documentation](README.md)
+
 Use **Suggest passages** beside an imported video to ask a vision-language model
 which parts could be useful to inspect or annotate. The model receives a sparse
 storyboard of timestamped images, **not the continuous video or its audio**.
 It can miss short events, small objects and activity between sampled images.
+
+For Ollama or hosted Qwen configuration, see [multimodal review setup](multimodal-review.md).
 
 ## Workflow
 

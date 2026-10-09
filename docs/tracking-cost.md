@@ -1,6 +1,8 @@
 # Tracking cost on saved frames
 
-IRIS 0.52 measures a fresh detector and one frozen tracker profile in the same
+[Documentation](README.md)
+
+IRIS measures a fresh detector and one frozen tracker profile in the same
 frame loop. Open a completed **Tracking comparison**, choose its ByteTrack or
 BoT-SORT lane, a CPU or CUDA device, and a processing policy in **Pipeline cost**.
 Each local job starts a new worker. Its complete report survives restarts and
@@ -82,8 +84,11 @@ elapsed time is recorded. See [PyTorch CUDA semantics](https://docs.pytorch.org/
 
 Reports identify their hardware, runtime, device, frozen profile, source and
 measurement protocol. Results on a desktop do not certify a laptop, Jetson or
-other target. Profile search, automatic parameter tuning and the standalone
-tracking deployment runtime remain later steps.
+other target. Use [bounded profile studies](tracking-studies.md) to compare
+explicit tracker settings, and [pipeline bundles](pipeline-bundles.md) to export
+a detector and tracker with a [standalone runtime](pipeline-runtime.md).
+These workflows do not automatically tune or deploy a profile. A saved cost
+measurement applies to its frozen profile and execution environment.
 
 ## Measure elsewhere and import
 

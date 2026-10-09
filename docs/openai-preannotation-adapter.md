@@ -1,5 +1,7 @@
 # OpenAI proposal adapter
 
+[Documentation](README.md)
+
 `multimodal_provider.py` implements one explicitly approved Responses request to
 `https://api.openai.com/v1/responses`, using `gpt-6-astra`. Configuration and image
 preparation are offline. Server credentials come from `IRIS_OPENAI_API_KEY`, or

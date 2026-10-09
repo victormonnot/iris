@@ -1,5 +1,7 @@
 # From Iris to Argos
 
+[Documentation](README.md)
+
 I wanted to improve person detection on my analog camera recordings and try the
 result in [Argos](https://victormonnot.com/projects/argos/). On 7 October 2026,
 I used Iris to train a YOLOX-Nano model, compare it with the original, export it

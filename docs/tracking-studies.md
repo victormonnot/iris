@@ -1,6 +1,8 @@
 # Bounded tracking profile studies
 
-IRIS 0.53 compares an explicit baseline with a small set of tracker profiles on
+[Documentation](README.md)
+
+IRIS compares an explicit baseline with a small set of tracker profiles on
 frozen temporal data. The study reuses saved detector outputs and measures both
 reference-based quality and tracker replay cost. It does not train a detector,
 change application settings or automatically select a deployment profile.
@@ -16,7 +18,7 @@ a study are separate explicit actions.
   not mean that the study trains a neural network.
 - **Validation (`val`)** is also available for choosing settings. Repeatedly using
   it for profile comparisons makes it tuning evidence, not an independent test.
-- **Reserved test (`test`)** is listed as withheld. T8 never replays its frames
+- **Reserved test (`test`)** is listed as withheld. The study never replays its frames
   or calculates its tracking metrics.
 
 The same source video, identical pixels and declared scene/take groups keep their
@@ -68,7 +70,7 @@ evaluated on the first replay pass against the pinned human reference; repetitio
 check observed repeatability and provide timing samples. They are not extra
 ground-truth images. Differing repeated outputs withhold comparative conclusions.
 
-The [T6 quality rules](tracking-quality.md) still apply: only eligible confirmed
+The [tracking quality rules](tracking-quality.md) apply: only eligible confirmed
 observations and human-complete reference frames count. Unknown intervals,
 unlocalized occlusions and sparse coverage remain visible. IDF1 stays unavailable
 when its coverage requirements are not met. A reference seeded from a tracker
@@ -98,7 +100,7 @@ the replay wall timer includes image reads, copies and progress reporting.
 These are **tracker replay measurements on cached detections**. No detector is
 loaded or run, no fresh pipeline memory peak is measured, and no camera cadence
 is simulated. Saved detector timings are not added to infer end-to-end latency.
-Use the separate [T7 cost workflow](tracking-cost.md) for its explicitly supported
+Use the separate [pipeline cost workflow](tracking-cost.md) for its supported
 fresh detector/pipeline measurements. Its historical results do not automatically
 describe a changed profile from this study.
 
@@ -112,11 +114,14 @@ The durable `tracking_study` job pins the dataset, references, comparisons, cach
 profiles, class mapping, overlap threshold and budget. A successful report retains
 the complete replays, protocol, runtime provenance and computed results. Reading
 or transferring a saved study checks those results without executing a tracker or
-loading detector weights. Old T4 comparisons and T6/T7 reports remain unchanged.
+loading detector weights. Existing comparisons, quality reports and cost
+measurements remain unchanged.
 
-Downloads are review evidence, not a standalone deployment bundle. Exporting a
-detector/tracker package and applying it in another application remain later
-steps. Changing a form or opening a saved report never launches another study.
+The report download contains review evidence. To use a saved profile elsewhere,
+create a [pipeline bundle](pipeline-bundles.md) from that exact study profile;
+new bundles include a [standalone runtime](pipeline-runtime.md). Packaging does
+not establish quality or performance on the target device. Changing a form or
+opening a saved report never launches another study.
 
 All API requests use the owning `project_id` query parameter:
 

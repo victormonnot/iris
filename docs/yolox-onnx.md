@@ -1,5 +1,7 @@
 # YOLOX-Nano ONNX export
 
+[Documentation](README.md)
+
 IRIS exports a trained YOLOX-Nano checkpoint through **Dataset & Training →
 Model exports**. Select a completed full-image evaluation, one to eight reference
 images and the CPU destination. Training and reference evaluation may use CPU

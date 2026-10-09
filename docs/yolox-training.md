@@ -1,5 +1,7 @@
 # YOLOX-Nano training
 
+[Documentation](README.md)
+
 IRIS supports `yolox_nano` as an official COCO detector and as a parent for custom
 project classes. Training, evaluation and recovery use the same frozen datasets,
 durable jobs and class contracts as the other local detectors. No images leave the

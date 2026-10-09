@@ -1,5 +1,7 @@
 # Review identities through time
 
+[Documentation](README.md)
+
 IRIS 0.50 adds **Temporal identities** to Studio. It edits a sequence's reference
 identities and observed boxes, separately from tracker outputs and ordinary image
 annotations. This is the human review step after the
@@ -84,9 +86,10 @@ Coverage describes the saved evidence, not its accuracy or independence.
 ## Data and HTTP contracts
 
 The editor appends `iris-temporal-reference-v2` payloads to the existing
-`temporal_references` table; SQLite remains at schema 21. Version 2 retains all
-[version 1 reference fields](temporal-data.md#reference-identity-and-review) and
-adds `provenance`:
+`temporal_references` table. This payload version was introduced with IRIS 0.50
+without changing the then-current SQLite schema 21; the current database schema
+is 22. The payload retains all [version 1 reference fields](temporal-data.md#reference-identity-and-review)
+and adds `provenance`:
 
 - `author`: the latest save author's name.
 - `origin`: null for a manual reference, or the frozen tracking seed with

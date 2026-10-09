@@ -1,5 +1,7 @@
 # Selected-object continuity
 
+[Documentation](README.md)
+
 IRIS 0.54 replays an explicitly selected object through saved tracking outputs.
 The selected object has its own logical identity, separate from the track number
 produced by ByteTrack or BoT-SORT. This workflow measures selection, loss,

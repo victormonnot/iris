@@ -1,5 +1,14 @@
 # Acceptance results
 
+[Documentation](README.md)
+
+This is the detailed record of experiments and software checks, with their dates,
+settings and limits. Results describe the recorded data and hardware; later
+features do not change what an earlier experiment established.
+
+For a shorter account of training a detector and using it in another application,
+start with [From Iris to Argos](iris-to-argos.md).
+
 ## R9: person preannotation comparison
 
 On 2026-10-06, IRIS completed five configurations on the same **17 real 640 × 480
@@ -105,7 +114,7 @@ supplied evidence, not independent authentication of provider execution. Native
 responses, private media and participant records remain in the local workspace;
 this public summary contains no source images or credentials.
 
-A real workspace archive round trip passed with schema 19: **36 tables and 370
+The R9 workspace archive round trip passed with schema 19: **36 tables and 370
 files** were verified after restoring a 2,708,815,631-byte archive into a separate
 workspace. All five R9 trials and 85 outputs were preserved. The original
 workspace rows and files remained unchanged. This verifies the tested snapshot;
@@ -117,10 +126,10 @@ performance. The distinct export measurements and their exact-parity limitations
 are documented in [model exports](model-export.md); supported profiles are
 described in [compute targets](compute-targets.md).
 
-The next acceptance step is an end-to-end second use case outside drones, with
-remaining interface friction addressed through actual use. Difficult FPV quality
-validation remains a separate follow-up using newly collected scenes; it does not
-require restarting the abandoned timed-review schedule.
+R10 below completed the second use case outside drones and addressed interface
+friction through actual use. Difficult FPV quality validation remains a separate
+follow-up using newly collected scenes; it does not require restarting the
+abandoned timed-review schedule.
 
 ## R10: completed street-vehicle workflow, weak detector quality
 
@@ -193,6 +202,9 @@ annotation workflow and completed all six reviews.
 
 ### Compatibility established so far
 
+This table records the evidence available through R10 on 2026-10-06. The later
+YOLOX and tracking measurements are recorded in the following sections.
+
 | Capability | Real acceptance evidence | Limit |
 | --- | --- | --- |
 | CPU training | Both Torchvision detector architectures, 40 light-scope steps, checkpoint reload and evaluation | Longer runs and partial/full CPU training remain unmeasured |
@@ -204,7 +216,7 @@ annotation workflow and completed all six reviews.
 | DINO-X → Astra review | Real requests and imported Benchmark outputs | No incremental quality benefit in R9; no live combined Annotation option |
 | SAM / Astra → SAM → Astra | Adapter and runtime preparation | Real model execution remains unmeasured |
 | Backup/restoration | Separate restoration of 36 tables and 370 files | Verified snapshot, not a guarantee for every future backup |
-| Jetson / other embedded devices | Runtime profiles documented | No physical-device acceptance; no TensorRT export. The later YOLOX ONNX profile is qualified separately on workstation CPU |
+| Jetson / other embedded devices | Runtime profiles documented | No physical-device acceptance; no TensorRT export. Later YOLOX ONNX workstation CPU results are recorded below |
 
 Detailed conditions and results remain in [custom training](custom-training.md),
 [training continuation](long-training.md), [model exports](model-export.md),
@@ -268,7 +280,7 @@ The temporal comparison used 300 original camera frames in three 100-frame clips
 with original receipt timestamps, identical inputs and per-clip tracker resets.
 Two courtyard clips, totaling 200 frames, belong to the validation recording;
 the 100-frame morning-park clip belongs to training and is diagnostic only.
-The official and custom graph ran through the same current ARGOS pipeline,
+The official and custom graph ran through the same ARGOS pipeline,
 with alternating model order and two warmups each. Standalone viewers embed all
 original frames and saved boxes, without rerunning inference.
 

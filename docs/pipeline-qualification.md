@@ -1,5 +1,7 @@
 # Qualifying a detector and tracking pipeline
 
+[Documentation](README.md)
+
 A [portable runtime](pipeline-runtime.md) can reproduce IRIS outputs without
 establishing that those outputs are good enough for a new application. Evaluate
 quality and deployment cost on independent footage before adopting a pipeline.

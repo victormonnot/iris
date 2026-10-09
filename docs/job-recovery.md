@@ -1,5 +1,7 @@
 # Jobs, partial results and explicit recovery
 
+[Documentation](README.md)
+
 The project job history keeps processing requests, settings, progress, errors and
 worker logs. Open a job's details to inspect its source, saved partial artifacts
 and related attempts. Filter the history or load more entries to find older work.

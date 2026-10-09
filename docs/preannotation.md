@@ -1,5 +1,7 @@
 # Detector preannotation
 
+[Documentation](README.md)
+
 **Annotation → Generate proposals** creates new boxes directly from images,
 without existing labels or an earlier comparison. It uses installed local
 detectors through the existing worker. Manual drawing, editing and validation

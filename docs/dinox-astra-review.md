@@ -1,5 +1,7 @@
 # DINO-X proposals reviewed by Astra
 
+[Documentation](README.md)
+
 `dinox_review_provider.py` freezes `iris-dinox-astra-review-v1`, a separate
 two-stage experiment: reuse
 completed DINO-X detections, then ask GPT-6 Astra to review the existing boxes.

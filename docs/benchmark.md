@@ -1,5 +1,7 @@
 # Preannotation benchmark
 
+[Documentation](README.md)
+
 **Benchmark** measures candidate proposals against an independent human reference
 and records the work required to correct them. It is separate from **Quality
 evaluation** of trained detectors and **Experiments** reports. The reference,

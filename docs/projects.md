@@ -1,12 +1,14 @@
 # Projects
 
+[Documentation](README.md)
+
 A project keeps related sessions, dataset versions and experiments together in one
 local workspace. Use the **Project** selector in the sidebar, or **New project** to
 create a project with a name and optional description. Session names and scene
 groups are meaningful within their project. Projects can use ordinary images and
 videos; no ARGOS connection, drone metadata or special source format is required.
 
-The supported task remains bounding-box detection. Projects start with the
+Projects support bounding-box detection and temporal tracking. They start with the
 `iris-objects-v1` **person** and **car** definitions. **Manage classes** publishes
 immutable custom definitions for manual annotation and COCO import; see
 [class versions](classes.md). Custom datasets freeze one class version with images,
@@ -60,12 +62,15 @@ is safe to repeat. The historical class definition remains unchanged.
 Schema 14 adds immutable project class versions and pins each existing frame to
 the original definitions. It preserves all previous saved fields and artifacts.
 
-Schema-12, schema-13 and schema-14 workspace archives can be inspected and restored. Restore
-writes an independent workspace and preserves the archived payload. Opening a
-restored older workspace performs the same migration to the current schema.
+Schema 15 adds project-scoped benchmarks, trials and corrections.
+
+The current database schema is 22. Workspace archives from schemas 12 through 22
+can be inspected and restored.
+Restore writes an independent workspace and preserves the archived payload.
+Opening a restored older workspace migrates its database to schema 22.
 Keep the original archive for use with its original application version; the old
 application does not understand a database migrated beyond its supported schema.
-The current schema 15 also isolates benchmarks, their trials and corrections by project.
+See [workspace backup and recovery](workspace-backup.md) for transfer limits.
 
 New assistance requests use generic image/video wording and updated prompt-version
 identifiers. Existing saved responses and results remain unchanged. A video-review

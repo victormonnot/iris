@@ -1,5 +1,7 @@
 # COCO dataset import
 
+[Documentation](README.md)
+
 COCO means *Common Objects in Context*. It names a public computer vision
 dataset, a common JSON annotation format, and an evaluation protocol. Importing
 a dataset in COCO format does not mean downloading the entire COCO dataset or

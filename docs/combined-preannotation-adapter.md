@@ -1,5 +1,7 @@
 # Combined Astra + SAM 3 adapter
 
+[Documentation](README.md)
+
 The separate [DINO-X → Astra review experiment](dinox-astra-review.md) reuses
 completed detector boxes without a planning stage. It does not change or validate
 the SAM pipeline described here.

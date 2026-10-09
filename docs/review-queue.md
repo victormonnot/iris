@@ -1,5 +1,7 @@
 # Annotation review queue
 
+[Documentation](README.md)
+
 The queue summarizes selected frames from the current session. It reads the
 latest saved annotation revision and all currently recorded proposals in one
 SQLite snapshot. It does not create annotations, select frames, change splits,

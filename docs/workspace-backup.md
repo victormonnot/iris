@@ -1,5 +1,7 @@
 # Workspace backup and recovery
 
+[Documentation](README.md)
+
 A workspace archive preserves the stored state of the local workshop. It is
 different from a COCO export, which contains a frozen dataset, and an experiment
 report, which presents selected evidence. Transfers perform no model inference,
@@ -39,6 +41,7 @@ a restored workspace.
 - Benchmark reference manifests and copied images, frozen configurations, trial
   outputs, correction revisions and recorded timer segments.
 - Local detector weights, trained checkpoints and receipts.
+- Portable pipeline bundles, including their saved jobs and exact ZIP bytes.
 - Annotation and video-review previews, saved report images and job logs.
 - Ollama blobs, manifests and metadata stored inside the workspace.
 
@@ -96,6 +99,10 @@ observation, optional release, policy and explicit reference identity. Archive
 validation reproduces their state transitions and quality metrics from saved
 observations without executing optional inference or tracking runtimes.
 
+[Portable pipeline bundles](pipeline-bundles.md) retain their saved jobs and exact
+ZIP bytes. Archive validation checks their inventories and source bindings
+without loading checkpoints.
+
 The CLI provides `iris workspace backup`, `inspect` and `restore`. CLI backup
 requires the source server to be stopped and uses its directory lock. Inspection
 and restoration need no running server. The destination's parent must exist.
@@ -114,9 +121,9 @@ references. Restoration preserves the archived database and files without
 migrating them. Opening an older restored workspace in the current application
 then migrates it to schema 22, assigning pre-project work to **Default project**,
 pinning historical frames to the original class definitions, and adding empty
-tables introduced by subsequent versions, including temporal records, detector caches
-and pinned tracking quality reports,
-without rewriting saved annotations or results.
+tables introduced by subsequent versions, including temporal records, detector
+caches and pinned tracking quality reports, without rewriting saved annotations
+or results.
 Archives with unsupported schema versions are rejected. Backups include all projects;
 the current project selection never limits their contents. Symlinks, special files, encrypted or
 compressed members, duplicate or unsafe paths, unexpected files, bad hashes and
@@ -143,7 +150,3 @@ Browser checks cover desktop and mobile flows. Saved CPU fixture results can be
 transferred without executing their models again. These checks establish data
 recovery, not detector quality on real flights or runtime readiness on another
 machine.
-
-[Portable pipeline bundles](pipeline-bundles.md) are managed artifacts. Backup and
-restore preserve their saved jobs and exact ZIP bytes, validate their inventories
-and source bindings, and do not load their checkpoints.

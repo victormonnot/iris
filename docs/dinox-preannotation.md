@@ -1,5 +1,7 @@
 # DINO-X preannotation
 
+[Documentation](README.md)
+
 The standalone [DINO-X → Astra review adapter](dinox-astra-review.md) can evaluate
 saved detections in a separate experiment. It is not yet part of the Annotation
 workflow described below.

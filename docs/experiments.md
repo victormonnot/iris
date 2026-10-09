@@ -1,5 +1,7 @@
 # Experiment reports
 
+[Documentation](README.md)
+
 An experiment report is a saved reading of one completed evaluation. It joins
 the evaluation to its frozen dataset, detector checkpoints and available local
 training history. The title, objective and conclusion are written by the user;

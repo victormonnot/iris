@@ -2,7 +2,7 @@
 
 Aim to accelerate the learning loop from field data to mission-specific vision models.
 
-[Portfolio](https://victormonnot.com/projects/iris/) · [Try the example](docs/first-run.md) · [Get started](#getting-started) · [Technical notes](#technical-notes)
+[Portfolio](https://victormonnot.com/projects/iris/) · [Try the example](docs/first-run.md) · [Get started](#getting-started) · [Documentation](docs/README.md)
 
 ## What I'm building
 
@@ -119,14 +119,12 @@ Trainable detectors include **YOLOX-Nano**, **Faster R-CNN MobileNetV3-Large 320
 and **SSDLite320 MobileNetV3-Large**. Tracking uses **ByteTrack** and **BoT-SORT**.
 Model and pipeline export formats depend on the selected architecture and runtime.
 
-| Topic | Guides |
-| --- | --- |
-| Data and annotations | [Frame selection](docs/intake-selection.md), [annotation editor](docs/annotation-editor.md), [assisted annotation](docs/preannotation.md), [custom classes](docs/classes.md) |
-| Training and evaluation | [Model choices](docs/trainable-models.md), [training and recovery](docs/long-training.md), [evaluation](docs/evaluation.md) |
-| Tracking | [Setup and replay](docs/tracking.md), [comparison workspace](docs/tracking-studio.md), [quality reports](docs/tracking-quality.md) |
-| Exports | [Datasets](docs/dataset-export.md), [PyTorch models](docs/model-export.md), [YOLOX ONNX](docs/yolox-onnx.md), [pipeline bundles](docs/pipeline-bundles.md), [standalone runtime](docs/pipeline-runtime.md) |
-| Saved work | [Experiment reports](docs/experiments.md), [backup and restore](docs/workspace-backup.md) |
-| Results and limits | [Recorded experiments](docs/acceptance-results.md), [pipeline qualification protocol](docs/pipeline-qualification.md) |
+The [documentation index](docs/README.md) groups guides by task, from data review
+to training, tracking and exports. Start with [setup](docs/setup.md),
+[model comparison](docs/model-comparison.md) or [model choices](docs/trainable-models.md).
+[Recorded experiments](docs/acceptance-results.md) describe the runs completed so
+far; the [pipeline qualification protocol](docs/pipeline-qualification.md) covers
+the independent checks still needed.
 
 ## Development
 
@@ -142,4 +140,5 @@ node --test tests/js/*.test.cjs
 Node is only needed for the JavaScript tests. Tests use temporary data and mocked
 external services. Checks using installed model weights or a live provider are
 opt-in. Software tests and [results on real images](docs/acceptance-results.md)
-are recorded separately.
+are recorded separately. See the [development guide](docs/development.md) for
+optional runtime checks and their requirements.

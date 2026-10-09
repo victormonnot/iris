@@ -1,5 +1,7 @@
 # Annotation editor
 
+[Documentation](README.md)
+
 Open **Annotation**, choose a frame selected in **Data intake**, then draw or
 review boxes. The class selector and definitions use the immutable class version
 saved for that image, including custom classes. Coordinates always refer to pixels
@@ -37,7 +39,8 @@ image for missing targets and draw any missing boxes yourself.
 
 **Multimodal review** and **Local batch review** examine existing candidate boxes;
 they do not generate new boxes. Those reviewers currently support the original
-person/car definitions. See [local review batches](annotation-batches.md).
+person/car definitions. See [multimodal setup and review](multimodal-review.md)
+and [local review batches](annotation-batches.md).
 
 ## Review queue and provenance
 

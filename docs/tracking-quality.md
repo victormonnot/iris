@@ -1,5 +1,7 @@
 # Tracking quality against reviewed identities
 
+[Documentation](README.md)
+
 IRIS 0.51 evaluates a saved two-lane tracking comparison against an explicit
 revision from [Temporal identities](temporal-identities.md). The result measures
 the saved confirmed observations on that reference. It does not run detection,

@@ -1,5 +1,7 @@
 # Tracking comparison in Studio
 
+[Documentation](README.md)
+
 IRIS 0.49 adds a local, visual comparison of **ByteTrack** and **BoT-SORT without
 learned ReID**. Both trackers consume the same complete detector cache. You can
 inspect their boxes, identifiers and observed trails on synchronized source

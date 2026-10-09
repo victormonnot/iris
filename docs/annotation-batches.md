@@ -1,8 +1,12 @@
 # Local candidate review batches
 
+[Documentation](README.md)
+
 A batch prepares model review proposals for several selected frames in one
 session. Each image has its own durable assistance record and processing job.
 Saved human annotations remain unchanged until you explicitly review and save them.
+
+Configure the local provider using [multimodal review setup](multimodal-review.md#local-qwen-through-ollama).
 
 To generate **new boxes** directly from a ready local detector, use **Annotation →
 Generate proposals** instead. Its single-image or batch preview checks class

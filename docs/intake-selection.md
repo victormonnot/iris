@@ -1,5 +1,7 @@
 # Importing and selecting useful examples
 
+[Documentation](README.md)
+
 Open a project and session in **Data intake**. Import several images or videos
 with the file picker or drop them onto the import area. The queue names its target
 session and reports each file separately: imported, already present, failed or
