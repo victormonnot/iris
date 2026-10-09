@@ -2,7 +2,9 @@
 
 import fcntl
 import json
+import logging
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -11,6 +13,7 @@ import time
 from iris.store import Store, _encode, new_id, now
 
 ACTIVE = {"queued", "running"}
+logger = logging.getLogger(__name__)
 
 
 def update_running(store: Store, job_id: str, changes: dict, *, require_uncancelled=False) -> bool:
@@ -122,17 +125,29 @@ class JobManager:
 
     def _run(self):
         while not self.stop_event.wait(0.2):
-            queued = self.store.list("jobs", status="queued")
-            if not queued:
+            try:
+                queued = self.store.list("jobs", status="queued")
+                if not queued:
+                    continue
+                job = queued[0]
+                with self.store.connect() as conn:
+                    claimed = conn.execute(
+                        "UPDATE jobs SET status='running', started_at=?, "
+                        "message='Starting local job' "
+                        "WHERE id=? AND status='queued' AND cancel_requested=0",
+                        (now(), job["id"]),
+                    ).rowcount
+            except sqlite3.OperationalError as exc:
+                # Retry only queue access, after rollback. A worker may have side
+                # effects and must never be relaunched by this contention retry.
+                if (getattr(exc, "sqlite_errorcode", 0) & 0xFF) not in (
+                    sqlite3.SQLITE_BUSY,
+                    sqlite3.SQLITE_LOCKED,
+                ):
+                    raise
+                logger.warning("SQLite queue is busy; retrying job dispatch: %s", exc)
                 continue
-            job = queued[0]
-            with self.store.connect() as conn:
-                claimed = conn.execute(
-                    "UPDATE jobs SET status='running', started_at=?, message='Starting local job' "
-                    "WHERE id=? AND status='queued' AND cancel_requested=0",
-                    (now(), job["id"]),
-                ).rowcount
-            if not claimed:
+            if not claimed or self.stop_event.is_set():
                 continue
             try:
                 self._execute(job)
