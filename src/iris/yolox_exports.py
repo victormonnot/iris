@@ -59,7 +59,11 @@ Hashes check integrity, not publisher authenticity. Only load trusted bundles.
 def resources():
     return {
         "run.py": Path(runner.__file__).read_bytes(),
-        "README.md": README,
+        "README.md": README
+        + b"\n## IRIS runner license\n\n"
+        + b"The IRIS runner is MIT-licensed. This does not license model weights, "
+        b"bundled images or third-party dependencies.\n\n"
+        + Path(__file__).with_name("LICENSE.txt").read_bytes(),
         "requirements.txt": b"opencv-python-headless==4.14.0.94\nnumpy==2.5.3\nPillow==12.3.0\n",
     }
 

@@ -1,5 +1,6 @@
 # ruff: noqa
 # Copyright (c) Megvii Inc. All rights reserved.
+# Modified for Iris; see NOTICE for provenance and changes.
 # Extracted from the pinned sources listed in NOTICE.
 import torch
 

@@ -91,3 +91,4 @@ are documented separately.
 - [Development](development.md): routine checks and optional tests with real models.
 - [Recorded experiments](acceptance-results.md): executed runs, measurements and limits.
 - [README media credits](media/README.md) and [example provenance](../examples/street-scenes/README.md).
+- [Software licence](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md).

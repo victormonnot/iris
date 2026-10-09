@@ -2,6 +2,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 # Copyright (c) Megvii Inc. All rights reserved.
+# Modified for Iris; see NOTICE for provenance and changes.
 
 from torch import nn
 

@@ -142,3 +142,9 @@ external services. Checks using installed model weights or a live provider are
 opt-in. Software tests and [results on real images](docs/acceptance-results.md)
 are recorded separately. See the [development guide](docs/development.md) for
 optional runtime checks and their requirements.
+
+## License
+
+Iris's original code and documentation are available under the [MIT License](LICENSE).
+Bundled third-party code, fonts and media keep their own terms; see the
+[third-party notices](THIRD_PARTY_NOTICES.md) and [media credits](docs/media/README.md).

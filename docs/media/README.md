@@ -20,7 +20,7 @@ validation set described in the [experiment notes](../acceptance-results.md).
 `iris-annotation.gif` and `iris-annotation.mp4` show an annotation edit in the
 real Iris interface. The demonstration was recorded in an isolated workspace
 copy using a real street photo and imported annotations. Correcting a box and
-adding a missed car were reenacted for the recording; the original saved
+adding a missing annotation were reenacted for the recording; the original saved
 annotations were preserved. The starting proposals came from COCO annotations,
 not AI predictions. A small pointer highlight makes the recorded mouse actions
 easier to follow.

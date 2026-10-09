@@ -6,6 +6,7 @@ import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -244,10 +245,19 @@ def workspace(tmp_path):
 
 
 @pytest.mark.parametrize("custom", [False, True])
-def test_bundle_independent_inspect_classes_and_archive_restore(tmp_path, custom):
+@pytest.mark.parametrize("legacy_notice", [False, True])
+def test_bundle_independent_inspect_classes_and_archive_restore(
+    tmp_path, custom, legacy_notice, monkeypatch
+):
     workspace = fixture_workspace(tmp_path, custom=custom)
     store = workspace[0]
-    row = published(workspace)
+    # Older bundles have a frozen README without the subsequently added MIT text.
+    with monkeypatch.context() as previous_version:
+        if legacy_notice:
+            resources = exports._resources()
+            resources["README.md"] = exports.README
+            previous_version.setattr(exports, "_resources", lambda: resources)
+        row = published(workspace)
     path = exports.download_path(store, row["id"])
     manifest, reference = exports.read_bundle(path)
     assert manifest["validation"]["real_execution"] == "not_run"
@@ -258,6 +268,8 @@ def test_bundle_independent_inspect_classes_and_archive_restore(tmp_path, custom
     assert ("taxonomy_id" in detection) == custom
     outside = tmp_path / "independent"
     with zipfile.ZipFile(path) as archive:
+        license_text = Path(exports.__file__).with_name("LICENSE.txt").read_bytes()
+        assert (license_text in archive.read("README.md")) is not legacy_notice
         archive.extractall(outside)
         for name in archive.namelist():
             if name.endswith(".json"):

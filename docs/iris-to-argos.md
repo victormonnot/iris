@@ -56,7 +56,7 @@ change from 15 people found to 16 on the same images, with no extra detections.
 
 The conversion check passed, but exact equality with saved predictions failed
 on small numerical differences, which remain documented in the
-[export notes](yolox-onnx.md).
+[export notes](acceptance-results.md#export-and-temporal-replay).
 
 I also replayed recorded clips through Argos's detector and tracker. That checked
 the integration, but without reviewed identities it could not establish better

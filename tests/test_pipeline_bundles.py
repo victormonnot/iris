@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import zipfile
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 from test_temporal_detection_api import client as client
@@ -114,6 +116,12 @@ def test_preview_copy_read_download_tasks_are_explicit_without_execution(
     assert bundle["complete"] is True
     path = store.artifact_path(bundle["path"])
     assert inspect_bundle(path)["manifest"] == bundle["manifest"]
+    with zipfile.ZipFile(path) as archive:
+        notice = archive.read("licenses/NOTICE.txt")
+        license_text = Path(pipeline_bundles.__file__).with_name("LICENSE.txt").read_bytes()
+        assert license_text in notice
+        assert b"no root licence" not in notice
+        assert b"no additional IRIS licence grant" not in archive.read("README.md")
     url = f"/api/temporal/pipeline-bundles/{job['id']}"
     assert client.get(url).json()["bundle"] == bundle
     assert client.get(url + "/download").content == path.read_bytes()
@@ -286,13 +294,38 @@ def test_cancel_after_file_copy_before_publication_has_no_package(client, payloa
     assert client.get(f"/api/temporal/pipeline-bundles/{job['id']}/download").status_code == 409
 
 
+@pytest.mark.parametrize("legacy_notice", [False, True])
 def test_completed_package_read_and_archive_do_not_need_original_checkpoint(
-    client, payload, monkeypatch, tmp_path, local_fixture_weights
+    client, payload, monkeypatch, tmp_path, local_fixture_weights, legacy_notice
 ):
     store = client.app.state.store
-    record = launch(client, payload)
-    job = run_worker(client, record, monkeypatch)
+    with monkeypatch.context() as previous_version:
+        if legacy_notice:
+            current_resources = pipeline_bundles._resources
+
+            def old_resources(*args, **kwargs):
+                resources = current_resources(*args, **kwargs)
+                resources["licenses/NOTICE.txt"] = b"""IRIS experimental pipeline format
+
+The original detector and tracker licence notices are retained in this folder.
+YOLOX detector bundles also retain the upstream detector NOTICE. Detector code
+licence terms do not automatically grant rights to checkpoints or training data;
+consult the weight terms links recorded in manifest.json.
+
+This IRIS repository has no root licence file. No additional licence grant for
+IRIS code is inferred by packaging these contract/inspection modules. Nothing in
+this package represents a claim of independent quality, device compatibility,
+physical identity certainty or publisher authentication.
+"""
+                return resources
+
+            previous_version.setattr(pipeline_bundles, "_resources", old_resources)
+        record = launch(client, payload)
+        job = run_worker(client, record, monkeypatch)
     assert job["status"] == "succeeded", job["error"]
+    with zipfile.ZipFile(store.artifact_path(job["result"]["path"])) as archive:
+        license_text = Path(pipeline_bundles.__file__).with_name("LICENSE.txt").read_bytes()
+        assert (license_text in archive.read("licenses/NOTICE.txt")) is not legacy_notice
     monkeypatch.setattr("iris.tracking_replay._factory", forbidden)
     monkeypatch.setattr(pipeline_bundles, "_resources", forbidden)
     target = tmp_path / "pipeline.iris-workspace"

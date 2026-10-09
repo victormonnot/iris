@@ -6,6 +6,7 @@ import subprocess
 import sys
 import zipfile
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -134,9 +135,19 @@ def test_onnx_measurement_report_preserves_checkpoint_and_unknown_stage_timings(
     assert b"OpenCV" in html and b"SIMULATION" in html
 
 
-def test_yolox_api_export_measurement_and_archive_roundtrip(workspace, tmp_path):
+@pytest.mark.parametrize("legacy_notice", [False, True])
+def test_yolox_api_export_measurement_and_archive_roundtrip(
+    workspace, tmp_path, legacy_notice, monkeypatch
+):
     store = workspace[0]
-    with TestClient(create_app(store.root, run_jobs=False), base_url="http://127.0.0.1") as api:
+    with (
+        monkeypatch.context() as previous_version,
+        TestClient(create_app(store.root, run_jobs=False), base_url="http://127.0.0.1") as api,
+    ):
+        if legacy_notice:
+            resources = yolox_exports.resources()
+            resources["README.md"] = yolox_exports.README
+            previous_version.setattr(yolox_exports, "resources", lambda: resources)
         candidates = api.get("/api/model-exports/candidates")
         assert candidates.status_code == 200, candidates.text
         assert any(
@@ -192,6 +203,8 @@ def test_yolox_api_export_measurement_and_archive_roundtrip(workspace, tmp_path)
     assert reference["frames"][1]["detections"] == []
     independent = tmp_path / "standalone"
     with zipfile.ZipFile(bundle) as archive:
+        license_text = Path(yolox_exports.__file__).with_name("LICENSE.txt").read_bytes()
+        assert (license_text in archive.read("README.md")) is not legacy_notice
         archive.extractall(independent)
     result = subprocess.run(
         [sys.executable, "-I", "-S", str(independent / "run.py"), "inspect"],

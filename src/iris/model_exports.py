@@ -161,7 +161,11 @@ def _resources():
     return {
         "run.py": Path(_runtime().__file__).read_bytes(),
         "requirements.txt": REQUIREMENTS,
-        "README.md": README,
+        "README.md": README
+        + b"\n## IRIS runner license\n\n"
+        + b"The IRIS runner is MIT-licensed. This does not license model weights, "
+        b"bundled images or third-party dependencies.\n\n"
+        + Path(__file__).with_name("LICENSE.txt").read_bytes(),
     }
 
 

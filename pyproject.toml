@@ -5,8 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "iris-workbench"
 version = "0.56.0"
-description = "A local computer vision workbench for images and videos"
+description = "A local workbench to annotate images and videos, train vision models, and compare results"
 readme = "README.md"
+authors = [{ name = "Victor Monnot" }]
+keywords = ["computer-vision", "object-detection", "annotation", "model-training", "tracking"]
+# Archive contents have different licences; see THIRD_PARTY_NOTICES.md.
+license-files = [
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "src/iris/_vendor/*/LICENSE",
+    "src/iris/_vendor/*/NOTICE",
+    "src/iris/_vendor/torchvision-LICENSE",
+    "src/iris/static/fonts/*-OFL.txt",
+    "examples/street-scenes/CREDITS.txt",
+    "docs/media/README.md",
+]
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -17,6 +30,12 @@ dependencies = [
   "opencv-python-headless>=4.11,<5",
   "pycocotools==2.0.11",
 ]
+
+[project.urls]
+Repository = "https://github.com/victormonnot/iris"
+Documentation = "https://github.com/victormonnot/iris/blob/main/docs/README.md"
+Portfolio = "https://victormonnot.com/projects/iris/"
+Issues = "https://github.com/victormonnot/iris/issues"
 
 [project.optional-dependencies]
 ml = ["torch==2.10.0", "torchvision==0.25.0"]
@@ -44,7 +63,10 @@ dev = ["httpx>=0.28,<1", "pytest>=8,<10", "ruff>=0.11,<1"]
 packages = ["src/iris"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/.github", "/src", "/tests", "/docs", "/examples", "/README.md", "/pyproject.toml", "/uv.lock"]
+include = [
+    "/.github", "/src", "/tests", "/docs", "/examples",
+    "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/pyproject.toml", "/uv.lock",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

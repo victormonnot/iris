@@ -97,10 +97,14 @@ YOLOX detector bundles also retain the upstream detector NOTICE. Detector code
 licence terms do not automatically grant rights to checkpoints or training data;
 consult the weight terms links recorded in manifest.json.
 
-This IRIS repository has no root licence file. No additional licence grant for
-IRIS code is inferred by packaging these contract/inspection modules. Nothing in
-this package represents a claim of independent quality, device compatibility,
-physical identity certainty or publisher authentication.
+The IRIS contract, inspection and runtime modules are covered by the MIT licence
+below. Third-party code retains its own licence notices. Nothing in this package
+represents a claim of independent quality, device compatibility, physical identity
+certainty or publisher authentication.
+
+IRIS code licence
+=================
+
 """
 
 
@@ -168,8 +172,8 @@ requires an explicit measured box. A track number does not prove identity.
 
 Runtime/parity reports are separate evidence and never promote this manifest to
 qualified status. Performance and independent quality require their own tests.
-Review licence texts and NOTICE: code licences do not establish checkpoint or
-training-data rights, and packaging creates no additional IRIS licence grant.
+Review licence texts and licenses/NOTICE.txt, which includes the MIT licence for
+IRIS code. Code licences do not establish checkpoint or training-data rights.
 """
 RUNTIME_LAUNCHER = b"""import sys
 sys.dont_write_bytecode = True
@@ -202,7 +206,7 @@ def _resources(detector, profile, *, bundle_format=FORMAT_V2):
         / "_vendor"
         / ("yolox/LICENSE" if architecture == "yolox_nano" else "torchvision-LICENSE")
     ).read_bytes()
-    result["licenses/NOTICE.txt"] = NOTICE
+    result["licenses/NOTICE.txt"] = NOTICE + (base / "LICENSE.txt").read_bytes()
     if architecture == "yolox_nano":
         result["licenses/detector-NOTICE"] = (base / "_vendor/yolox/NOTICE").read_bytes()
     if bundle_format == FORMAT_V2:
