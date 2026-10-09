@@ -33,6 +33,32 @@ need separate experiments; see [recorded results](acceptance-results.md) and
 [pipeline qualification](pipeline-qualification.md). The repository includes a
 small [attributed photo example](../examples/street-scenes/README.md), but no model weights.
 
+## Continuous integration
+
+[The GitHub Actions workflow](../.github/workflows/ci.yml) runs on pull requests,
+pushes to `main`, and manual dispatch. It checks:
+
+- Ruff lint and formatting, plus the JavaScript helpers on Node 22.
+- The full Python suite with the base installation on Python 3.12 and 3.13.
+  Missing optional runtimes and live opt-ins appear as skips in the test summary.
+- A selected set of native CPU tests on Python 3.12 with `ml` and `tracking`
+  installed: model class mappings, training state and scopes, generated-weight
+  optimization, native trackers and portable pipeline behavior. This job fails
+  if any selected test is skipped.
+
+Dependencies come from `uv.lock`; the ML extra uses CPU PyTorch packages.
+Setup downloads software dependencies, but no model checkpoints. Tests generate
+their own data and weights, leave live opt-ins disabled, and need no API secrets
+or model service. The CPU job does not establish CUDA, pretrained-checkpoint,
+ONNX conversion or real-image quality coverage, nor optional-runtime coverage on
+Python 3.13. Those checks remain separate.
+
+Actions are pinned to commit SHAs and uv to a fixed version. The workflow uses
+[setup-uv's cache](https://github.com/astral-sh/setup-uv#usage) with separate keys
+for the base installations and CPU extras. Job timeouts are 10 minutes for checks,
+45 for each base suite and 20 for CPU fixtures; these are limits, not measured
+GitHub runner durations. New runs cancel an older run for the same branch or PR.
+
 ## Optional checks with installed detectors
 
 Explicitly install the ML runtime and both official Torchvision checkpoints

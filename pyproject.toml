@@ -44,7 +44,7 @@ dev = ["httpx>=0.28,<1", "pytest>=8,<10", "ruff>=0.11,<1"]
 packages = ["src/iris"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests", "/docs", "/examples", "/README.md", "/pyproject.toml", "/uv.lock"]
+include = ["/.github", "/src", "/tests", "/docs", "/examples", "/README.md", "/pyproject.toml", "/uv.lock"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
