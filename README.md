@@ -16,6 +16,11 @@ You can keep different models for different missions and pick the one you need.
 I want to make this easy enough to do after every flight, or whenever a project
 brings in new data.
 
+![Original and fine-tuned Faster R-CNN predictions side by side in Iris](docs/media/iris-comparison.png)
+
+*Comparing two models on the same image. The extra box on the right is a false
+detection.*
+
 ## What works today
 
 iris runs on your computer and opens in your browser. It currently focuses on
@@ -36,6 +41,11 @@ The data, annotations, training settings and results stay linked, so I can go
 back to an experiment and see how a model was made. I check the results before
 choosing a new version; training alone doesn't tell me whether it's better.
 
+![Correcting a box and adding a missing annotation in Iris](docs/media/iris-annotation.gif)
+
+*Correcting a box and adding a missing annotation before training.*
+[Watch the video](docs/media/iris-annotation.mp4) · [Media sources and credits](docs/media/README.md)
+
 ## Using it with argos
 
 One of the first uses has been person detection for
@@ -50,6 +60,11 @@ development, so testing on new scenes is still needed.
 
 The [experiment notes](docs/acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
 cover the data, training, results and export checks.
+
+![Original YOLOX-Nano misses a person that the trained model detects on the same frame](docs/media/iris-yolox.png)
+
+*On this development image, the trained YOLOX-Nano finds the person missed by
+the original at a confidence threshold of 0.35.*
 
 ## Getting started
 
