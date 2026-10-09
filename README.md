@@ -2,7 +2,7 @@
 
 Aim to accelerate the learning loop from field data to mission-specific vision models.
 
-[Portfolio](https://victormonnot.com/projects/iris/) · [Get started](#getting-started) · [Technical notes](#technical-notes)
+[Portfolio](https://victormonnot.com/projects/iris/) · [Try the example](docs/first-run.md) · [Get started](#getting-started) · [Technical notes](#technical-notes)
 
 ## What I'm building
 
@@ -58,8 +58,8 @@ people. The trained version found all 16, with no extra detections for either
 model at the chosen threshold. These images had already been used during
 development, so testing on new scenes is still needed.
 
-The [experiment notes](docs/acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
-cover the data, training, results and export checks.
+Read [From Iris to Argos](docs/iris-to-argos.md) for the data, training choices
+and what happened when I tried the exported model in another application.
 
 ![Original YOLOX-Nano misses a person that the trained model detects on the same frame](docs/media/iris-yolox.png)
 
@@ -79,7 +79,8 @@ uv run iris
 
 Open **http://127.0.0.1:8000**. Create a project and a session, then import your
 images or videos in **Data intake**. You can prepare data and annotate manually
-without a GPU, model weights or an API key. Sample data is not included yet.
+without a GPU, model weights or an API key. The [first-run guide](docs/first-run.md)
+walks through two included street photos, annotation review and a model comparison.
 
 ### Run models on CPU
 

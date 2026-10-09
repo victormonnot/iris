@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "bundle": "street-scenes.zip",
+  "purpose": "Small import and annotation example; not a training dataset or independent model-quality benchmark.",
+  "source_split": {
+    "original": "COCO val2017",
+    "import_value": "val"
+  },
+  "image_ids": [
+    6723,
+    32941
+  ],
+  "annotation_count": 19,
+  "categories": [
+    {
+      "supercategory": "person",
+      "id": 1,
+      "name": "person"
+    },
+    {
+      "supercategory": "vehicle",
+      "id": 3,
+      "name": "car"
+    },
+    {
+      "supercategory": "vehicle",
+      "id": 6,
+      "name": "bus"
+    },
+    {
+      "supercategory": "vehicle",
+      "id": 8,
+      "name": "truck"
+    },
+    {
+      "supercategory": "outdoor",
+      "id": 10,
+      "name": "traffic light"
+    }
+  ],
+  "annotation_source": {
+    "dataset": "COCO val2017",
+    "attribution": "COCO Consortium; Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "terms_url": "https://cocodataset.org/#termsofuse",
+    "mirror": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500",
+    "revision": "6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88",
+    "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/annotations/instances_val2017_mini500.json",
+    "downloaded_sha256": "31c8e48b3e0bc957da945ad43697f8d519d7aaeb5971cef19e4cfaa4a8423a56",
+    "selected_records_canonical_sha256": "13b400e7e9a0a56a1594cf690d6fdb53326d17942ed233643eeb55001eb4bc1e"
+  },
+  "transformations": [
+    "Selected complete images 6723 and 32941 in that order.",
+    "Kept every original annotation record for both images, including excluded classes; sorted by image order then annotation ID.",
+    "Kept only the five used original category definitions and photo license entry.",
+    "Prepended images/ to COCO file_name values and recorded source_split=val.",
+    "Normalized JSON formatting; no image, annotation geometry or category reassignment."
+  ],
+  "images": [
+    {
+      "coco_image_id": 6723,
+      "archive_path": "images/000000006723.jpg",
+      "width": 640,
+      "height": 361,
+      "size_bytes": 200461,
+      "sha256": "1d3ba71e9002721a2bc18791f3c86578d6de38fb61640803657276d53e73663f",
+      "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000006723.jpg",
+      "coco_source_url": "http://images.cocodataset.org/val2017/000000006723.jpg",
+      "title": "Clongriffin",
+      "author": "infomatique",
+      "author_url": "https://www.flickr.com/photos/infomatique/",
+      "photo_url": "https://www.flickr.com/photos/infomatique/4575950642/",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "license_verified_on": "2026-10-08",
+      "license_verification_source": "Flickr public oEmbed response for the photo URL",
+      "annotation_count": 6
+    },
+    {
+      "coco_image_id": 32941,
+      "archive_path": "images/000000032941.jpg",
+      "width": 458,
+      "height": 640,
+      "size_bytes": 209929,
+      "sha256": "2b881cc082e3d79f6685320ddf02e04ec534e7f904a090a4e627eb445cb26ebc",
+      "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000032941.jpg",
+      "coco_source_url": "http://images.cocodataset.org/val2017/000000032941.jpg",
+      "title": "Damaged Traffic Light - Junction of High Road & White Hart Lane",
+      "author": "Alan Stanton",
+      "author_url": "https://www.flickr.com/photos/alanstanton/",
+      "photo_url": "https://www.flickr.com/photos/alanstanton/8224728949/",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "license_verified_on": "2026-10-08",
+      "license_verification_source": "Flickr public oEmbed response for the photo URL",
+      "annotation_count": 13
+    }
+  ],
+  "files": {
+    "annotations.json": {
+      "size_bytes": 17031,
+      "sha256": "4c642320afeaaa1fc0d7b055a837f9788d363956d1432277691906ad1b7334a7"
+    },
+    "CREDITS.txt": {
+      "size_bytes": 2115,
+      "sha256": "120133ce0d04b6f49852492966547d89360914c1aed40a788db690d146965f72"
+    }
+  },
+  "default_import_mapping": {
+    "1": "person",
+    "3": "car",
+    "6": "exclude",
+    "8": "exclude",
+    "10": "exclude"
+  },
+  "default_import_proposal_count": 11
+}

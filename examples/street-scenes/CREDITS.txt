@@ -1,0 +1,44 @@
+IRIS street-scenes sample
+
+Two photographs and all 19 of their original COCO instance annotations.
+The original JPEG bytes and annotation geometry are unchanged. The sample
+retains the source COCO val2017 split as "val". It is for trying import and
+annotation, not a training set or an independent model-quality benchmark.
+
+PHOTOGRAPHS
+
+000000006723.jpg — "Clongriffin" by infomatique
+https://www.flickr.com/photos/infomatique/4575950642/
+Author: https://www.flickr.com/photos/infomatique/
+License: Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0)
+https://creativecommons.org/licenses/by-sa/2.0/
+Changes to photograph: none; original downloaded COCO JPEG bytes preserved.
+
+000000032941.jpg — "Damaged Traffic Light - Junction of High Road & White Hart Lane"
+by Alan Stanton
+https://www.flickr.com/photos/alanstanton/8224728949/
+Author: https://www.flickr.com/photos/alanstanton/
+License: Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0)
+https://creativecommons.org/licenses/by-sa/2.0/
+Changes to photograph: none; original downloaded COCO JPEG bytes preserved.
+
+ANNOTATIONS
+
+COCO Consortium. Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014.
+https://cocodataset.org/
+Annotations: Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+COCO terms: https://cocodataset.org/#termsofuse
+
+Retrieved through LibreYOLO's coco-val2017-mini500 repackaging, pinned revision
+6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88:
+https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500
+
+Packaging changes: selected image IDs 6723 and 32941; retained all annotations
+for both images without changing their IDs, categories, boxes, areas or
+segmentation; retained only their five used category definitions and photo
+license entry; prefixed image filenames with "images/"; recorded split "val".
+JSON whitespace and record order were normalized. No new annotation was made.
+
+The photo licenses and annotation license are separate from any license for
+IRIS code. This sample does not replace them or claim rights over the photos.

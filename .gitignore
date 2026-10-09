@@ -9,6 +9,7 @@ htmlcov/
 build/
 dist/
 .iris/
+.iris-demo/
 .env
 .env.*
 !.env.example

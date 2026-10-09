@@ -109,5 +109,7 @@ against IRIS's definitions.
 A small curated sample can establish that the pipeline runs on real imagery.
 It cannot establish an official HIT-UAV score, RGB flight performance, a gain
 from fine-tuning, or scene independence. Those require reviewed labels and an
-appropriate evaluation design. Data and downloaded artifacts belong in the
-ignored local workspace, not in the source distribution.
+appropriate evaluation design. Keep your datasets and downloaded artifacts in
+the ignored local workspace. The repository includes a small, attributed
+[street-scene example](../examples/street-scenes/README.md) for the
+[first-run guide](first-run.md).
