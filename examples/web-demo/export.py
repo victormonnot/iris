@@ -16,7 +16,7 @@ import tempfile
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 
-from serve import EXAMPLE, SEED, STATIC, demo_index
+from serve import EXAMPLE, SEED, STATIC, demo_index, validate_revision
 
 ROOT = EXAMPLE.parents[1]
 FORMAT = "iris-web-demo-site-v1"
@@ -187,24 +187,27 @@ def validate_output(output: Path) -> Path:
     return output
 
 
-def export_demo(output: Path) -> dict:
+def export_demo(output: Path, *, revision: str | None = None) -> dict:
     """Create a deterministic artifact; replace only an intact previous export."""
+    validate_revision(revision)
     output = validate_output(output)
     assets = collect_assets()
     # Hash the entry template too: an HTML-only change produces a new release.
     inputs = {name: fingerprint(content) for name, content in sorted(assets.items())}
-    inputs["index.html"] = fingerprint(demo_index())
+    inputs["index.html"] = fingerprint(demo_index(revision=revision))
     version = hashlib.sha256(json_bytes(inputs)).hexdigest()
     prefix = f"assets/{version}/"
     files = {prefix + name: content for name, content in assets.items()}
     files["index.html"] = demo_index(
-        static_prefix=f"./{prefix}static/", seed_prefix=f"./{prefix}seed/"
+        static_prefix=f"./{prefix}static/", seed_prefix=f"./{prefix}seed/", revision=revision
     )
     manifest = {
         "format": FORMAT,
         "asset_version": version,
         "files": {name: fingerprint(content) for name, content in sorted(files.items())},
     }
+    if revision is not None:
+        manifest["source_revision"] = revision
     files["manifest.json"] = json_bytes(manifest)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -233,9 +236,12 @@ def export_demo(output: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "dist" / "demo")
+    parser.add_argument(
+        "--revision", help="Full 40-character lowercase Git commit SHA of this build"
+    )
     args = parser.parse_args()
     try:
-        manifest = export_demo(args.output)
+        manifest = export_demo(args.output, revision=args.revision)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"Cannot export the demo: {error}\n")
     size = sum(record["size"] for record in manifest["files"].values())

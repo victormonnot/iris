@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   # Live checks require separately provisioned weights or a local model service.
@@ -47,6 +47,77 @@ jobs:
         run: uv run --offline --no-sync ruff format --check .
       - name: Test browser helpers
         run: node --test tests/js/*.test.cjs
+
+  demo-browser:
+    name: Static demo / Chromium
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      asset-version: ${{ steps.identity.outputs.asset-version }}
+      manifest-sha256: ${{ steps.identity.outputs.manifest-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.24"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: browser-3.12
+      - name: Install only browser test dependencies
+        run: uv sync --locked --only-group browser
+      - name: Install Chromium and its system libraries
+        run: uv run --offline --no-sync python -m playwright install --with-deps chromium
+      - name: Build the static artifact once
+        run: uv run --offline --no-sync python examples/web-demo/export.py --revision "$GITHUB_SHA"
+      - name: Test the artifact in a real browser
+        env:
+          IRIS_DEMO_ARTIFACT: dist/demo
+        run: |
+          uv run --offline --no-sync pytest -q -ra tests/browser/test_web_demo.py \
+            --junitxml=test-results/browser.xml
+      - name: Require executed browser checks and record the tested artifact
+        id: identity
+        run: |
+          uv run --offline --no-sync python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = ElementTree.fromstring(Path("test-results/browser.xml").read_bytes())
+          cases = report.findall(".//testcase")
+          assert cases, "The browser suite collected no tests"
+          assert all(case.find("skipped") is None for case in cases), "Browser checks were skipped"
+          manifest_bytes = Path("dist/demo/manifest.json").read_bytes()
+          manifest = json.loads(manifest_bytes)
+          assert manifest["source_revision"] == os.environ["GITHUB_SHA"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"asset-version={manifest['asset_version']}\n")
+              output.write(f"manifest-sha256={hashlib.sha256(manifest_bytes).hexdigest()}\n")
+          print(f"Executed {len(cases)} browser checks; artifact {manifest['asset_version']}")
+          PY
+      - name: Preserve browser failure traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: demo-browser-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload the exact tested site
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iris-demo-${{ github.sha }}-${{ github.run_attempt }}
+          path: dist/demo/
+          if-no-files-found: error
+          retention-days: 30
 
   python-base:
     name: Base suite / Python ${{ matrix.python-version }}
@@ -133,3 +204,64 @@ jobs:
           assert not skipped, f"Optional CPU tests were skipped: {skipped}"
           print(f"Executed {len(cases)} CPU fixture tests without skips")
           PY
+
+  deploy-demo:
+    name: Publish the tested demo
+    needs: [style-and-javascript, python-base, optional-cpu, demo-browser]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      vars.IRIS_DEMO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: iris-demo
+      url: https://iris.victormonnot.com
+    concurrency:
+      group: iris-demo-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep older reruns from replacing the current main release
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          if [ "$current" = "$GITHUB_SHA" ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main revision exists; this run will not publish.'
+          fi
+      - name: Download the artifact that passed the browser suite
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.demo-browser.outputs.artifact-id }}
+          path: dist/demo
+          merge-multiple: true
+      - name: Publish and verify, reverting a failed publication
+        if: steps.current.outputs.publish == 'true'
+        env:
+          IRIS_DEMO_SSH_KEY: ${{ secrets.IRIS_DEMO_SSH_KEY }}
+          IRIS_DEMO_KNOWN_HOSTS: ${{ secrets.IRIS_DEMO_KNOWN_HOSTS }}
+          IRIS_DEMO_HOST: ${{ vars.IRIS_DEMO_HOST || 'iris.victormonnot.com' }}
+          IRIS_DEMO_USER: ${{ vars.IRIS_DEMO_USER || 'iris-demo' }}
+          IRIS_DEMO_MANIFEST_SHA256: ${{ needs.demo-browser.outputs.manifest-sha256 }}
+        run: |
+          set -euo pipefail
+          test -n "$IRIS_DEMO_SSH_KEY"
+          test -n "$IRIS_DEMO_KNOWN_HOSTS"
+          credentials="$(mktemp -d "$RUNNER_TEMP/iris-demo-ssh.XXXXXX")"
+          trap 'rm -rf "$credentials"' EXIT
+          umask 077
+          printf '%s\n' "$IRIS_DEMO_SSH_KEY" > "$credentials/key"
+          printf '%s\n' "$IRIS_DEMO_KNOWN_HOSTS" > "$credentials/known_hosts"
+          python3 deploy/web-demo/publish.py \
+            --artifact dist/demo --revision "$GITHUB_SHA" \
+            --manifest-sha256 "$IRIS_DEMO_MANIFEST_SHA256" \
+            --url https://iris.victormonnot.com \
+            --host "$IRIS_DEMO_HOST" --user "$IRIS_DEMO_USER" \
+            --identity "$credentials/key" --known-hosts "$credentials/known_hosts"

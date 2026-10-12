@@ -59,13 +59,14 @@ iris = "iris.cli:main"
 
 [dependency-groups]
 dev = ["httpx>=0.28,<1", "pytest>=8,<10", "ruff>=0.11,<1"]
+browser = ["playwright==1.63.0", "pytest>=8,<10"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/iris"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/.github", "/src", "/tests", "/docs", "/examples",
+    "/.github", "/src", "/tests", "/docs", "/examples", "/deploy",
     "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/pyproject.toml", "/uv.lock",
 ]
 

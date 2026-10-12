@@ -30,6 +30,16 @@
   text-transform: uppercase;
 }
 
+.iris-demo-revision {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-underline-offset: 3px;
+}
+
 .iris-demo-actions :is(button, a) {
   min-height: 40px;
 }

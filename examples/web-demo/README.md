@@ -124,6 +124,11 @@ repository. An exported or published copy does not update merely because the
 source checkout changed. There is one maintained interface, with the browser
 demo supplying its own data adapter.
 
+For a published release, add `--revision` with the full Git commit SHA. The
+manifest records that source revision and the demo displays a small link to
+the corresponding commit. The [deployment guide](../../deploy/web-demo/README.md)
+describes the tested-artifact pipeline, Coolify hosting and rollback.
+
 To inspect the actual artifact with an ordinary static server:
 
 ```sh

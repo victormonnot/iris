@@ -38,6 +38,17 @@
     element("strong", "iris-demo-badge", "Demo"),
     element("span", "", "Explore the sample, review its labels and inspect recorded model outputs."),
   );
+  const revision = document.documentElement.dataset.irisRevision;
+  if (typeof revision === "string" && revision.length === 40 && /^[0-9a-f]{40}$/.test(revision)) {
+    const source = element("a", "iris-demo-revision", revision.slice(0, 7));
+    source.id = "iris-demo-revision";
+    source.href = `https://github.com/victormonnot/iris/commit/${revision}`;
+    source.target = "_blank";
+    source.rel = "noopener noreferrer";
+    source.title = `Source commit ${revision}`;
+    source.setAttribute("aria-label", `Source commit ${revision.slice(0, 7)}`);
+    introduction.append(source);
+  }
   const actions = element("div", "iris-demo-actions");
   const exportButton = button("iris-demo-export", "Export saved annotations");
   const resetButton = button("iris-demo-reset", "Reset demo", "text-button");

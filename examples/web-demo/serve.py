@@ -32,8 +32,21 @@ DEMO_SCRIPTS = {
 }
 
 
-def demo_index(*, static_prefix: str = "/static/", seed_prefix: str = "/seed/") -> bytes:
+def validate_revision(revision: str | None) -> None:
+    if revision is not None and (
+        not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision)
+    ):
+        raise ValueError("The source revision must be a full 40-character lowercase Git commit SHA")
+
+
+def demo_index(
+    *,
+    static_prefix: str = "/static/",
+    seed_prefix: str = "/seed/",
+    revision: str | None = None,
+) -> bytes:
     """Compose the demo entry point from the maintained local application HTML."""
+    validate_revision(revision)
     source = (STATIC / "index.html").read_text(encoding="utf-8")
     source = re.sub(
         r'    <script src="/static/([^"/]+)"[^>]*></script>\n',
@@ -60,9 +73,11 @@ def demo_index(*, static_prefix: str = "/static/", seed_prefix: str = "/seed/") 
         '    <script src="/static/demo/ui.js" defer></script>\n'
         '    <script src="/static/demo/install.js" defer></script>\n  </head>',
     )
+    revision_attribute = f' data-iris-revision="{revision}"' if revision is not None else ""
     source = source.replace(
         '<html lang="en">',
-        '<html lang="en" class="iris-demo iris-demo-entering" data-iris-runtime="demo">',
+        '<html lang="en" class="iris-demo iris-demo-entering"'
+        f' data-iris-runtime="demo"{revision_attribute}>',
     )
     source = source.replace("  <body>", '  <body>\n    <div id="iris-demo-workbench" inert>')
     entry = (STATIC / "demo" / "entry.html").read_text(encoding="utf-8")

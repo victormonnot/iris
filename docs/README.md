@@ -92,4 +92,5 @@ are documented separately.
 - [Recorded experiments](acceptance-results.md): executed runs, measurements and limits.
 - [README media credits](media/README.md) and [example provenance](../examples/street-scenes/README.md).
 - [Public browser example data](../examples/web-demo/README.md): attributed records, saved predictions and reproducible generation.
+- [Host the browser demo](../deploy/web-demo/README.md): tested static artifacts, publication and rollback.
 - [Software licence](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md).
