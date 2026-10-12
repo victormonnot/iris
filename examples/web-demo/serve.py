@@ -32,7 +32,7 @@ DEMO_SCRIPTS = {
 }
 
 
-def demo_index() -> bytes:
+def demo_index(*, static_prefix: str = "/static/", seed_prefix: str = "/seed/") -> bytes:
     """Compose the demo entry point from the maintained local application HTML."""
     source = (STATIC / "index.html").read_text(encoding="utf-8")
     source = re.sub(
@@ -67,6 +67,9 @@ def demo_index() -> bytes:
     source = source.replace("  <body>", '  <body>\n    <div id="iris-demo-workbench" inert>')
     entry = (STATIC / "demo" / "entry.html").read_text(encoding="utf-8")
     source = source.replace("  </body>", "    </div>\n" + entry + "  </body>")
+    source = source.replace('href="/"', 'href="./"')
+    source = source.replace('data-seed="/seed/"', f'data-seed="{seed_prefix}"')
+    source = source.replace('"/static/', f'"{static_prefix}')
     return source.encode("utf-8")
 
 

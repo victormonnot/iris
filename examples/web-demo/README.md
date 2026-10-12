@@ -1,4 +1,4 @@
-# Public browser example data
+# Iris browser demo
 
 This example supplies one project, two street photographs, imported annotation
 proposals and a saved comparison of two detectors. The records use Iris's actual
@@ -83,6 +83,88 @@ To import the labels into local Iris:
 
 Keep the downloaded JSON as well: the local COCO importer does not restore the
 demo's revision history or its human-validation status from the `iris` extension.
+
+## Build a static hosting artifact
+
+The exporter uses Python's standard library and the checked-in public seed. It
+requires no Iris server, application environment, Node build or model runtime:
+
+```sh
+python3 examples/web-demo/export.py --output dist/demo
+```
+
+`--output` is optional; its default is `dist/demo` under the repository root.
+Use a dedicated directory beneath `dist/` or outside the repository. Rebuilding
+an intact generated artifact is supported; modified artifacts and arbitrary
+existing directories are refused. Exporting creates local files only. It does
+not configure hosting, set up publication automation or publish the site.
+
+The artifact contains:
+
+```text
+dist/demo/
+  index.html
+  manifest.json
+  assets/<sha256>/
+    static/
+    seed/
+    LICENSE
+    THIRD_PARTY_NOTICES.md
+```
+
+The generated index uses the same maintained Iris interface and demo modules as
+the local preview. Its referenced scripts, styles, bundled fonts and public
+example data are packaged together under a content-addressed asset directory.
+No backend, model weights or personal workspace are included. The manifest has
+format `iris-web-demo-site-v1`, an `asset_version`, and a `files` map recording
+file sizes and SHA-256 hashes.
+
+Frontend changes reach the artifact when it is rebuilt from the updated
+repository. An exported or published copy does not update merely because the
+source checkout changed. There is one maintained interface, with the browser
+demo supplying its own data adapter.
+
+To inspect the actual artifact with an ordinary static server:
+
+```sh
+python3 -m http.server 8765 --bind 127.0.0.1 --directory dist/demo
+```
+
+Open `http://127.0.0.1:8765/`. This serves the exported files rather than the
+development preview's live source files. Opening `index.html` through `file://`
+is unsupported.
+
+### Hosting paths, caching and browser data
+
+The whole artifact can be served at a site root or beneath a path such as
+`/iris/`, without rebuilding for that prefix. Keep its directory structure and
+use a URL ending in `/` or `/index.html`. Configure a redirect from `/iris` to
+`/iris/` if the host does not already normalize directory URLs. Asset and font
+URLs are relative; `/api/` remains a logical adapter namespace and needs no
+server route or proxy.
+
+Use HTTPS when publishing. Browser integrity checks require a secure context;
+HTTP on localhost works for local previews. An ordinary static host is enough:
+the workbench's mutations stay in the visitor's browser, without a backend or
+hosted account.
+
+When configuring hosting, allow long-lived immutable caching for
+`assets/<sha256>/`, and revalidate `index.html` and `manifest.json`. Upload the
+new assets before replacing the index. Keep older asset directories available
+while visitors may still have an older page open or cached; do not overwrite
+files inside an existing content-addressed directory. These are hosting
+requirements, not configuration applied by the exporter.
+
+Saved browser data belongs to the site's origin and demo location, separately
+from the asset version. Rebuilding only the interface preserves that namespace.
+Changing the domain or demo path creates a different browser workspace. A
+changed seed still triggers the explicit compatibility/reset flow described
+above, rather than silently discarding edits.
+
+Keep the bundled `LICENSE`, `THIRD_PARTY_NOTICES.md`, font licences and sample
+credits with the artifact. The notices link to the accompanying font files,
+photo credits and provenance. The image and annotation licences are separate
+from Iris's software licence.
 
 ## Contents and attribution
 

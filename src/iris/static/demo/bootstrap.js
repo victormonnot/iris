@@ -10,7 +10,10 @@
     window.history.replaceState(null, "", address);
   }
   let channel;
-  const namespace = `iris-web-demo:${seedURL.pathname}`;
+  // Storage belongs to this demo mount, not its versioned asset directory.
+  // Keep the preview's /seed/ name so publishing a new bundle finds saved edits
+  // and lets seedVersion enforce explicit recovery when the example changes.
+  const namespace = `iris-web-demo:${new URL("./seed/", address).pathname}`;
   try {
     channel = new BroadcastChannel(namespace);
     channel.addEventListener("message", () => {
