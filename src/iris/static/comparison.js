@@ -312,6 +312,7 @@
   }
 
   async function refreshModels() {
+    if (irisRuntime.mode === "demo" && $("#comparison-workspace").hidden) return;
     const request = ++comparison.catalogRequest;
     comparison.catalogLoading = true;
     $("#refresh-models").disabled = true;
@@ -378,6 +379,7 @@
   }
 
   async function refreshHistory() {
+    if (irisRuntime.mode === "demo" && $("#comparison-workspace").hidden) return;
     const sessionId = state.sessionId;
     if (!sessionId) return;
     const request = ++comparison.historyRequest;
@@ -868,6 +870,10 @@
   });
   window.addEventListener("iris:session", sessionChanged);
   window.addEventListener("iris:workspace", (event) => {
+    if (irisRuntime.mode === "demo" && event.detail?.name === "comparison") {
+      refreshModels();
+      refreshHistory();
+    }
     if (event.detail?.name !== "comparison") replay.deactivate();
     else if (comparison.detail)
       replay.update(comparison.detail, comparison.detail.frame_ids[comparison.position]);

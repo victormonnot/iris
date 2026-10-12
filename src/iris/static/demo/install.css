@@ -1,0 +1,149 @@
+.iris-demo-install-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 28px;
+}
+
+.iris-demo-install-dialog .modal-heading {
+  align-items: flex-start;
+}
+
+.iris-demo-install-dialog .modal-heading h2 {
+  margin: 8px 0 0;
+}
+
+.iris-demo-install-dialog p {
+  line-height: 1.65;
+}
+
+.iris-demo-install-intro {
+  margin: 16px 0;
+  color: var(--muted);
+}
+
+.iris-demo-install-requirements {
+  padding: 12px;
+  border-left: 2px solid var(--control-line);
+  background: var(--surface-raised);
+  font-size: 13px;
+}
+
+.iris-demo-install-dialog a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.iris-demo-install-steps {
+  margin: 24px 0;
+  padding-left: 24px;
+}
+
+.iris-demo-install-steps > li {
+  padding-left: 6px;
+  margin-bottom: 20px;
+}
+
+.iris-demo-install-steps > li::marker {
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.iris-demo-install-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.iris-demo-install-steps p {
+  margin: 8px 0;
+}
+
+.iris-demo-install-dialog .iris-demo-install-commands {
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre;
+  user-select: text;
+}
+
+.iris-demo-install-commands code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.iris-demo-install-command-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.iris-demo-install-command-actions .button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.iris-demo-install-copy-status {
+  flex: 1 1 190px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.iris-demo-install-copy-status:empty {
+  display: none;
+}
+
+.iris-demo-install-models {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.iris-demo-install-models p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.iris-demo-install-footer {
+  margin-top: 16px;
+}
+
+.iris-demo-install-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.iris-demo-install-commands:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  dialog.iris-demo-install-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 20px 16px;
+  }
+
+  .iris-demo-install-steps {
+    padding-left: 18px;
+  }
+
+  .iris-demo-install-steps > li {
+    padding-left: 2px;
+  }
+}

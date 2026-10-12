@@ -9,6 +9,7 @@ const projectScope = window.IRISProjectScope.create(window.location.href, {
 const irisRuntime = window.IRISRuntime.create({
   projectScope,
   adapter: window.IRISRuntimeAdapter,
+  requiredMode: document.documentElement.dataset.irisRuntime,
 });
 const projectURL = (path) => irisRuntime.resourceURL(path);
 const state = {
@@ -1652,6 +1653,9 @@ async function initialize() {
   } catch (error) {
     notify(error.message, true);
     $("#storage-path").textContent = irisRuntime.mode === "local" ? "Local server unavailable" : "Demo unavailable";
+    window.dispatchEvent(new CustomEvent("iris:project-initialization-error", {
+      detail: { message: error.message },
+    }));
     if (!state.sessions.length) {
       renderSessions();
       if (window.IRISNavigation) window.IRISNavigation.syncSession();

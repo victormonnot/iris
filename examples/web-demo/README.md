@@ -20,6 +20,17 @@ no local Iris workspace, runs no API and binds only to the loopback interface.
 The normal `iris` application continues to use its local backend. This helper is
 for previewing the browser runtime; it is not a production hosting server.
 
+The shared workbench and both sample photos load behind a soft blur. **Try Iris**
+reveals the already-loaded interface in place. The entry explains the demo's
+limits, keeps the workbench inactive until entry, and offers a retry if the data,
+images or interface cannot load. **Install Iris locally** opens concise Linux/WSL
+instructions with copyable commands and links to the full setup and first-run
+guides; model inference and CUDA setup are separate optional steps.
+
+The preview loads the shared modules for intake, annotation and comparison.
+Comparison records are read when that workspace opens. Links into processing
+features explain that local Iris is required and leave the sample available.
+
 The demo supports gallery selection and filters; drawing, moving, resizing and
 deleting boxes; accepting, correcting and rejecting imported proposals; saving
 drafts, validating, and viewing annotation history. Model comparison offers the

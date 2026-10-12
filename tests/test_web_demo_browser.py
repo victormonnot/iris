@@ -68,7 +68,14 @@ def test_preview_composes_shared_html_and_all_browser_assets(preview):
     parser = Assets()
     parser.feed(html)
     assert html.index("demo/bootstrap.js") < html.index("project-scope.js") < html.index("app.js")
+    assert html.index("demo/entry.js") < html.index("demo/bootstrap.js") < html.index("app.js")
     assert html.index("annotation.js") < html.index("demo/ui.js")
+    assert '<div id="iris-demo-workbench" inert>' in html
+    assert 'data-iris-runtime="demo"' in html
+    assert 'aria-label="Try Iris"' in html
+    assert "demo/install.js" in html
+    assert "/static/tracking-quality.js" not in parser.urls
+    assert "/static/benchmark-editor.js" not in parser.urls
     assert 'data-seed="/seed/"' in html
     for path in parser.urls:
         status, headers, content = request(preview, path)

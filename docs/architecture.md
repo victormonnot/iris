@@ -69,6 +69,14 @@ a reset identifier for stale tabs. Recorded comparisons remain immutable.
 Unsupported API, resource and upload operations fail explicitly; there is no
 network fallback. The demo UI adds storage notices, export/reset and local
 installation links without maintaining another editor or workspace layout.
+The demo entry loads before the shared app: its static HTML keeps the workbench
+inert, then waits for project initialization and decoded gallery images before
+offering entry. A native modal provides the focus boundary. The local entry point
+does not include these demo assets; the preview composes them with only the shared
+modules used by the supported workspaces.
+Its entry point also declares a required runtime mode, so a missing bootstrap
+script cannot select the local transport. Entry waits for the deferred interface
+scripts as well as the sample data; missing scripts keep it closed with a retry.
 
 ## Code map
 

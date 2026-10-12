@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import mimetypes
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -11,15 +12,41 @@ from urllib.parse import unquote, urlsplit
 EXAMPLE = Path(__file__).resolve().parent
 STATIC = EXAMPLE.parents[1] / "src" / "iris" / "static"
 SEED = EXAMPLE / "seed"
+# Retain the shared modules used by the supported workspaces. Processing modules
+# have no browser implementation; their controls are explained by demo/ui.js.
+DEMO_SCRIPTS = {
+    "appearance.js",
+    "project-scope.js",
+    "runtime.js",
+    "taxonomy-tools.js",
+    "intake-tools.js",
+    "job-tools.js",
+    "app.js",
+    "navigation.js",
+    "taxonomies.js",
+    "comparison-replay.js",
+    "comparison.js",
+    "annotation-tools.js",
+    "preannotation-tools.js",
+    "annotation.js",
+}
 
 
 def demo_index() -> bytes:
     """Compose the demo entry point from the maintained local application HTML."""
     source = (STATIC / "index.html").read_text(encoding="utf-8")
+    source = re.sub(
+        r'    <script src="/static/([^"/]+)"[^>]*></script>\n',
+        lambda match: match[0] if match[1] in DEMO_SCRIPTS else "",
+        source,
+    )
     anchor = '    <script src="/static/project-scope.js" defer></script>'
-    if source.count(anchor) != 1 or source.count("  </head>") != 1:
+    if any(
+        source.count(token) != 1
+        for token in (anchor, '<html lang="en">', "  </head>", "  <body>", "  </body>")
+    ):
         raise ValueError("The shared Iris entry point changed; update the demo script order.")
-    scripts = "\n".join(
+    scripts = '    <script src="/static/demo/entry.js" defer></script>\n' + "\n".join(
         f'    <script src="/static/demo/{name}.js" defer></script>'
         for name in ("storage", "annotations", "adapter")
     )
@@ -28,8 +55,18 @@ def demo_index() -> bytes:
     source = source.replace(
         "  </head>",
         '    <link rel="stylesheet" href="/static/demo/ui.css" />\n'
-        '    <script src="/static/demo/ui.js" defer></script>\n  </head>',
+        '    <link rel="stylesheet" href="/static/demo/entry.css" />\n'
+        '    <link rel="stylesheet" href="/static/demo/install.css" />\n'
+        '    <script src="/static/demo/ui.js" defer></script>\n'
+        '    <script src="/static/demo/install.js" defer></script>\n  </head>',
     )
+    source = source.replace(
+        '<html lang="en">',
+        '<html lang="en" class="iris-demo iris-demo-entering" data-iris-runtime="demo">',
+    )
+    source = source.replace("  <body>", '  <body>\n    <div id="iris-demo-workbench" inert>')
+    entry = (STATIC / "demo" / "entry.html").read_text(encoding="utf-8")
+    source = source.replace("  </body>", "    </div>\n" + entry + "  </body>")
     return source.encode("utf-8")
 
 
