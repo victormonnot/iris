@@ -38,6 +38,29 @@ requests, but IRIS does not implement user accounts or public-service
 authentication. An SSH tunnel can expose a workstation's local interface while
 keeping its computation and files on that workstation.
 
+### Browser data access
+
+The shared browser interface accesses data through `static/runtime.js`, loaded
+before `app.js`. The runtime applies `project-scope.js` validation and project
+selection before delegating JSON/binary requests, media/download URLs and uploads
+to an adapter. The default local adapter uses Fetch and XMLHttpRequest against
+the existing FastAPI server; uploads retain progress and cancellation support.
+
+An alternate distribution can supply `window.IRISRuntimeAdapter` before
+`app.js` runs. An adapter declares its `mode`, optional `capabilities` metadata,
+and all three operations: `request(path, options)` returning a `Response`,
+`resourceURL(path)` returning a resource URL, and `upload(path, options)` returning
+`{promise, abort}` with a `Response` promise. Upload options include the multipart
+`body`, `onProgress`, `onUploaded` and an optional `AbortSignal`. Paths have already
+been checked and scoped when the adapter receives them. Capabilities describe
+the adapter's supported operations, not installed model or GPU readiness.
+
+An explicit adapter must implement the whole transport contract. Missing methods
+are errors, and unsupported operations must be rejected rather than forwarded
+to the local server. Runtime selection is supplied by application code, not a
+URL parameter. The standard local application has no alternate adapter or
+bundled example records enabled by default.
+
 ## Code map
 
 Paths below are relative to `src/iris/`. Feature modules implement the processing;

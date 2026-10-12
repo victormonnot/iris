@@ -1213,8 +1213,8 @@
       : "Preparing metrics and notes without example images…";
     error("export-error", null);
     try {
-      const response = await fetch(
-        projectURL(`/api/experiments/${safe(detail.id)}/export?include_images=${include}&expected_revision=${detail.revision}`),
+      const response = await irisRuntime.request(
+        `/api/experiments/${safe(detail.id)}/export?include_images=${include}&expected_revision=${detail.revision}`,
         {
           signal: controller.signal,
           mode: "same-origin",
@@ -1257,7 +1257,7 @@
         field("export-status").textContent = "";
         error(
           "export-error",
-          failure instanceof TypeError
+          irisRuntime.mode === "local" && failure instanceof TypeError
             ? "Cannot reach IRIS. Try the download again when the local server is available."
             : failure,
         );

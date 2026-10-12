@@ -5,7 +5,11 @@ const projectScope = window.IRISProjectScope.create(window.location.href, {
   getItem: (key) => localStorage.getItem(key),
   setItem: (key, value) => localStorage.setItem(key, value),
 });
-const projectURL = (path) => projectScope.url(path);
+const irisRuntime = window.IRISRuntime.create({
+  projectScope,
+  adapter: window.IRISRuntimeAdapter,
+});
+const projectURL = (path) => irisRuntime.resourceURL(path);
 const state = {
   projectId: projectScope.id,
   projects: [],
@@ -50,8 +54,9 @@ async function api(path, options = {}) {
   }
   let response;
   try {
-    response = await fetch(projectURL(path), { ...options, headers });
-  } catch {
+    response = await irisRuntime.request(path, { ...options, headers });
+  } catch (error) {
+    if (irisRuntime.mode !== "local" || error.name === "AbortError") throw error;
     throw new Error(
       "Cannot reach IRIS. Check that the local server is running and try again.",
     );
@@ -1384,26 +1389,28 @@ $("#session-form").addEventListener("submit", async (event) => {
 
 $("#start-session").addEventListener("click", () => $("#session-name").focus());
 
-function uploadFile(file, sessionId, progress) {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("POST", projectURL(`/api/sessions/${encodeURIComponent(sessionId)}/assets`));
-    request.upload.addEventListener("progress", (event) => progress({ loaded: event.loaded, total: event.lengthComputable ? event.total : null }));
-    request.upload.addEventListener("load", () => progress({ processing: true }));
-    request.addEventListener("load", () => {
-      let response;
-      try { response = JSON.parse(request.responseText); } catch { /* Invalid responses remain visible as failures. */ }
-      if (request.status >= 200 && request.status < 300 && response?.id) resolve(response);
-      else {
-        const detail = response?.detail;
-        reject(new Error(typeof detail === "string" ? detail : `Import failed (${request.status}). Check the source list before retrying.`));
-      }
+async function uploadFile(file, sessionId, progress) {
+  const body = new FormData();
+  body.append("file", file);
+  let response;
+  try {
+    const request = irisRuntime.upload(`/api/sessions/${encodeURIComponent(sessionId)}/assets`, {
+      body,
+      onProgress: (event) => progress({ loaded: event.loaded, total: event.lengthComputable ? event.total : null }),
+      onUploaded: () => progress({ processing: true }),
     });
-    request.addEventListener("error", () => reject(new Error("Connection lost. Check the source list before retrying; the server may already have received this file.")));
-    const body = new FormData();
-    body.append("file", file);
-    request.send(body);
-  });
+    response = await request.promise;
+  } catch (error) {
+    if (irisRuntime.mode !== "local" || error.name === "AbortError") throw error;
+    throw new Error("Connection lost. Check the source list before retrying; the server may already have received this file.");
+  }
+  const record = await response.json().catch(() => null);
+  if (response.ok && record?.id) return record;
+  throw new Error(
+    typeof record?.detail === "string"
+      ? record.detail
+      : `Import failed (${response.status}). Check the source list before retrying.`,
+  );
 }
 
 function renderUploadQueue(queue) {

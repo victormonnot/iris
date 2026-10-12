@@ -651,12 +651,12 @@
     try {
       let response;
       try {
-        response = await fetch(
-          projectURL(`/api/datasets/${encodeURIComponent(id)}/export/coco`),
+        response = await irisRuntime.request(
+          `/api/datasets/${encodeURIComponent(id)}/export/coco`,
           { signal: controller.signal, mode: "same-origin", redirect: "error" },
         );
       } catch (error) {
-        if (error.name === "AbortError") throw error;
+        if (irisRuntime.mode !== "local" || error.name === "AbortError") throw error;
         throw new Error(
           "Cannot reach IRIS. Check that the local server is running and try again.",
         );

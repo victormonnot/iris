@@ -317,7 +317,7 @@
         "button button-secondary",
         "Download archive ↓",
       );
-      download.href = `/api/workspace/operations/${encodeURIComponent(operation.id)}/archive`;
+      download.href = projectURL(`/api/workspace/operations/${encodeURIComponent(operation.id)}/archive`);
       download.dataset.operationAction = "download";
       download.download = operation.result?.filename || "iris-workspace.zip";
       download.addEventListener("click", () =>
@@ -645,7 +645,7 @@
     updateControls();
   }
 
-  function uploadArchive(event) {
+  async function uploadArchive(event) {
     event.preventDefault();
     if (unavailable() || !view.preview) return;
     const file = field("file").files[0];
@@ -658,24 +658,27 @@
       view.uploadError = `Choose a non-empty ZIP archive no larger than ${bytes(view.preview.max_upload_bytes)}.`;
       return renderUpload();
     }
-    const xhr = new XMLHttpRequest();
-    const upload = { xhr, filename: file.name, done: 0, total: file.size };
+    const upload = { request: null, filename: file.name, done: 0, total: file.size };
     invalidateOperations();
     view.upload = upload;
     view.uploadError = "";
     renderUpload();
-    xhr.open("POST", "/api/workspace/restore-inspections");
-    xhr.responseType = "json";
-    xhr.upload.addEventListener("progress", (event) => {
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      upload.request = irisRuntime.upload("/api/workspace/restore-inspections", {
+        body,
+        onProgress: (event) => {
+          if (view.upload !== upload) return;
+          upload.total = event.lengthComputable ? event.total : file.size;
+          upload.done = event.loaded;
+          if (open()) renderUpload();
+        },
+      });
+      const response = await upload.request.promise;
+      const operation = await response.json().catch(() => null);
       if (view.upload !== upload) return;
-      upload.total = event.lengthComputable ? event.total : file.size;
-      upload.done = event.loaded;
-      if (open()) renderUpload();
-    });
-    xhr.addEventListener("load", () => {
-      if (view.upload !== upload) return;
-      if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.id) {
-        const operation = xhr.response;
+      if (response.ok && operation?.id) {
         view.operations = [
           operation,
           ...view.operations.filter((item) => item.id !== operation.id),
@@ -689,22 +692,20 @@
         field("file").value = "";
       } else
         view.uploadError =
-          typeof xhr.response?.detail === "string"
-            ? xhr.response.detail
-            : `Archive upload failed (${xhr.status}). Choose the file again and retry.`;
-    });
-    xhr.addEventListener("error", () => {
-      if (view.upload === upload)
-        view.uploadError =
-          "Cannot reach IRIS. The upload did not complete. Retry when the local server is available.";
-    });
-    xhr.addEventListener("abort", () => {
-      if (view.upload === upload)
+          typeof operation?.detail === "string"
+            ? operation.detail
+            : `Archive upload failed (${response.status}). Choose the file again and retry.`;
+    } catch (error) {
+      if (view.upload !== upload) return;
+      if (error.name === "AbortError")
         status(
           "Upload cancelled. Any operation already received by the server appears in the history below.",
         );
-    });
-    xhr.addEventListener("loadend", () => {
+      else
+        view.uploadError = irisRuntime.mode === "local"
+          ? "Cannot reach IRIS. The upload did not complete. Retry when the local server is available."
+          : error.message;
+    } finally {
       if (view.upload !== upload) return;
       view.upload = null;
       if (open()) {
@@ -713,10 +714,7 @@
         refreshOperations();
         refreshPreview();
       }
-    });
-    const form = new FormData();
-    form.append("file", file);
-    xhr.send(form);
+    }
   }
 
   field("open").addEventListener("click", () => {
@@ -776,7 +774,7 @@
   });
   field("upload-form").addEventListener("submit", uploadArchive);
   field("upload-cancel").addEventListener("click", () =>
-    view.upload?.xhr.abort(),
+    view.upload?.request?.abort(),
   );
   field("inspection-select").addEventListener("change", () =>
     chooseInspection(field("inspection-select").value),
