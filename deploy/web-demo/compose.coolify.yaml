@@ -14,18 +14,10 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m,mode=1777
     volumes:
-      - type: bind
-        source: /srv/iris-demo/site
-        target: /srv/iris-demo/site
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /srv/iris-demo/nginx.conf
-        target: /etc/nginx/conf.d/default.conf
-        read_only: true
-        bind:
-          create_host_path: false
+      # Pre-create both host paths. Short syntax retains :ro when Coolify parses
+      # a Docker Compose Empty service as well as a Git-based application.
+      - /srv/iris-demo/site:/srv/iris-demo/site:ro
+      - /srv/iris-demo/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
       interval: 30s
