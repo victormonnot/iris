@@ -18,6 +18,7 @@ license-files = [
     "src/iris/_vendor/torchvision-LICENSE",
     "src/iris/static/fonts/*-OFL.txt",
     "examples/street-scenes/CREDITS.txt",
+    "examples/web-demo/seed/CREDITS.txt",
     "docs/media/README.md",
 ]
 requires-python = ">=3.12,<3.14"

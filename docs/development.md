@@ -32,6 +32,9 @@ These checks establish software behavior. Accuracy and speed on real recordings
 need separate experiments; see [recorded results](acceptance-results.md) and
 [pipeline qualification](pipeline-qualification.md). The repository includes a
 small [attributed photo example](../examples/street-scenes/README.md), but no model weights.
+The [public browser data](../examples/web-demo/README.md) builds on that example.
+Its contract tests rebuild API snapshots in temporary workspaces and verify
+media hashes, provenance and saved predictions without running a model.
 
 ## Continuous integration
 

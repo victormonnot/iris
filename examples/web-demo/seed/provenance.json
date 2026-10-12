@@ -1,0 +1,184 @@
+{
+  "files": {
+    "CREDITS.txt": {
+      "sha256": "8adc44bcf1796eca5d2ef49daa6ac3b024b2c5c6eeef9cbb9db2febce34e2f0b",
+      "size_bytes": 2572
+    },
+    "fixture.json": {
+      "sha256": "dd151dc71270d22d805e1b902fa06d4e4a820b9c362c2e02294c07d561f1ad7d",
+      "size_bytes": 342226
+    },
+    "media/32941.jpg": {
+      "sha256": "2b881cc082e3d79f6685320ddf02e04ec534e7f904a090a4e627eb445cb26ebc",
+      "size_bytes": 209929
+    },
+    "media/32941.png": {
+      "sha256": "59ef8882bbb0db9a5139c81ecdc9fad052b75cc86bc93db3069a484105f34af7",
+      "size_bytes": 556841
+    },
+    "media/6723.jpg": {
+      "sha256": "1d3ba71e9002721a2bc18791f3c86578d6de38fb61640803657276d53e73663f",
+      "size_bytes": 200461
+    },
+    "media/6723.png": {
+      "sha256": "b0456272dcea6258d5212824521baf2f60959ec99bfddf4f4bd2bcab9a5e1b98",
+      "size_bytes": 460493
+    }
+  },
+  "format": "iris-web-demo-provenance-v1",
+  "iris_version": "0.56.0",
+  "normalization": {
+    "identities": "Temporary import identities replaced with stable public sample IDs.",
+    "import_created_at": "2026-10-12T00:00:00+00:00",
+    "order": "Imported frames, assets and proposals use stable source-ID ordering.",
+    "predictions": "All recorded native detections, coordinates and scores retained.",
+    "timestamps": "Import timestamps are fixture placeholders. Recorded inference dates and timings are retained from the actual run."
+  },
+  "recording_provenance": {
+    "archive_sha256": "da11b07d5b7608c2bc68b32d9fe55beec66d6fe14c27bef77e457824c5b9c750",
+    "completed_at": "2026-10-12T16:21:33.776484+00:00",
+    "entrypoint": "iris.inference.run_comparison",
+    "human_annotation_reviews": 0,
+    "inference_source_sha256": {
+      "coco_import.py": "36ef8dff42aaf5b95d53a1d09e4ea115e46502d5ca1e99f2eb10feb2394baebb",
+      "inference.py": "de601cded5be003d4092b236b6cecd0b5838f272445b6d94ad15b126f3b4bc22",
+      "media.py": "b9e5a931eea37ab8922aecdc28cdfdc98cf703bc5fabc7ccf36515e85e491a57",
+      "models.py": "33073a515a8c1a3a944404841df3c87f61c43ac4f4f3deeb6c7729fb66d4b834",
+      "store.py": "16946e65e3fa5ac85b905aa51b1db62d9a1c72c00b6f18df15620152283eccb0"
+    },
+    "iris_git_commit": "8b7bd7d9330a6d23113ebc399528285cbe0ffcaf",
+    "iris_version": "0.56.0",
+    "model_filtering": "All native model detections are saved; UI filtering has not been applied.",
+    "network_used": false,
+    "runtime_versions": {
+      "numpy": "2.5.3",
+      "pillow": "12.3.0",
+      "torch": "2.10.0+cpu",
+      "torchvision": "0.25.0+cpu"
+    },
+    "source_provenance_sha256": "e4ad0d631c4ea840905ec28258505c6f3248d7443930738b66ffb47dd0c261f5",
+    "started_at": "2026-10-12T16:21:31.186870+00:00",
+    "timing_scope": "Real measurements from this run and CPU only; not a browser or user-device performance promise."
+  },
+  "recording_sha256": "a8221c7872cbc5a520d84a4c50815ddb321cc5954422784ac57bc955e458e834",
+  "source": {
+    "annotation_count": 19,
+    "annotation_source": {
+      "attribution": "COCO Consortium; Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014",
+      "dataset": "COCO val2017",
+      "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/annotations/instances_val2017_mini500.json",
+      "downloaded_sha256": "31c8e48b3e0bc957da945ad43697f8d519d7aaeb5971cef19e4cfaa4a8423a56",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "mirror": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500",
+      "revision": "6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88",
+      "selected_records_canonical_sha256": "13b400e7e9a0a56a1594cf690d6fdb53326d17942ed233643eeb55001eb4bc1e",
+      "terms_url": "https://cocodataset.org/#termsofuse"
+    },
+    "bundle": "street-scenes.zip",
+    "categories": [
+      {
+        "id": 1,
+        "name": "person",
+        "supercategory": "person"
+      },
+      {
+        "id": 3,
+        "name": "car",
+        "supercategory": "vehicle"
+      },
+      {
+        "id": 6,
+        "name": "bus",
+        "supercategory": "vehicle"
+      },
+      {
+        "id": 8,
+        "name": "truck",
+        "supercategory": "vehicle"
+      },
+      {
+        "id": 10,
+        "name": "traffic light",
+        "supercategory": "outdoor"
+      }
+    ],
+    "default_import_mapping": {
+      "1": "person",
+      "10": "exclude",
+      "3": "car",
+      "6": "exclude",
+      "8": "exclude"
+    },
+    "default_import_proposal_count": 11,
+    "files": {
+      "CREDITS.txt": {
+        "sha256": "120133ce0d04b6f49852492966547d89360914c1aed40a788db690d146965f72",
+        "size_bytes": 2115
+      },
+      "annotations.json": {
+        "sha256": "4c642320afeaaa1fc0d7b055a837f9788d363956d1432277691906ad1b7334a7",
+        "size_bytes": 17031
+      }
+    },
+    "image_ids": [
+      6723,
+      32941
+    ],
+    "images": [
+      {
+        "annotation_count": 6,
+        "archive_path": "images/000000006723.jpg",
+        "author": "infomatique",
+        "author_url": "https://www.flickr.com/photos/infomatique/",
+        "coco_image_id": 6723,
+        "coco_source_url": "http://images.cocodataset.org/val2017/000000006723.jpg",
+        "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000006723.jpg",
+        "height": 361,
+        "license": "CC BY-SA 2.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+        "license_verification_source": "Flickr public oEmbed response for the photo URL",
+        "license_verified_on": "2026-10-08",
+        "photo_url": "https://www.flickr.com/photos/infomatique/4575950642/",
+        "sha256": "1d3ba71e9002721a2bc18791f3c86578d6de38fb61640803657276d53e73663f",
+        "size_bytes": 200461,
+        "title": "Clongriffin",
+        "width": 640
+      },
+      {
+        "annotation_count": 13,
+        "archive_path": "images/000000032941.jpg",
+        "author": "Alan Stanton",
+        "author_url": "https://www.flickr.com/photos/alanstanton/",
+        "coco_image_id": 32941,
+        "coco_source_url": "http://images.cocodataset.org/val2017/000000032941.jpg",
+        "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000032941.jpg",
+        "height": 640,
+        "license": "CC BY-SA 2.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+        "license_verification_source": "Flickr public oEmbed response for the photo URL",
+        "license_verified_on": "2026-10-08",
+        "photo_url": "https://www.flickr.com/photos/alanstanton/8224728949/",
+        "sha256": "2b881cc082e3d79f6685320ddf02e04ec534e7f904a090a4e627eb445cb26ebc",
+        "size_bytes": 209929,
+        "title": "Damaged Traffic Light - Junction of High Road & White Hart Lane",
+        "width": 458
+      }
+    ],
+    "purpose": "Small import and annotation example; not a training dataset or independent model-quality benchmark.",
+    "schema_version": 1,
+    "source_split": {
+      "import_value": "val",
+      "original": "COCO val2017"
+    },
+    "transformations": [
+      "Selected complete images 6723 and 32941 in that order.",
+      "Kept every original annotation record for both images, including excluded classes; sorted by image order then annotation ID.",
+      "Kept only the five used original category definitions and photo license entry.",
+      "Prepended images/ to COCO file_name values and recorded source_split=val.",
+      "Normalized JSON formatting; no image, annotation geometry or category reassignment."
+    ]
+  },
+  "source_archive_sha256": "da11b07d5b7608c2bc68b32d9fe55beec66d6fe14c27bef77e457824c5b9c750",
+  "store_schema_version": 22
+}
