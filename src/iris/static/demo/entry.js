@@ -131,7 +131,7 @@
       retry.removeAttribute("aria-disabled");
     }
   });
-  enter.addEventListener("click", () => {
+  enter.addEventListener("click", (event) => {
     if (phase !== "ready") return;
     setPhase("entering");
     enter.disabled = true;
@@ -142,7 +142,8 @@
       entry.close();
       workbench.inert = false;
       document.documentElement.classList.remove("iris-demo-entering");
-      document.getElementById("main").focus({ preventScroll: true });
+      // Keyboard and assistive activation keep a visible focus destination.
+      if (event.detail === 0) document.getElementById("main").focus({ preventScroll: true });
       window.dispatchEvent(new Event("iris:demo-entered"));
     };
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) finish();
