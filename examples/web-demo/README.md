@@ -2,8 +2,76 @@
 
 This example supplies one project, two street photographs, imported annotation
 proposals and a saved comparison of two detectors. The records use Iris's actual
-API shapes, for consumption by the shared browser interface. It contains data
-and generation tools; the interactive browser distribution is not bundled here.
+API shapes, for consumption by the shared browser interface. The browser adapter
+lets visitors select images, review annotations and inspect recorded predictions
+without an Iris API or model runtime.
+
+## Try the browser demo locally
+
+From the repository root, run the static preview with Python's standard library:
+
+```sh
+python3 examples/web-demo/serve.py
+```
+
+Open `http://127.0.0.1:8765/` (`--port` changes the port). This preview serves the
+maintained Iris HTML, styles and editor with the demo adapter enabled. It creates
+no local Iris workspace, runs no API and binds only to the loopback interface.
+The normal `iris` application continues to use its local backend. This helper is
+for previewing the browser runtime; it is not a production hosting server.
+
+The demo supports gallery selection and filters; drawing, moving, resizing and
+deleting boxes; accepting, correcting and rejecting imported proposals; saving
+drafts, validating, and viewing annotation history. Model comparison offers the
+real saved outputs with interactive class and confidence filters. Annotation
+edits never alter those recorded outputs or rerun a model.
+
+Personal uploads, class changes, new projects, new inference, model assistance,
+training, evaluation and the other processing workspaces require
+[local Iris](../../docs/setup.md). Their controls explain this limit. Unsupported
+adapter requests fail explicitly and cannot fall through to a server API.
+
+### Browser storage and reset
+
+Saved annotations, revisions and image selection live in IndexedDB for this
+browser and site. They survive reloads, but clearing site data removes them.
+Separate browser profiles have independent data; there are no hosted accounts.
+If the browser initially denies storage, a visible notice explains that changes
+live only in the current page and are lost on reload. A failure during an active
+persistent save is reported without silently switching storage modes.
+
+Two tabs in the same browser share saved data. A notification offers a reload
+when another tab saves; unsaved editor changes are kept. Stale annotation saves
+are rejected using revision and reset checks. Selection changes are atomic and
+reject conflicting values. Save or discard current editor changes before using
+the toolbar's export, reload or reset actions.
+
+**Reset demo** asks for confirmation before removing saved annotations, history
+and selection changes. A new reset identifier invalidates editors left open in
+other tabs. When a seed or storage schema changes, incompatible saved data is
+kept and the demo offers an explicit reset instead of silently deleting it.
+
+### Export and continue locally
+
+**Export saved annotations** downloads `iris-demo-annotations.json` as COCO JSON.
+It contains the current saved boxes for both example images, regardless of gallery
+selection. Pending proposals and recorded predictions are not exported as labels.
+The `iris` extension records review states, unresolved proposals, image selection
+and source attribution. Draft or unannotated images remain explicitly marked;
+this export is not a frozen training dataset or a complete workspace backup.
+
+To import the labels into local Iris:
+
+1. Extract [street-scenes.zip](../street-scenes/street-scenes.zip).
+2. Replace its `annotations.json` with the downloaded JSON, preserving the
+   original `images/` directory, credits and provenance. Create a ZIP containing
+   those files directly at its root.
+3. Use **Import annotated dataset** in local Iris, map `person` and `car`, retain
+   the original `val` split, and supply the photo and annotation credits from
+   the example. Imported boxes require human review again in the local workspace.
+
+Keep the downloaded JSON as well: the local COCO importer does not restore the
+demo's revision history or its human-validation status from the `iris` extension.
 
 ## Contents and attribution
 

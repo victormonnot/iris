@@ -1,0 +1,127 @@
+/* Loaded only by the static demo; the local workbench has no demo chrome. */
+.iris-demo-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 24px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.iris-demo-introduction,
+.iris-demo-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+.iris-demo-badge {
+  padding: 3px 8px;
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.iris-demo-actions :is(button, a) {
+  min-height: 40px;
+}
+
+.iris-demo-actions .button {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.iris-demo-install {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.iris-demo-toolbar > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.iris-demo-storage {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.iris-demo-memory,
+.iris-demo-edit-hint {
+  color: var(--warning);
+}
+
+.iris-demo-message {
+  color: var(--ink);
+}
+
+.iris-demo-error {
+  color: var(--danger);
+}
+
+.iris-demo-local-note {
+  margin: 12px 0;
+  padding: 12px;
+  border-left: 2px solid var(--control-line);
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.iris-demo [aria-disabled="true"] {
+  cursor: help;
+}
+
+.iris-demo .workspace-tab[aria-disabled="true"] {
+  color: var(--muted);
+}
+
+.iris-demo .iris-demo-hidden {
+  display: none !important;
+}
+
+.iris-demo-dialog {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.iris-demo-dialog > p {
+  line-height: 1.65;
+}
+
+.iris-demo-dialog .iris-demo-install {
+  min-height: 44px;
+}
+
+@media (max-width: 900px) {
+  .iris-demo-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 18px;
+  }
+
+  .iris-demo-actions {
+    gap: 8px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .iris-demo-toolbar {
+    padding-inline: 12px;
+  }
+
+  .iris-demo-actions :is(button, a) {
+    min-height: 44px;
+  }
+}

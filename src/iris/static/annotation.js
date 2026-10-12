@@ -351,7 +351,7 @@
   function rememberQueue() {
     if (!editor.sessionId) return;
     try {
-      localStorage.setItem(`iris.review-queue.${editor.sessionId}`, JSON.stringify({
+      localStorage.setItem(runtimePreference(`iris.review-queue.${editor.sessionId}`), JSON.stringify({
         filter: queue.filter,
         order: queue.order,
         comparisonId: queue.comparisonId,
@@ -378,7 +378,7 @@
     queue.confidence = 0.5;
     queue.iou = 0.5;
     try {
-      const saved = JSON.parse(localStorage.getItem(`iris.review-queue.${editor.sessionId}`));
+      const saved = JSON.parse(localStorage.getItem(runtimePreference(`iris.review-queue.${editor.sessionId}`)));
       if (saved) {
         if (["all", "needs_review", "uncertain", "possible_omissions", ...Object.keys(reviewLabels)].includes(saved.filter))
           queue.filter = saved.filter;
@@ -674,6 +674,7 @@
         sha256: document.frame.sha256,
       },
       revision: document.revision,
+      demo_epoch: document.demo_epoch,
       status: document.status,
       boxes: document.boxes,
       decisions: document.decisions,
@@ -709,7 +710,7 @@
     let reviewer = document.reviewer || "";
     if (!reviewer) {
       try {
-        reviewer = localStorage.getItem("iris.reviewer") || "";
+        reviewer = localStorage.getItem(runtimePreference("iris.reviewer")) || "";
       } catch {
         /* Optional storage. */
       }
@@ -1160,6 +1161,7 @@
         method: "PUT",
         body: JSON.stringify({
           expected_revision: editor.document.revision,
+          ...(editor.document.demo_epoch ? { demo_epoch: editor.document.demo_epoch } : {}),
           taxonomy_id: editor.document.taxonomy.id,
           boxes: editor.boxes.map(({ id, label, box, suggestion_id }) => ({
             id,
@@ -1174,7 +1176,7 @@
         }),
       });
       try {
-        localStorage.setItem("iris.reviewer", result.reviewer || "");
+        localStorage.setItem(runtimePreference("iris.reviewer"), result.reviewer || "");
       } catch {
         /* Optional storage. */
       }
@@ -2211,6 +2213,11 @@
     } }));
   }
   window.addEventListener("iris:annotation-context-request", publishContext);
+  window.addEventListener("iris:demo-reset", () => {
+    if (irisRuntime.mode !== "demo") return;
+    editor.dirty = false;
+    editor.busy = false;
+  });
   window.addEventListener("iris:preannotations-updated", () => {
     refreshCurrent();
     scheduleQueue(true);

@@ -61,6 +61,15 @@ to the local server. Runtime selection is supplied by application code, not a
 URL parameter. The standard local application has no alternate adapter or
 bundled example records enabled by default.
 
+The [browser demo](../examples/web-demo/README.md) composes that same entry point
+with `static/demo/bootstrap.js`. Its adapter reads attributed static fixtures
+and applies browser edits through a small annotation domain module. IndexedDB
+transactions preserve revisions and selection, with optimistic concurrency and
+a reset identifier for stale tabs. Recorded comparisons remain immutable.
+Unsupported API, resource and upload operations fail explicitly; there is no
+network fallback. The demo UI adds storage notices, export/reset and local
+installation links without maintaining another editor or workspace layout.
+
 ## Code map
 
 Paths below are relative to `src/iris/`. Feature modules implement the processing;

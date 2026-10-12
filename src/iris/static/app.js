@@ -1,9 +1,10 @@
 "use strict";
 
 const $ = (selector, root = document) => root.querySelector(selector);
+const runtimePreference = (key) => window.IRISRuntimeAdapter?.mode === "demo" ? `iris.demo.${key}` : key;
 const projectScope = window.IRISProjectScope.create(window.location.href, {
-  getItem: (key) => localStorage.getItem(key),
-  setItem: (key, value) => localStorage.setItem(key, value),
+  getItem: (key) => localStorage.getItem(runtimePreference(key)),
+  setItem: (key, value) => localStorage.setItem(runtimePreference(key), value),
 });
 const irisRuntime = window.IRISRuntime.create({
   projectScope,
@@ -555,7 +556,9 @@ async function updateSelection(id, selected, deferRender = false) {
   try {
     const result = await api(`/api/frames/${encodeURIComponent(id)}`, {
       method: "PATCH",
-      body: JSON.stringify({ selected }),
+      body: JSON.stringify({ selected,
+        ...(frame?.demo_epoch ? { demo_epoch: frame.demo_epoch, expected_selected: previous } : {}),
+      }),
     });
     const index = state.frames.findIndex((item) => item.id === id);
     if (index !== -1)
@@ -574,6 +577,7 @@ async function bulkSelection(selected) {
   if (state.bulkSelecting || state.pendingSelections.size) return;
   const sessionId = state.sessionId;
   const payload = window.IRISIntakeTools.selectionPayload(visibleFrames(), selected);
+  if (state.frames[0]?.demo_epoch) payload.demo_epoch = state.frames[0].demo_epoch;
   if (!payload.frame_ids.length) return;
   if (payload.frame_ids.length > 1000) {
     notify("Select at most 1,000 frames in one action. Narrow the source or gallery filters first.", true);
@@ -1647,7 +1651,7 @@ async function initialize() {
     window.dispatchEvent(new Event("iris:project-initialized"));
   } catch (error) {
     notify(error.message, true);
-    $("#storage-path").textContent = "Local server unavailable";
+    $("#storage-path").textContent = irisRuntime.mode === "local" ? "Local server unavailable" : "Demo unavailable";
     if (!state.sessions.length) {
       renderSessions();
       if (window.IRISNavigation) window.IRISNavigation.syncSession();
