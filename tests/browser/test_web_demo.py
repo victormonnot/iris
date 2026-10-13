@@ -236,6 +236,10 @@ def test_mobile_entry_and_installation_dialog_fit_the_screen(visit, theme, reduc
     _, page = visit(MOUNT, color_scheme=theme, reduced_motion=reduced)
     page.set_viewport_size({"width": 390, "height": 844})
     entry(page)
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+    page.evaluate("theme => IRISAppearance.setPreference(theme)", theme)
+    page.reload()
+    entry(page)
     assert page.evaluate("document.documentElement.dataset.theme") == theme
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for selector in ["#iris-demo-entry", "#iris-demo-entry .iris-demo-install", "#iris-demo-try"]:

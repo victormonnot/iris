@@ -6,12 +6,13 @@
   if (typeof window !== "undefined") root.IRISAppearance = appearance.create(window);
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const storageKey = "iris.appearance";
-  const normalize = (value) => value === "light" || value === "dark" ? value : "system";
 
   function create(browser) {
     const document = browser.document;
+    const defaultPreference = document.documentElement.dataset?.irisRuntime === "demo" ? "light" : "system";
+    const normalize = (value) => ["light", "dark", "system"].includes(value) ? value : defaultPreference;
     let storage;
-    let preference = "system";
+    let preference = defaultPreference;
     let media;
     let select;
     let theme;
