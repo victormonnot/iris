@@ -2,7 +2,7 @@
 
 (() => {
   const demo = window.IRISRuntimeAdapter?.mode === "demo";
-  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
+  const demoUnavailable = "Unavailable in demo mode. Install IRIS locally to use this feature.";
   const panel = $("#assistance-batches");
   const field = (name) => $(`#assistance-batch-${name}`);
   const batch = {

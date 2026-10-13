@@ -24,10 +24,10 @@ no local Iris workspace, runs no API and binds only to the loopback interface.
 The normal `iris` application continues to use its local backend. This helper is
 for previewing the browser runtime; it is not a production hosting server.
 
-The shared workbench and both FPV images load behind a soft blur. **Try Iris**
+The shared workbench and both FPV images load behind a soft blur. **Try IRIS**
 reveals the already-loaded interface in place. The entry explains the demo's
 limits, keeps the workbench inactive until entry, and offers a retry if the data,
-images or interface cannot load. **Install Iris locally** opens concise Linux/WSL
+images or interface cannot load. **Install IRIS locally** opens concise Linux/WSL
 instructions with copyable commands and links to the full setup and first-run
 guides; model inference and CUDA setup are separate optional steps.
 
@@ -69,7 +69,7 @@ kept and the demo offers an explicit reset instead of silently deleting it.
 
 ### Continue locally
 
-Use **Install Iris locally** for setup instructions. The hosted sample lets you
+Use **Install IRIS locally** for setup instructions. The hosted sample lets you
 explore the interface; importing your own recordings, exporting datasets and
 running models are available in the installed tool. Browser edits remain local
 to this demo and do not change the author's saved experiment.

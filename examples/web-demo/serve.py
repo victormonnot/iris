@@ -17,7 +17,7 @@ DEMO_URL = "https://iris.victormonnot.com/"
 DEMO_TITLE = "Try IRIS | Interactive Demo"
 DEMO_DESCRIPTION = "Discover IRIS through an interactive demo."
 SOCIAL_IMAGE = "social/iris-demo.png"
-SOCIAL_IMAGE_ALT = "Try Iris button over the blurred Iris workspace."
+SOCIAL_IMAGE_ALT = "Try IRIS button over the blurred IRIS workspace."
 
 
 def validate_revision(revision: str | None) -> None:

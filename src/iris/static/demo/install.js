@@ -26,7 +26,7 @@
   const heading = element("div", "modal-heading");
   const headingText = element("div");
   headingText.append(element("div", "eyebrow", "Your own workspace"));
-  const title = element("h2", "", "Run Iris on your computer.");
+  const title = element("h2", "", "Run IRIS on your computer.");
   title.id = "iris-demo-install-title";
   headingText.append(title);
   const close = element("button", "icon-button", "×");
@@ -35,7 +35,7 @@
   close.setAttribute("aria-label", "Close installation instructions");
   heading.append(headingText, close);
 
-  const intro = element("p", "iris-demo-install-intro", "Use the same interface with your own files. Iris runs a local server; your browser opens the workbench and the server stores your work and runs local computation on your computer.");
+  const intro = element("p", "iris-demo-install-intro", "Use the same interface with your own files. IRIS runs a local server; your browser opens the workbench and the server stores your work and runs local computation on your computer.");
   intro.id = "iris-demo-install-intro";
   const requirements = element("p", "iris-demo-install-requirements");
   requirements.append(
@@ -46,7 +46,7 @@
 
   const steps = element("ol", "iris-demo-install-steps");
   const start = element("li");
-  start.append(element("h3", "", "Start Iris"));
+  start.append(element("h3", "", "Start IRIS"));
   const code = element("code", "", [
     "git clone https://github.com/victormonnot/iris.git",
     "cd iris",
@@ -56,7 +56,7 @@
   code.id = "iris-demo-install-commands";
   const commands = element("pre", "iris-demo-install-commands");
   commands.tabIndex = 0;
-  commands.setAttribute("aria-label", "Terminal commands to install and start Iris");
+  commands.setAttribute("aria-label", "Terminal commands to install and start IRIS");
   commands.append(code);
   const copy = element("button", "button button-secondary", "Copy commands");
   copy.id = "iris-demo-install-copy";
@@ -76,13 +76,13 @@
   address.append(
     document.createTextNode("Visit "),
     link("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
-    document.createTextNode(" in your browser. Keep the terminal running; Ctrl+C stops Iris."),
+    document.createTextNode(" in your browser. Keep the terminal running; Ctrl+C stops IRIS."),
   );
   const storage = element("p", "field-hint");
   storage.append(
     document.createTextNode("Your workspace is saved in "),
     element("code", "", ".iris/"),
-    document.createTextNode(" in the directory where you start Iris. Importing files and reviewing annotations work without a GPU, model weights or an API key."),
+    document.createTextNode(" in the directory where you start IRIS. Importing files and reviewing annotations work without a GPU, model weights or an API key."),
   );
   open.append(address, storage);
 
@@ -103,7 +103,7 @@
   modelsTitle.id = "iris-demo-install-models-title";
   const modelsText = element("p");
   modelsText.append(
-    document.createTextNode("Stop Iris, then follow "),
+    document.createTextNode("Stop IRIS, then follow "),
     link("Add local detectors", docs + "setup.md#add-local-detectors"),
     document.createTextNode(" to install the CPU runtime and download model weights. For NVIDIA CUDA, follow the separate "),
     link("compute setup", docs + "compute-targets.md"),

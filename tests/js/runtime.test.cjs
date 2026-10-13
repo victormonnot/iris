@@ -12,7 +12,7 @@ function scope() {
 test("a distribution requiring an adapter cannot fall back to local transport after a script failure", (t) => {
   t.mock.method(globalThis, "fetch", () => assert.fail("No local API request is allowed"));
   for (const adapter of [undefined, null, createLocalAdapter()])
-    assert.throws(() => create({ projectScope: scope(), adapter, requiredMode: "demo" }), /required Iris runtime/);
+    assert.throws(() => create({ projectScope: scope(), adapter, requiredMode: "demo" }), /required IRIS runtime/);
   const adapter = { mode: "demo", request() {}, resourceURL() {}, upload() {} };
   assert.equal(create({ projectScope: scope(), adapter, requiredMode: "demo" }).mode, "demo");
   assert.equal(create({ projectScope: scope() }).mode, "local");

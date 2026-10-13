@@ -1322,7 +1322,7 @@
     const remote = $("#annotation-execution").value === "api";
     const ready = providerReady();
     $("#annotation-provider-status").textContent = demo
-      ? "Unavailable in demo mode. Install Iris locally to request model assistance."
+      ? "Unavailable in demo mode. Install IRIS locally to request model assistance."
       : !selected
       ? "No models available for this execution mode."
       : ready

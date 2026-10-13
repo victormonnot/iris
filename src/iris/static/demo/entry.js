@@ -28,7 +28,7 @@
   const scriptsReady = new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
 
   const localLink = () => {
-    notice.textContent = "This link opens a feature available in local Iris. Explore the sample here, or install Iris locally.";
+    notice.textContent = "This link opens a feature available in local IRIS. Explore the sample here, or install IRIS locally.";
     notice.hidden = false;
   };
   const address = new URL(window.location.href);

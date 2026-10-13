@@ -90,7 +90,7 @@
     if (typeof projectScope?.url !== "function")
       throw new TypeError("An IRIS project scope is required.");
     if (requiredMode !== undefined && adapter?.mode !== requiredMode)
-      throw new TypeError("The required Iris runtime could not be loaded. Reload to try again.");
+      throw new TypeError("The required IRIS runtime could not be loaded. Reload to try again.");
     const transport = adapter === undefined ? createLocalAdapter() : adapter;
     if (!transport || typeof transport.mode !== "string" || !transport.mode.trim() ||
         ["request", "resourceURL", "upload"].some((name) => typeof transport[name] !== "function"))

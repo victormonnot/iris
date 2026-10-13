@@ -147,6 +147,8 @@ test("loaded endpoints expose browser capabilities and recorded model identities
   assert.deepEqual(await read(adapter, "/api/annotation-providers"), { providers: [], default_provider: null, default_model: null });
   const models = await read(adapter, "/api/models");
   assert.equal(models.length, 2);
+  assert.equal(models[1].name, "YOLOX-Nano · trained in IRIS");
+  assert.match(models[1].training_summary, /trained in IRIS/);
   assert.ok(models.every((model) => model.status === "unavailable" && model.runtime_load_verified === false));
   assert.deepEqual(models.map((model) => model.weight_sha256), fixture.responses["/api/models"].map((model) => model.weight_sha256));
 });
@@ -284,19 +286,34 @@ test("review thresholds are bounded and unsupported comparison ordering is expli
 });
 
 test("recorded comparison responses stay immutable after selection and annotation edits", async (t) => {
-  const { adapter, store } = await setup(t);
+  const { adapter, store, seed } = await setup(t);
   const path = `/api/comparisons/${fixture.comparison_id}`;
+  const expected = await read(adapter, path);
+  const history = await read(adapter, `${SESSION}/comparisons`);
+  assert.equal(expected.name, "YOLOX-Nano · original vs trained in IRIS");
+  assert.equal(history[0].name, expected.name);
+  for (const field of ["id", "config", "runs", "predictions", "job"])
+    assert.deepEqual(expected[field], fixture.responses[path][field]);
+  const initial = await store.read();
   const original = await read(adapter, path);
   original.predictions.find((item) => item.detections.length).detections[0].score = -1;
-  assert.deepEqual(await read(adapter, path), fixture.responses[path]);
+  assert.deepEqual(await read(adapter, path), expected);
   const doc = await read(adapter, `/api/frames/${FIRST}/annotation`);
-  await read(adapter, `/api/frames/${FIRST}/annotation`, 200, body("PUT", savePayload(doc, { boxes: [manual()] })));
+  assert.equal(doc.prediction_sources[0].comparison_name, expected.name);
+  const saved = await read(adapter, `/api/frames/${FIRST}/annotation`, 200, body("PUT", savePayload(doc, {
+    boxes: [manual()], reviewer: "Iris", notes: "My Iris review",
+  })));
+  assert.equal(saved.reviewer, "Iris");
+  assert.equal(saved.notes, "My Iris review");
   const state = await store.read();
+  assert.equal(state.epoch, initial.epoch);
+  assert.equal(state.seedVersion, initial.seedVersion);
   await read(adapter, `/api/frames/${FIRST}`, 200, body("PATCH", {
     demo_epoch: state.epoch, selected: false, expected_selected: true,
   }));
-  assert.deepEqual(await read(adapter, path), fixture.responses[path]);
-  assert.deepEqual(await read(adapter, `${SESSION}/comparisons`), fixture.responses[`${SESSION}/comparisons`]);
+  assert.deepEqual(await read(adapter, path), expected);
+  assert.deepEqual(await read(adapter, `${SESSION}/comparisons`), history);
+  assert.deepEqual(seed, fixture);
 });
 
 test("export stays unavailable and reset restores seed without changing recordings", async (t) => {

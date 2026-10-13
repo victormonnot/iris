@@ -65,7 +65,7 @@ def test_preview_composes_shared_html_and_all_browser_assets(preview):
     assert html.index("annotation.js") < html.index("demo/ui.js")
     assert '<div id="iris-demo-workbench" inert>' in html
     assert 'data-iris-runtime="demo"' in html
-    assert 'aria-label="Try Iris"' in html
+    assert 'aria-label="Try IRIS"' in html
     assert "demo/install.js" in html
     native = Assets()
     native.feed((ROOT / "src/iris/static/index.html").read_text())

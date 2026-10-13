@@ -7,7 +7,7 @@
 
   const installURL = "https://github.com/victormonnot/iris/blob/main/docs/setup.md";
   const unavailable = "Unavailable in demo mode";
-  const localReason = "Install Iris locally to use your own files, run models and access the full workbench.";
+  const localReason = "Install IRIS locally to use your own files, run models and access the full workbench.";
   const $ = (selector) => document.querySelector(selector);
   const element = (tag, className, text) => {
     const item = document.createElement(tag);
@@ -22,7 +22,7 @@
     return item;
   };
   const installLink = () => {
-    const item = element("a", "iris-demo-install", "Install Iris locally ↗");
+    const item = element("a", "iris-demo-install", "Install IRIS locally ↗");
     item.href = installURL;
     item.target = "_blank";
     item.rel = "noopener noreferrer";
@@ -148,7 +148,7 @@
     const memory = detail.mode === "memory";
     storage.classList.toggle("iris-demo-memory", memory);
     storage.textContent = memory
-      ? "Temporary memory only. Demo edits disappear when this page closes or reloads. Install Iris locally to keep your own workspace."
+      ? "Temporary memory only. Demo edits disappear when this page closes or reloads. Install IRIS locally to keep your own workspace."
       : "Demo edits stay in this browser; resetting the demo or clearing site data removes them.";
   }
   window.addEventListener("iris:annotation-context", (event) => {
@@ -192,29 +192,29 @@
   // The optional third entry restricts a mixed region to its mutable controls.
   const policies = [
     ["#project-form, #session-form", "Create projects and sessions in your local workspace."],
-    ["#source-dropzone", "Import your own images and videos in local Iris."],
-    [".dataset-import-launch", "Import annotated datasets in local Iris.", "#dataset-import-open"],
-    [".workspace-backup-location", "Create and restore workspace backups in local Iris.", "#workspace-backup-open"],
-    ["#taxonomy-form", "Edit class definitions in local Iris. The sample definitions remain available to inspect."],
-    ["#dataset-import-dialog", "Import annotated datasets in local Iris.", "#dataset-import-upload input, #dataset-import-preview-button, #dataset-import-commit-form input, #dataset-import-commit-form select, #dataset-import-commit"],
-    ["#workspace-backup-dialog", "Create, download and restore full workspace backups in local Iris.", "#workspace-backup-create, #workspace-backup-upload-form input, #workspace-backup-upload, #workspace-backup-upload-cancel, #workspace-backup-restore-form input, #workspace-backup-restore, [data-operation-action='download'], [data-operation-action='restore'], [data-operation-action='remove'], [data-operation-action='cancel']"],
-    ["#extract-form, #video-review-form, #video-review-extract-form", "Analyze videos and extract frames in local Iris."],
-    ["#comparison-form", "Run models in local Iris. The saved comparison below contains real recorded outputs; its display filters remain interactive."],
-    [".comparison-model-library", "These models produced the recorded comparison. Install Iris locally to run your own comparisons.", "#model-catalog input"],
-    [".annotation-proposal-setup", "Import new detector proposals in local Iris. You can review the sample’s existing proposals below."],
-    [".annotation-assist, #preannotations, #dinox-preannotations, #assistance-batches", "Generate new proposals and request model assistance in local Iris. Manual annotation remains available in this demo."],
-    [".review-queue-controls", "Comparison-based prioritization requires local Iris. Review status filters remain available.", "#review-queue-comparison, #review-queue-confidence, #review-queue-iou, #review-queue-order"],
-    ["#dataset-form", "Prepare and freeze dataset releases in local Iris."],
-    ["#training-form, #training-recovery", "Train models and continue saved training runs in local Iris."],
-    ["#model-export-form, .model-export-measurement-import", "Create model packages and import performance measurements in local Iris."],
-    ["#evaluation-form, #evaluation-reference-form, #evaluation-test-audit", "Run evaluations and save reference decisions in local Iris."],
-    [".tracking-prepare, #selection-prepare, #bundle-prepare", "Run tracking, measure performance and prepare deployment bundles in local Iris."],
-    ["#tracking-quality-panel", "Calculate tracking quality reports in local Iris.", "#quality-reference, #quality-iou, #quality-mapping select, #quality-calculate"],
-    ["#identity-seed-panel, #identity-object-fields, .identity-review", "Create and save temporal identity references in local Iris."],
-    ["#benchmark-prepare, #benchmark-config-form, .benchmark-trial-setup", "Prepare benchmarks and run model trials in local Iris."],
-    ["#benchmark-pane-reports", "Create benchmark reports in local Iris.", "#benchmark-report-preview, #benchmark-report-save, #benchmark-report-title, #benchmark-report-notes"],
-    ["#experiments-workspace", "Create, edit and export experiment reports in local Iris.", "#experiments-new, #experiments-empty-create, #experiments-edit, #experiments-export, #experiments-export-cancel"],
-    ["#experiments-compose-form, #experiments-edit-form", "Create and edit experiment reports in local Iris."],
+    ["#source-dropzone", "Import your own images and videos in local IRIS."],
+    [".dataset-import-launch", "Import annotated datasets in local IRIS.", "#dataset-import-open"],
+    [".workspace-backup-location", "Create and restore workspace backups in local IRIS.", "#workspace-backup-open"],
+    ["#taxonomy-form", "Edit class definitions in local IRIS. The sample definitions remain available to inspect."],
+    ["#dataset-import-dialog", "Import annotated datasets in local IRIS.", "#dataset-import-upload input, #dataset-import-preview-button, #dataset-import-commit-form input, #dataset-import-commit-form select, #dataset-import-commit"],
+    ["#workspace-backup-dialog", "Create, download and restore full workspace backups in local IRIS.", "#workspace-backup-create, #workspace-backup-upload-form input, #workspace-backup-upload, #workspace-backup-upload-cancel, #workspace-backup-restore-form input, #workspace-backup-restore, [data-operation-action='download'], [data-operation-action='restore'], [data-operation-action='remove'], [data-operation-action='cancel']"],
+    ["#extract-form, #video-review-form, #video-review-extract-form", "Analyze videos and extract frames in local IRIS."],
+    ["#comparison-form", "Run models in local IRIS. The saved comparison below contains real recorded outputs; its display filters remain interactive."],
+    [".comparison-model-library", "These models produced the recorded comparison. Install IRIS locally to run your own comparisons.", "#model-catalog input"],
+    [".annotation-proposal-setup", "Import new detector proposals in local IRIS. You can review the sample’s existing proposals below."],
+    [".annotation-assist, #preannotations, #dinox-preannotations, #assistance-batches", "Generate new proposals and request model assistance in local IRIS. Manual annotation remains available in this demo."],
+    [".review-queue-controls", "Comparison-based prioritization requires local IRIS. Review status filters remain available.", "#review-queue-comparison, #review-queue-confidence, #review-queue-iou, #review-queue-order"],
+    ["#dataset-form", "Prepare and freeze dataset releases in local IRIS."],
+    ["#training-form, #training-recovery", "Train models and continue saved training runs in local IRIS."],
+    ["#model-export-form, .model-export-measurement-import", "Create model packages and import performance measurements in local IRIS."],
+    ["#evaluation-form, #evaluation-reference-form, #evaluation-test-audit", "Run evaluations and save reference decisions in local IRIS."],
+    [".tracking-prepare, #selection-prepare, #bundle-prepare", "Run tracking, measure performance and prepare deployment bundles in local IRIS."],
+    ["#tracking-quality-panel", "Calculate tracking quality reports in local IRIS.", "#quality-reference, #quality-iou, #quality-mapping select, #quality-calculate"],
+    ["#identity-seed-panel, #identity-object-fields, .identity-review", "Create and save temporal identity references in local IRIS."],
+    ["#benchmark-prepare, #benchmark-config-form, .benchmark-trial-setup", "Prepare benchmarks and run model trials in local IRIS."],
+    ["#benchmark-pane-reports", "Create benchmark reports in local IRIS.", "#benchmark-report-preview, #benchmark-report-save, #benchmark-report-title, #benchmark-report-notes"],
+    ["#experiments-workspace", "Create, edit and export experiment reports in local IRIS.", "#experiments-new, #experiments-empty-create, #experiments-edit, #experiments-export, #experiments-export-cancel"],
+    ["#experiments-compose-form, #experiments-edit-form", "Create and edit experiment reports in local IRIS."],
   ];
   const notes = new WeakMap();
   let noteCount = 0;
@@ -274,7 +274,7 @@
       mark(target, localReason);
     const dropzone = $("#source-dropzone");
     if (dropzone) {
-      dropzone.dataset.demoLocalDrop = "Import your own files in local Iris.";
+      dropzone.dataset.demoLocalDrop = "Import your own files in local IRIS.";
       dropzone.classList.add("iris-demo-unavailable-zone");
     }
   }
@@ -323,8 +323,8 @@
     reloadButton.hidden = false;
     storage.textContent = "The demo workspace could not be opened. Existing browser data has been kept.";
     message(failure?.message || (canRecover
-      ? "Reset the demo explicitly to start over, or install Iris locally."
-      : "Reload the demo to try again, or install Iris locally."), true);
+      ? "Reset the demo explicitly to start over, or install IRIS locally."
+      : "Reload the demo to try again, or install IRIS locally."), true);
     controls();
   });
 })();

@@ -145,10 +145,10 @@
   function updateLaunch() {
     if (irisRuntime.mode === "demo") {
       $("#model-selection-summary").textContent = "Unavailable in demo mode";
-      $("#model-catalog-hint").textContent = "These models produced the saved comparison below. Install Iris locally to run your own models.";
+      $("#model-catalog-hint").textContent = "These models produced the saved comparison below. Install IRIS locally to run your own models.";
       $("#comparison-selection").textContent = "Recorded results are ready to inspect below.";
       $("#comparison-selection-hint").textContent = "Unavailable in demo mode. New comparisons require a local installation.";
-      $("#comparison-mode-hint").textContent = "Inference settings apply to new runs in local Iris.";
+      $("#comparison-mode-hint").textContent = "Inference settings apply to new runs in local IRIS.";
       $("#comparison-tiling-fields").hidden = inferenceMode() === "full";
       $("#comparison-plan").textContent = "";
       $("#run-comparison").disabled = true;

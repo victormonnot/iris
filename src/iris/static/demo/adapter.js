@@ -9,7 +9,7 @@
   if (typeof module === "object" && module.exports) module.exports = tools;
   else root.IRISDemoAdapter = tools;
 })(typeof globalThis !== "undefined" ? globalThis : this, (annotations, catalog) => {
-  const LOCAL_ONLY = "Unavailable in demo mode. Install Iris locally to use this feature.";
+  const LOCAL_ONLY = "Unavailable in demo mode. Install IRIS locally to use this feature.";
   const copy = (value) => structuredClone(value);
   const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
   const json = (value, status = 200) => new Response(JSON.stringify(value), {
@@ -22,12 +22,28 @@
     assisted_annotation: false, workspace_backup: false,
   });
 
+  function displaySeed(seed) {
+    // Update public example copy without changing the seed hash or saved browser edits.
+    const fields = new Set(["name", "description", "training_summary", "comparison_name", "license_name", "attribution"]);
+    const display = copy(seed);
+    function visit(value) {
+      if (!value || typeof value !== "object") return;
+      for (const [key, item] of Object.entries(value)) {
+        if (fields.has(key) && typeof item === "string") value[key] = item.replace(/\bIris\b/g, "IRIS");
+        else visit(item);
+      }
+    }
+    visit(display.responses);
+    return display;
+  }
+
   function create({ load, onChange = () => {} }) {
     let seed, store, provenance, base, resources, initializationError, readOnly;
     let ready = Promise.resolve().then(load).then((loaded) => {
       ({ seed, store, provenance } = loaded);
       if (seed.format !== "iris-web-demo-v1" || seed.fixture_version !== 1)
         fail(503, "This example format is not supported. Update or reload the demo.");
+      seed = displaySeed(seed);
       base = new URL(loaded.baseURL);
       if (!/^https?:$/.test(base.protocol) || !base.pathname.endsWith("/"))
         fail(503, "Invalid demo asset location.");
@@ -45,7 +61,7 @@
 
     function route(path, allowed = []) {
       if (typeof path !== "string" || !path.startsWith("/api/") || path.includes("\\"))
-        fail(400, "Only logical Iris API paths are accepted by the demo.");
+        fail(400, "Only logical IRIS API paths are accepted by the demo.");
       const url = new URL(path, base);
       if (url.origin !== base.origin || !url.pathname.startsWith("/api/") || url.hash)
         fail(400, "Invalid demo request path.");
@@ -95,7 +111,7 @@
       return value;
     }
     function reviewQueue(state, query) {
-      if (query.get("comparison_id")) fail(501, "Comparison-based review ordering requires local Iris. Inspect the recorded outputs in Model comparison.");
+      if (query.get("comparison_id")) fail(501, "Comparison-based review ordering requires local IRIS. Inspect the recorded outputs in Model comparison.");
       for (const key of ["confidence_threshold", "iou_threshold"]) {
         if (!query.has(key)) continue;
         const text = query.get(key), number = Number(text);
@@ -169,7 +185,7 @@
           if (key === "/api/annotation-providers") return json({providers: [], default_provider: null, default_model: null});
           if (key === "/api/jobs") return json([]);
           if (key === "/api/models") return json(seed.responses[key].map((model) => ({
-            ...model, status: "unavailable", reason: "Recorded results included. Unavailable in demo mode; install Iris locally to run models.",
+            ...model, status: "unavailable", reason: "Recorded results included. Unavailable in demo mode; install IRIS locally to run models.",
             runtime_load_verified: false,
           })));
           const state = await store.read();

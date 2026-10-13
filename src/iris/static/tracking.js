@@ -2,7 +2,7 @@
 
 (() => {
   const demo = window.IRISRuntimeAdapter?.mode === "demo";
-  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
+  const demoUnavailable = "Unavailable in demo mode. Install IRIS locally to use this feature.";
   const tools = window.IRISTrackingTools;
   const field = (name) => $(`#tracking-${name}`);
   const safe = encodeURIComponent;

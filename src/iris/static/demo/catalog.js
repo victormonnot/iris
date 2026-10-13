@@ -7,7 +7,7 @@
   if (typeof module === "object" && module.exports) module.exports = tools;
   else root.IRISDemoCatalog = tools;
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const reason = "Unavailable in demo mode. Install Iris locally to run this operation.";
+  const reason = "Unavailable in demo mode. Install IRIS locally to run this operation.";
   const unavailable = () => ({ status: "unavailable", available: false, demo: true, reason });
 
   function create(seed) {
