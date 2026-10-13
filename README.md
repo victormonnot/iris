@@ -2,7 +2,7 @@
 
 Aim to accelerate the learning loop from field data to mission-specific vision models.
 
-**[Try Iris in your browser →](https://iris.victormonnot.com/)**
+[![Try Iris in your browser — no installation needed](docs/media/try-iris.svg)](https://iris.victormonnot.com/)
 
 ## What I'm building
 

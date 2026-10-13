@@ -1,7 +1,13 @@
 # README media
 
-These visuals use the real Iris interface and saved project data. No model was
-run to produce them, and no predictions or scores were invented.
+The screenshots and comparison figures use the real Iris interface and saved
+project data. No model was run to produce them, and no predictions or scores
+were invented.
+
+## Demo button
+
+`try-iris.svg` uses Iris's icon and interface colours. This original artwork is
+covered by the repository's [MIT License](../../LICENSE).
 
 ## Model comparison
 
