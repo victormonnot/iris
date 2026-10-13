@@ -87,12 +87,12 @@
   open.append(address, storage);
 
   const sample = element("li");
-  sample.append(element("h3", "", "Try the included photos"));
+  sample.append(element("h3", "", "Start your own project"));
   const tour = element("p");
   tour.append(
     document.createTextNode("Follow the "),
-    link("two-photo walkthrough", docs + "first-run.md"),
-    document.createTextNode(" to import the included street scenes and review their labels in a separate local workspace, or create a project and import your own images."),
+    link("first-run walkthrough", docs + "first-run.md"),
+    document.createTextNode(" to learn how to import images and review labels, then create a project with your own recordings."),
   );
   sample.append(tour);
   steps.append(start, open, sample);

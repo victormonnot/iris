@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const datasetTools = window.IRISDatasetTools;
   const taxonomyTools = window.IRISTaxonomyTools;
   const recoveryTools = window.IRISTrainingRecovery;
@@ -738,7 +740,7 @@
     const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
     const device = workspace.trainingDevices.find((item) => item.id === $("#training-device").value);
     const unavailable =
-      workspace.trainingBusy ||
+      demo || workspace.trainingBusy ||
       workspace.trainingModelsLoading ||
       workspace.trainingDevicesLoading ||
       !device?.available ||
@@ -757,7 +759,7 @@
     $("#dataset-use-training").disabled = workspace.trainingBusy ||
       !workspace.datasetDetail || workspace.datasetDetail.id !== workspace.datasetId ||
       !datasetTools.mlSupported(workspace.datasetDetail);
-    $("#training-device-status").textContent = workspace.trainingDevicesLoading
+    $("#training-device-status").textContent = demo ? demoUnavailable : workspace.trainingDevicesLoading
       ? "Checking the local PyTorch runtime and visible devices…"
       : [workspace.trainingDevicesError, device?.reason,
         ...workspace.trainingDeviceNotes].filter(Boolean).join(" ") ||
@@ -773,14 +775,14 @@
     $("#training-dataset-limitation").textContent = dataset
       ? `${taxonomyTools.versionLabel(taxonomy)} · ${taxonomy.classes.map((item) => item.name).join(", ")}. Trained parents must use these exact saved definitions.`
       : "Choose a frozen release to see compatible starting checkpoints.";
-    $("#training-model-status").textContent = workspace.trainingModelsLoading
+    $("#training-model-status").textContent = demo ? demoUnavailable : workspace.trainingModelsLoading
       ? "Checking local checkpoints and supported training depths…"
       : workspace.trainingModelsError || (model?.status === "ready"
         ? compatibility.reason
         : "A ready Faster R-CNN, SSDLite or YOLOX-Nano checkpoint and the optional PyTorch runtime are required. Check Model comparison for setup instructions.");
     $("#training-model-description").textContent = model?.training_summary || "";
     $("#training-preview").disabled = unavailable;
-    $("#training-readiness").textContent = workspace.trainingBusy
+    $("#training-readiness").textContent = demo ? demoUnavailable : workspace.trainingBusy
       ? workspace.trainingOperation === "start" ? "Queuing this reviewed plan…" : "Checking the frozen release, checkpoint and settings…"
       : workspace.trainingModelsLoading || workspace.trainingDevicesLoading
         ? "Checking local models and compute availability…"
@@ -908,13 +910,13 @@
     select.replaceChildren();
     for (const model of eligible) {
       const compatibility = datasetTools.modelCompatibility(dataset, model, "training");
-      const option = new Option(`${model.name}${!compatibility.compatible ? " · incompatible classes" : model.status !== "ready" ? " · setup required" : ""}`, model.id);
+      const option = new Option(`${model.name}${demo ? " · unavailable in demo mode" : !compatibility.compatible ? " · incompatible classes" : model.status !== "ready" ? " · setup required" : ""}`, model.id);
       option.disabled = model.status !== "ready" || !compatibility.compatible;
       option.title = compatibility.reason;
       select.append(option);
     }
     const ready = eligible.filter((model) => model.status === "ready" && datasetTools.modelCompatibility(dataset, model, "training").compatible);
-    if (!ready.length) select.prepend(new Option("No compatible ready checkpoint", ""));
+    if (!ready.length) select.prepend(new Option(demo ? "Unavailable in demo mode" : "No compatible ready checkpoint", ""));
     const defaultModel = ready.find((model) => model.id === "fasterrcnn_mobilenet_v3_large_320_fpn") || ready[0];
     select.value = ready.some((model) => model.id === previous) ? previous : defaultModel?.id || "";
     const scopeChanged = renderTrainingScopes();
@@ -964,7 +966,8 @@
       workspace.trainingDevicesError = `Device availability could not be checked: ${error.message}`;
     }
     if (request !== workspace.trainingDevicesRequest) return;
-    workspace.trainingDevices = recoveryTools.deviceChoices(report, previous);
+    workspace.trainingDevices = recoveryTools.deviceChoices(report, previous).map((device) =>
+      demo ? { ...device, available: false, reason: demoUnavailable } : device);
     workspace.trainingDeviceNotes = [...new Set([
       ...(report?.notes || []),
       ...workspace.trainingDevices.filter((device) => !device.available && device.id !== previous).map((device) => device.reason).filter(Boolean),

@@ -8,9 +8,9 @@ const annotations = require("../../src/iris/static/demo/annotations.js");
 const fixture = require("../../examples/web-demo/seed/fixture.json");
 const provenance = require("../../examples/web-demo/seed/provenance.json");
 
-const FIRST = "frame-6723";
-const SECOND = "frame-32941";
-const SESSION = "/api/sessions/street-scenes";
+const SESSION = `/api/sessions/${fixture.session_id}`;
+const [FIRST, SECOND] = fixture.responses[`${SESSION}/frames`].map((frame) => frame.id);
+const SECOND_ASSET = fixture.responses[`${SESSION}/frames`][1].asset_id;
 const scope = (path) => `${path}${path.includes("?") ? "&" : "?"}project_id=web-demo`;
 const body = (method, value) => ({ method, body: JSON.stringify(value) });
 
@@ -71,7 +71,7 @@ test("demo requests never fall through to fetch, XHR, upload, or unavailable nat
     ["GET", "/api/private-route"],
   ]) {
     const error = await read(adapter, path, 501, body(method, {}));
-    assert.match(error.detail, /local Iris/);
+    assert.match(error.detail, /Unavailable in demo mode/);
   }
   const upload = adapter.upload(scope(`${SESSION}/assets`), { body: new FormData() });
   assert.equal(typeof upload.abort, "function");
@@ -86,7 +86,7 @@ test("scope, query and resource restrictions fail closed", async (t) => {
     ["https://other.example/api/sessions?project_id=web-demo", 400],
     ["//other.example/api/sessions?project_id=web-demo", 400],
     ["/static/app.js", 400], ["/api/../static/app.js?project_id=web-demo", 400],
-    ["/api/frames\\frame-6723?project_id=web-demo", 400],
+    [`/api/frames\\${FIRST}?project_id=web-demo`, 400],
     ["/api/sessions", 404], ["/api/sessions?project_id=default", 404],
     ["/api/projects?project_id=other", 404],
     ["/api/sessions?project_id=web-demo&project_id=web-demo", 422],
@@ -99,8 +99,8 @@ test("scope, query and resource restrictions fail closed", async (t) => {
     assert.equal(response.status, status, path);
   }
   const resource = `/api/frames/${FIRST}/image`;
-  assert.equal(adapter.resourceURL(scope(resource)), "https://iris.example/demo/seed/media/6723.png");
-  assert.equal(adapter.resourceURL(scope(`/api/assets/asset-32941/media`)), "https://iris.example/demo/seed/media/32941.jpg");
+  assert.equal(adapter.resourceURL(scope(resource)), `https://iris.example/demo/seed/${fixture.resources[resource]}`);
+  assert.equal(adapter.resourceURL(scope(`/api/assets/${SECOND_ASSET}/media`)), `https://iris.example/demo/seed/${fixture.resources[`/api/assets/${SECOND_ASSET}/media`]}`);
   assert.throws(() => adapter.resourceURL(resource), { status: 404 });
   assert.throws(() => adapter.resourceURL(scope("/api/workspace/archives/private")), { status: 501 });
   assert.throws(() => adapter.resourceURL(scope(`${resource}?comparison_id=saved`)), { status: 422 });
@@ -133,7 +133,7 @@ test("invalid seed media locations cannot escape the declared public media direc
     t.after(() => store.close());
     const adapter = create({ load: async () => ({ seed, store, provenance, baseURL: "https://iris.example/demo/seed/" }) });
     await assert.rejects(adapter.ready, { status: 503 }, target);
-    assert.throws(() => adapter.resourceURL(scope("/api/assets/asset-32941/media")), { status: 503 });
+    assert.throws(() => adapter.resourceURL(scope(`/api/assets/${SECOND_ASSET}/media`)), { status: 503 });
   }
 });
 
@@ -149,6 +149,37 @@ test("loaded endpoints expose browser capabilities and recorded model identities
   assert.equal(models.length, 2);
   assert.ok(models.every((model) => model.status === "unavailable" && model.runtime_load_verified === false));
   assert.deepEqual(models.map((model) => model.weight_sha256), fixture.responses["/api/models"].map((model) => model.weight_sha256));
+});
+
+test("native read-only workspaces load without publishing invented runs or enabling compute", async (t) => {
+  const { adapter } = await setup(t);
+  for (const path of ["/api/datasets", "/api/trainings", "/api/evaluations", "/api/experiments",
+    "/api/benchmarks", "/api/model-exports", "/api/temporal/sequences",
+    "/api/temporal/tracking-studies", "/api/temporal/tracking-selections", "/api/temporal/pipeline-bundles"])
+    assert.deepEqual(await read(adapter, path), []);
+  const taxonomy = fixture.responses[`/api/projects/${fixture.project_id}/taxonomies`].current_taxonomy_id;
+  for (const path of ["/api/dataset-candidates", "/api/benchmark-candidates"]) {
+    const candidates = await read(adapter, `${path}?taxonomy_id=${encodeURIComponent(taxonomy)}`);
+    assert.equal(candidates.taxonomy.id, taxonomy);
+    assert.deepEqual(candidates.groups, []);
+    await read(adapter, `${path}?taxonomy_id=foreign`, 404);
+    await read(adapter, `${path}?taxonomy_id=${taxonomy}&taxonomy_id=${taxonomy}`, 422);
+  }
+  const devices = await read(adapter, "/api/training/devices");
+  assert.ok(devices.devices.every((device) => device.available === false));
+  assert.equal((await read(adapter, "/api/temporal/tracking-status")).available, false);
+  assert.equal((await read(adapter, "/api/benchmark-providers")).multimodal.available, false);
+});
+
+test("recorded endpoints take priority over empty native catalogue fallbacks", async (t) => {
+  const seed = structuredClone(fixture);
+  const recorded = [{ id: "test-recording", name: "Synthetic historical record for routing test" }];
+  seed.responses["/api/trainings"] = recorded;
+  const { adapter } = await setup(t, { seed });
+  const response = await read(adapter, "/api/trainings");
+  assert.deepEqual(response, recorded);
+  response[0].name = "Changed";
+  assert.deepEqual(await read(adapter, "/api/trainings"), recorded);
 });
 
 test("annotation writes, revision reads and API conflicts use the same current storage snapshot", async (t) => {
@@ -256,7 +287,7 @@ test("recorded comparison responses stay immutable after selection and annotatio
   const { adapter, store } = await setup(t);
   const path = `/api/comparisons/${fixture.comparison_id}`;
   const original = await read(adapter, path);
-  original.predictions[0].detections[0].score = -1;
+  original.predictions.find((item) => item.detections.length).detections[0].score = -1;
   assert.deepEqual(await read(adapter, path), fixture.responses[path]);
   const doc = await read(adapter, `/api/frames/${FIRST}/annotation`);
   await read(adapter, `/api/frames/${FIRST}/annotation`, 200, body("PUT", savePayload(doc, { boxes: [manual()] })));
@@ -268,17 +299,14 @@ test("recorded comparison responses stay immutable after selection and annotatio
   assert.deepEqual(await read(adapter, `${SESSION}/comparisons`), fixture.responses[`${SESSION}/comparisons`]);
 });
 
-test("export uses current saved labels and attribution; reset restores seed without changing recordings", async (t) => {
+test("export stays unavailable and reset restores seed without changing recordings", async (t) => {
   const { adapter, events } = await setup(t);
   const path = `/api/frames/${FIRST}/annotation`;
   const original = await read(adapter, path);
-  assert.deepEqual((await adapter.exportAnnotations()).annotations, []);
+  await assert.rejects(adapter.exportAnnotations(), { status: 501 });
   const saved = await read(adapter, path, 200, body("PUT", savePayload(original, { boxes: [manual()] })));
-  const exported = await adapter.exportAnnotations();
-  assert.equal(exported.annotations.length, 1);
-  assert.deepEqual(exported.annotations[0].bbox, [1, 2, 10, 20]);
-  assert.equal(exported.iris.reviews[0].status, "draft");
-  assert.deepEqual(exported.iris.source_provenance, provenance.source);
+  assert.equal(adapter.capabilities.annotation_export, false);
+  await assert.rejects(adapter.exportAnnotations(), { status: 501 });
   await adapter.reset();
   const reset = await read(adapter, path);
   assert.equal(reset.revision, 0);
@@ -286,7 +314,7 @@ test("export uses current saved labels and attribution; reset restores seed with
   assert.deepEqual(reset.boxes, []);
   assert.ok(reset.suggestions.every((item) => item.state === "pending"));
   assert.ok((await read(adapter, `${SESSION}/frames`)).every((frame) => frame.selected));
-  assert.deepEqual((await adapter.exportAnnotations()).annotations, []);
+  await assert.rejects(adapter.exportAnnotations(), { status: 501 });
   await read(adapter, path, 409, body("PUT", savePayload(saved, { expected_revision: 0 })));
   assert.deepEqual(events, [{ kind: "annotation", frameId: FIRST }, { kind: "reset" }]);
 });

@@ -23,37 +23,38 @@ Font binaries are unmodified. The accompanying
 [font provenance](static/fonts/README.md) records their upstream sources,
 versions and hashes. Preserve the three font licence files with the WOFF2 files.
 
-## Street-scene photographs and annotations
+## FPV images and human reference annotations
 
-The two photographs are **“Clongriffin” by infomatique** and **“Damaged Traffic
-Light - Junction of High Road & White Hart Lane” by Alan Stanton**, under
-Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0). The JPEGs
-retain their original bytes. The PNGs are Iris's RGB-normalized display copies,
-at the original dimensions, with no boxes or retouching baked into them; they
-retain the same photo credits and licence.
+The two camera images and manual person boxes belong to **Victor Monnot**.
+They are published by their author for this Iris demonstration, with all rights
+reserved. They are separate from the Iris MIT software licence; no general
+redistribution or training-data licence is granted.
 
-Original COCO annotations are attributed to the **COCO Consortium** under
-Creative Commons Attribution 4.0 International (CC BY 4.0). They enter the demo
-as proposals for human review.
+JPEGs retain the original camera bytes. PNGs are RGB-normalized display copies
+at the original dimensions, with no crop, drawn boxes or retouching baked in.
+Human source boxes enter the visitor workspace as proposals awaiting review.
 
-[CREDITS.txt](seed/CREDITS.txt) contains each photograph's original URL, author
-link, licence link, annotation attribution and packaging changes.
-[provenance.json](seed/provenance.json) records source provenance and file
-hashes. Keep both with the sample media. These licences apply separately from
-the Iris code licence.
+[CREDITS.txt](seed/CREDITS.txt) records the author, source and use terms.
+[provenance.json](seed/provenance.json) records original image hashes and the
+frozen human reference. Keep both with the sample media.
 
 ## Link preview image
 
-[iris-demo.png](social/iris-demo.png) is a screenshot of the real demo entry
-screen, including blurred views of the sample photographs. Those photographic
-adaptations retain the CC BY-SA 2.0 licence and the authors and source credits
-listed in [CREDITS.txt](seed/CREDITS.txt). The interface retains its MIT licence.
+[iris-demo.png](social/iris-demo.png) captures the real demo entry screen,
+including blurred views of the FPV images. Those images retain Victor Monnot's
+copyright and the terms in [CREDITS.txt](seed/CREDITS.txt). The interface retains
+its MIT licence.
 
 ## Recorded model outputs
 
-The example includes saved CPU predictions from SSDLite320 MobileNetV3-Large
-and Faster R-CNN MobileNetV3-Large 320 FPN. Their identities, checkpoint hashes,
-runtime metadata and measured timings are preserved in
-[fixture.json](seed/fixture.json). These are recorded examples; the static
-artifact includes no model weights, Python ML runtimes or vendored inference
-libraries, and it runs no new inference.
+The example preserves selected saved predictions from original YOLOX-Nano and a
+person-only version trained in Iris for 800 steps. The display comparison joins
+two existing evaluations; it does not represent a new joint inference run.
+Model identities, checkpoint hashes, source evaluation IDs, runtime metadata and
+unchanged per-image CUDA timings appear in [fixture.json](seed/fixture.json).
+
+The saved model source identifies the
+[YOLOX Apache 2.0 licence](https://github.com/Megvii-BaseDetection/YOLOX/tree/419778480ab6ec0590e5d3831b3afb3b46ab2aa3/LICENSE).
+The static artifact includes no model weights, Python ML runtimes or vendored
+inference libraries, and it runs no new inference. Selected development images
+are not an independent model-quality benchmark.

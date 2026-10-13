@@ -18,24 +18,6 @@ DEMO_TITLE = "Try IRIS | Interactive Demo"
 DEMO_DESCRIPTION = "Discover IRIS through an interactive demo."
 SOCIAL_IMAGE = "social/iris-demo.png"
 SOCIAL_IMAGE_ALT = "Try Iris button over the blurred Iris workspace."
-# Retain the shared modules used by the supported workspaces. Processing modules
-# have no browser implementation; their controls are explained by demo/ui.js.
-DEMO_SCRIPTS = {
-    "appearance.js",
-    "project-scope.js",
-    "runtime.js",
-    "taxonomy-tools.js",
-    "intake-tools.js",
-    "job-tools.js",
-    "app.js",
-    "navigation.js",
-    "taxonomies.js",
-    "comparison-replay.js",
-    "comparison.js",
-    "annotation-tools.js",
-    "preannotation-tools.js",
-    "annotation.js",
-}
 
 
 def validate_revision(revision: str | None) -> None:
@@ -97,11 +79,6 @@ def demo_index(
         for key, value in entries.items()
     )
     source = source.replace("  </head>", metadata + "\n  </head>")
-    source = re.sub(
-        r'    <script src="/static/([^"/]+)"[^>]*></script>\n',
-        lambda match: match[0] if match[1] in DEMO_SCRIPTS else "",
-        source,
-    )
     anchor = '    <script src="/static/project-scope.js" defer></script>'
     if any(
         source.count(token) != 1
@@ -110,9 +87,12 @@ def demo_index(
         raise ValueError("The shared Iris entry point changed; update the demo script order.")
     scripts = '    <script src="/static/demo/entry.js" defer></script>\n' + "\n".join(
         f'    <script src="/static/demo/{name}.js" defer></script>'
-        for name in ("storage", "annotations", "adapter")
+        for name in ("storage", "annotations", "catalog", "adapter")
     )
-    scripts += '\n    <script src="/static/demo/bootstrap.js" data-seed="/seed/" defer></script>'
+    scripts += (
+        '\n    <script src="/static/demo/bootstrap.js" data-seed="/seed/"'
+        ' data-sample="fpv-yolox-v1" defer></script>'
+    )
     source = source.replace(anchor, scripts + "\n" + anchor)
     source = source.replace(
         "  </head>",

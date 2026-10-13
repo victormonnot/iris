@@ -1,184 +1,173 @@
 {
   "files": {
     "CREDITS.txt": {
-      "sha256": "8adc44bcf1796eca5d2ef49daa6ac3b024b2c5c6eeef9cbb9db2febce34e2f0b",
-      "size_bytes": 2572
+      "sha256": "54f0c43bd9eea7ecf2f844d1593f3edb0f073714915f8ee2d52a177bdbbaf016",
+      "size_bytes": 1237
     },
     "fixture.json": {
-      "sha256": "dd151dc71270d22d805e1b902fa06d4e4a820b9c362c2e02294c07d561f1ad7d",
-      "size_bytes": 342226
+      "sha256": "4ce47f0ffb848f8bc3c087e274dfd0775131f9e355eb16994b2a8acbc2849103",
+      "size_bytes": 165943
     },
-    "media/32941.jpg": {
-      "sha256": "2b881cc082e3d79f6685320ddf02e04ec534e7f904a090a4e627eb445cb26ebc",
-      "size_bytes": 209929
+    "media/1601.jpg": {
+      "sha256": "93568106ffbde63d8b22ed1a9ac1ec7d2700020a3c09a913c96f5dbb80f43164",
+      "size_bytes": 123029
     },
-    "media/32941.png": {
-      "sha256": "59ef8882bbb0db9a5139c81ecdc9fad052b75cc86bc93db3069a484105f34af7",
-      "size_bytes": 556841
+    "media/1601.png": {
+      "sha256": "81c4ec7d6821ad0f4e80b7035a618e8749105c2eb0bf3b8d11544b5a4fc31004",
+      "size_bytes": 563912
     },
-    "media/6723.jpg": {
-      "sha256": "1d3ba71e9002721a2bc18791f3c86578d6de38fb61640803657276d53e73663f",
-      "size_bytes": 200461
+    "media/1681.jpg": {
+      "sha256": "5b90e596540e537adab85a30e456db9541e2781d13f7ca710126b9f57d5d7073",
+      "size_bytes": 132765
     },
-    "media/6723.png": {
-      "sha256": "b0456272dcea6258d5212824521baf2f60959ec99bfddf4f4bd2bcab9a5e1b98",
-      "size_bytes": 460493
+    "media/1681.png": {
+      "sha256": "02a36ac8dba6fac42fc17d79880ee6ba0bbfb0e1beb214b8a39b85c0b50fc766",
+      "size_bytes": 595634
     }
   },
   "format": "iris-web-demo-provenance-v1",
   "iris_version": "0.56.0",
   "normalization": {
+    "comparison": "Display wrapper joins two saved evaluations; no new joint run occurred.",
     "identities": "Temporary import identities replaced with stable public sample IDs.",
-    "import_created_at": "2026-10-12T00:00:00+00:00",
+    "import_created_at": "2026-10-13T00:00:00+00:00",
     "order": "Imported frames, assets and proposals use stable source-ID ordering.",
-    "predictions": "All recorded native detections, coordinates and scores retained.",
+    "predictions": "All selected saved evaluation detections, coordinates, scores and timings retained.",
     "timestamps": "Import timestamps are fixture placeholders. Recorded inference dates and timings are retained from the actual run."
   },
   "recording_provenance": {
-    "archive_sha256": "da11b07d5b7608c2bc68b32d9fe55beec66d6fe14c27bef77e457824c5b9c750",
-    "completed_at": "2026-10-12T16:21:33.776484+00:00",
-    "entrypoint": "iris.inference.run_comparison",
-    "human_annotation_reviews": 0,
-    "inference_source_sha256": {
-      "coco_import.py": "36ef8dff42aaf5b95d53a1d09e4ea115e46502d5ca1e99f2eb10feb2394baebb",
-      "inference.py": "de601cded5be003d4092b236b6cecd0b5838f272445b6d94ad15b126f3b4bc22",
-      "media.py": "b9e5a931eea37ab8922aecdc28cdfdc98cf703bc5fabc7ccf36515e85e491a57",
-      "models.py": "33073a515a8c1a3a944404841df3c87f61c43ac4f4f3deeb6c7729fb66d4b834",
-      "store.py": "16946e65e3fa5ac85b905aa51b1db62d9a1c72c00b6f18df15620152283eccb0"
-    },
-    "iris_git_commit": "8b7bd7d9330a6d23113ebc399528285cbe0ffcaf",
-    "iris_version": "0.56.0",
-    "model_filtering": "All native model detections are saved; UI filtering has not been applied.",
+    "archive_sha256": "c304ce6fe162a86630a5cd2c6d0a23d12048fa4f16675559a32b0f1af7a08170",
+    "assembly": "Comparison/job wrappers join two saved evaluations for display; no new joint comparison run occurred. Wrapper dates span the source evaluations, not an elapsed execution time.",
+    "limitations": "Two selected images from the reused 17-image development validation set. These examples do not establish generalization or independently measure model quality.",
+    "model_filtering": "All native saved detections are retained, including low scores, ignored classes and source taxonomy metadata. Display defaults are person class at confidence 0.35.",
     "network_used": false,
-    "runtime_versions": {
-      "numpy": "2.5.3",
-      "pillow": "12.3.0",
-      "torch": "2.10.0+cpu",
-      "torchvision": "0.25.0+cpu"
-    },
-    "source_provenance_sha256": "e4ad0d631c4ea840905ec28258505c6f3248d7443930738b66ffb47dd0c261f5",
-    "started_at": "2026-10-12T16:21:31.186870+00:00",
-    "timing_scope": "Real measurements from this run and CPU only; not a browser or user-device performance promise."
-  },
-  "recording_sha256": "a8221c7872cbc5a520d84a4c50815ddb321cc5954422784ac57bc955e458e834",
-  "source": {
-    "annotation_count": 19,
-    "annotation_source": {
-      "attribution": "COCO Consortium; Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014",
-      "dataset": "COCO val2017",
-      "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/annotations/instances_val2017_mini500.json",
-      "downloaded_sha256": "31c8e48b3e0bc957da945ad43697f8d519d7aaeb5971cef19e4cfaa4a8423a56",
-      "license": "CC BY 4.0",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "mirror": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500",
-      "revision": "6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88",
-      "selected_records_canonical_sha256": "13b400e7e9a0a56a1594cf690d6fdb53326d17942ed233643eeb55001eb4bc1e",
-      "terms_url": "https://cocodataset.org/#termsofuse"
-    },
-    "bundle": "street-scenes.zip",
-    "categories": [
+    "new_inference": false,
+    "result_origin": "saved-evaluation-projection",
+    "source_dataset_id": "a8262037ae9d4e0d94a910dcb9ece598",
+    "source_dataset_manifest_sha256": "836f7e6d9b3516b2bc493b8204263f1bc9298493600ac537ddc6ead9d3e12438",
+    "source_evaluations": [
       {
-        "id": 1,
-        "name": "person",
-        "supercategory": "person"
+        "created_at": "2026-10-07T08:26:06.951203+00:00",
+        "id": "239f13cb694141829860f2534dd6c7b2",
+        "model_id": "yolox_nano"
       },
       {
-        "id": 3,
-        "name": "car",
-        "supercategory": "vehicle"
-      },
-      {
-        "id": 6,
-        "name": "bus",
-        "supercategory": "vehicle"
-      },
-      {
-        "id": 8,
-        "name": "truck",
-        "supercategory": "vehicle"
-      },
-      {
-        "id": 10,
-        "name": "traffic light",
-        "supercategory": "outdoor"
+        "created_at": "2026-10-07T08:37:48.375335+00:00",
+        "id": "4530628bf91a4be49b4af47905625bab",
+        "model_id": "trained_78f290f12cdb4b1e8acd36206acebf83"
       }
     ],
-    "default_import_mapping": {
-      "1": "person",
-      "10": "exclude",
-      "3": "car",
-      "6": "exclude",
-      "8": "exclude"
+    "source_frame_ids": [
+      "5bffdf25c0b54935bea052e6c23e8ce0",
+      "54a87f36399c4d80bbdea2ed35abc169"
+    ],
+    "source_prediction_ids": [
+      "85679d21fcff418fb887c5ec8dda6a91",
+      "37139fcfb9f54c79ae5f8d5012bd0d98",
+      "93d0a0a6dab74b8c9c0c60804e55ee6e",
+      "ed93c0f8cf5b418986f6c228f0a265c6"
+    ],
+    "source_provenance_sha256": "0b3f2865d539df500f463d5c3204ea9d106b7aec3ca673f06b9091f5bbabfaf6",
+    "source_training_id": "184a0b5356ca4425b621495cd386f410",
+    "timing_scope": "Unchanged per-image CUDA measurements from the original evaluations on RTX 4060; not browser or user-device performance, and not a new simultaneous comparison.",
+    "training_steps": 800
+  },
+  "recording_sha256": "9b8ae94dc9a396dd9babcfba1d490de96c8360aad5e28cb525e76177bdd47e6a",
+  "source": {
+    "annotation_source": {
+      "author": "Victor Monnot",
+      "kind": "manual reference boxes",
+      "license": "All rights reserved",
+      "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+      "mirror": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+      "reviews": [
+        {
+          "annotation_id": 1601,
+          "box": [
+            183.8146081521087,
+            241.85305454422874,
+            253.5991524090225,
+            452.9600678239377
+          ],
+          "created_at": "2026-10-06T11:24:34.522271+00:00",
+          "demo_initial_state": "pending imported proposal",
+          "frame_id": "5bffdf25c0b54935bea052e6c23e8ce0",
+          "revision": 1,
+          "source_state": "human-reviewed"
+        },
+        {
+          "annotation_id": 1681,
+          "box": [
+            133.07334113060625,
+            214.07979370377302,
+            205.60902806729996,
+            413.5529327796809
+          ],
+          "created_at": "2026-10-06T11:23:41.909415+00:00",
+          "demo_initial_state": "pending imported proposal",
+          "frame_id": "54a87f36399c4d80bbdea2ed35abc169",
+          "revision": 1,
+          "source_state": "human-reviewed"
+        }
+      ]
     },
-    "default_import_proposal_count": 11,
+    "capture": {
+      "created_at_utc": "2026-10-03T11:16:41.145464+00:00",
+      "date_basis": "Native camera recording manifest; capture start, not Iris import date.",
+      "id": "ec843f1682954d93a3286069e9a98842",
+      "manifest_sha256": "5fdc619c4f700656250c868eab294155bc9e55c2752dc02e8bbe8b39270f2708"
+    },
+    "default_import_mapping": {
+      "1": "person"
+    },
     "files": {
       "CREDITS.txt": {
-        "sha256": "120133ce0d04b6f49852492966547d89360914c1aed40a788db690d146965f72",
-        "size_bytes": 2115
+        "sha256": "6a7afbdeb0cb55f379d12da7668678646f057ef166b728d0a53c2f6e6667c3a3",
+        "size_bytes": 886
       },
       "annotations.json": {
-        "sha256": "4c642320afeaaa1fc0d7b055a837f9788d363956d1432277691906ad1b7334a7",
-        "size_bytes": 17031
+        "sha256": "03469915a334f1af543fc168c2c92243dd957e034ebc7253ba3f7177c886d507",
+        "size_bytes": 1361
       }
     },
-    "image_ids": [
-      6723,
-      32941
-    ],
+    "format": "iris-fpv-demo-source-v1",
     "images": [
       {
-        "annotation_count": 6,
-        "archive_path": "images/000000006723.jpg",
-        "author": "infomatique",
-        "author_url": "https://www.flickr.com/photos/infomatique/",
-        "coco_image_id": 6723,
-        "coco_source_url": "http://images.cocodataset.org/val2017/000000006723.jpg",
-        "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000006723.jpg",
-        "height": 361,
-        "license": "CC BY-SA 2.0",
-        "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
-        "license_verification_source": "Flickr public oEmbed response for the photo URL",
-        "license_verified_on": "2026-10-08",
-        "photo_url": "https://www.flickr.com/photos/infomatique/4575950642/",
-        "sha256": "1d3ba71e9002721a2bc18791f3c86578d6de38fb61640803657276d53e73663f",
-        "size_bytes": 200461,
-        "title": "Clongriffin",
+        "archive_path": "images/1601.jpg",
+        "author": "Victor Monnot",
+        "author_url": "https://victormonnot.com/",
+        "coco_image_id": 1601,
+        "height": 480,
+        "license": "All rights reserved",
+        "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+        "photo_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+        "sha256": "93568106ffbde63d8b22ed1a9ac1ec7d2700020a3c09a913c96f5dbb80f43164",
+        "size_bytes": 123029,
+        "source_filename": "outdoor-ec843f16-f1601.jpg",
+        "source_frame_id": "5bffdf25c0b54935bea052e6c23e8ce0",
+        "source_frame_index": 1601,
+        "title": "FPV courtyard recording — frame 1601",
         "width": 640
       },
       {
-        "annotation_count": 13,
-        "archive_path": "images/000000032941.jpg",
-        "author": "Alan Stanton",
-        "author_url": "https://www.flickr.com/photos/alanstanton/",
-        "coco_image_id": 32941,
-        "coco_source_url": "http://images.cocodataset.org/val2017/000000032941.jpg",
-        "download_url": "https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500/resolve/6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88/images/val2017/000000032941.jpg",
-        "height": 640,
-        "license": "CC BY-SA 2.0",
-        "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
-        "license_verification_source": "Flickr public oEmbed response for the photo URL",
-        "license_verified_on": "2026-10-08",
-        "photo_url": "https://www.flickr.com/photos/alanstanton/8224728949/",
-        "sha256": "2b881cc082e3d79f6685320ddf02e04ec534e7f904a090a4e627eb445cb26ebc",
-        "size_bytes": 209929,
-        "title": "Damaged Traffic Light - Junction of High Road & White Hart Lane",
-        "width": 458
+        "archive_path": "images/1681.jpg",
+        "author": "Victor Monnot",
+        "author_url": "https://victormonnot.com/",
+        "coco_image_id": 1681,
+        "height": 480,
+        "license": "All rights reserved",
+        "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+        "photo_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+        "sha256": "5b90e596540e537adab85a30e456db9541e2781d13f7ca710126b9f57d5d7073",
+        "size_bytes": 132765,
+        "source_filename": "outdoor-ec843f16-f1681.jpg",
+        "source_frame_id": "54a87f36399c4d80bbdea2ed35abc169",
+        "source_frame_index": 1681,
+        "title": "FPV courtyard recording — frame 1681",
+        "width": 640
       }
-    ],
-    "purpose": "Small import and annotation example; not a training dataset or independent model-quality benchmark.",
-    "schema_version": 1,
-    "source_split": {
-      "import_value": "val",
-      "original": "COCO val2017"
-    },
-    "transformations": [
-      "Selected complete images 6723 and 32941 in that order.",
-      "Kept every original annotation record for both images, including excluded classes; sorted by image order then annotation ID.",
-      "Kept only the five used original category definitions and photo license entry.",
-      "Prepended images/ to COCO file_name values and recorded source_split=val.",
-      "Normalized JSON formatting; no image, annotation geometry or category reassignment."
     ]
   },
-  "source_archive_sha256": "da11b07d5b7608c2bc68b32d9fe55beec66d6fe14c27bef77e457824c5b9c750",
+  "source_archive_sha256": "c304ce6fe162a86630a5cd2c6d0a23d12048fa4f16675559a32b0f1af7a08170",
   "store_schema_version": 22
 }

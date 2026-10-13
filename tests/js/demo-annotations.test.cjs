@@ -7,10 +7,9 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 const domain = require("../../src/iris/static/demo/annotations.js");
 const seed = require("../../examples/web-demo/seed/fixture.json");
-const provenance = require("../../examples/web-demo/seed/provenance.json");
 
-const FIRST = "frame-6723";
-const SECOND = "frame-32941";
+const sourceFrames = seed.responses[`/api/sessions/${seed.session_id}/frames`];
+const [FIRST, SECOND] = sourceFrames.map((frame) => frame.id);
 const fresh = () => ({ ...domain.createState(seed), epoch: "test-epoch" });
 const document = (state, id = FIRST) => domain.document(seed, state, id);
 const manual = (id = "manual") => ({ id, label: "person", box: [0, 0, 10, 20], suggestion_id: null });
@@ -28,22 +27,22 @@ function rejectsUnchanged(state, input, status = 422, message) {
   assert.deepEqual(state, before);
 }
 
-test("browser export needs no network, DOM, or CommonJS", () => {
+test("browser annotation editing needs no network, DOM, or CommonJS", () => {
   const window = {};
   vm.runInNewContext(readFileSync(join(__dirname, "../../src/iris/static/demo/annotations.js"), "utf8"), {
     window, globalThis: window, structuredClone,
   });
   assert.equal(typeof window.IRISDemoAnnotations.save, "function");
-  assert.equal(typeof window.IRISDemoAnnotations.exportCOCO, "function");
+  assert.equal(typeof window.IRISDemoAnnotations.document, "function");
 });
 
-test("initial documents preserve both real images and all eleven pending source proposals", () => {
+test("initial documents preserve real images and all pending source proposals", () => {
   const state = fresh();
   assert.deepEqual(state.annotations, {});
   assert.deepEqual(state.selection, { [FIRST]: true, [SECOND]: true });
   assert.equal(Object.hasOwn(domain.createState(seed), "epoch"), false);
   const documents = [document(state), document(state, SECOND)];
-  assert.equal(documents.reduce((sum, doc) => sum + doc.suggestions.length, 0), 11);
+  assert.deepEqual(documents.map((doc) => doc.suggestions), [FIRST, SECOND].map((id) => seed.responses[`/api/frames/${id}/annotation`].suggestions));
   for (const doc of documents) {
     assert.equal(doc.revision, 0);
     assert.equal(doc.status, "unannotated");
@@ -58,8 +57,14 @@ test("initial documents preserve both real images and all eleven pending source 
 });
 
 test("accept, correct, reject and manually add labels with immutable provenance and revisions", () => {
+  // Exercise all decision paths even when the public sample has one proposal.
+  const scenario = structuredClone(seed);
+  const source = scenario.responses[`/api/frames/${FIRST}/annotation`];
+  source.suggestions = Array.from({ length: 3 }, (_, index) => ({
+    ...structuredClone(source.suggestions[0]), id: `synthetic-proposal-${index}`,
+  }));
   const state = fresh();
-  const original = document(state);
+  const original = domain.document(scenario, state, FIRST);
   const [accepted, corrected, rejected] = original.suggestions;
   const changed = proposalBox(corrected);
   changed.box[0] += 1;
@@ -68,7 +73,7 @@ test("accept, correct, reject and manually add labels with immutable provenance 
     decisions: { [accepted.id]: "accepted", [corrected.id]: "corrected", [rejected.id]: "rejected" },
     status: "validated", reviewer: "  Demo visitor  ", notes: "Reviewed in the browser",
   });
-  const saved = domain.save(seed, state, FIRST, input);
+  const saved = domain.save(scenario, state, FIRST, input);
   assert.equal(saved.revision, 1);
   assert.equal(saved.status, "validated");
   assert.equal(saved.reviewer, "Demo visitor");
@@ -81,28 +86,30 @@ test("accept, correct, reject and manually add labels with immutable provenance 
   assert.equal(saved.history[0].revision, 1);
   assert.ok(Number.isFinite(Date.parse(saved.history[0].created_at)));
   assert.equal(document(state, SECOND).revision, 0);
-  const firstRevision = domain.revision(seed, state, FIRST, 1);
-  const next = domain.save(seed, state, FIRST, payload(saved, { notes: "Back to a draft", reviewer: "Visitor" }));
+  const firstRevision = domain.revision(scenario, state, FIRST, 1);
+  const next = domain.save(scenario, state, FIRST, payload(saved, { notes: "Back to a draft", reviewer: "Visitor" }));
   assert.equal(next.status, "draft");
   assert.deepEqual(next.history.map((item) => item.revision), [2, 1]);
-  assert.deepEqual(domain.revision(seed, state, FIRST, 1), firstRevision);
+  assert.deepEqual(domain.revision(scenario, state, FIRST, 1), firstRevision);
   assert.equal(state.annotations[FIRST].revisions[0].boxes[0].source, undefined);
   input.boxes[0].box[0] = -50;
   saved.boxes[0].source.metadata.source_annotation.bbox[0] = -100;
-  assert.deepEqual(domain.revision(seed, state, FIRST, 1), firstRevision);
+  assert.deepEqual(domain.revision(scenario, state, FIRST, 1), firstRevision);
 });
 
 test("changing a proposed class is a correction even when coordinates stay identical", () => {
   const state = fresh();
   const doc = document(state);
   const suggestion = doc.suggestions[0];
-  const box = { ...proposalBox(suggestion), label: "person" };
+  const alternate = doc.taxonomy.classes.find((item) => item.id !== suggestion.label);
+  assert.ok(alternate, "The test needs a second declared class");
+  const box = { ...proposalBox(suggestion), label: alternate.id };
   rejectsUnchanged(state, payload(doc, { boxes: [box], decisions: { [suggestion.id]: "accepted" } }));
   const saved = domain.save(seed, state, FIRST, payload(doc, {
     boxes: [box], decisions: { [suggestion.id]: "corrected" },
   }));
   assert.equal(saved.boxes[0].review_state, "corrected");
-  assert.equal(saved.boxes[0].source.metadata.source_category.name, "car");
+  assert.equal(saved.boxes[0].source.metadata.source_category.name, suggestion.metadata.source_category.name);
 });
 
 test("a complete reviewer decision can validate an empty image without inventing labels", () => {
@@ -169,7 +176,7 @@ test("boxes require finite original-image coordinates, positive area, valid clas
   const doc = document(state);
   for (const box of [
     [NaN, 0, 10, 20], [0, 0, Infinity, 20], [false, 0, 10, 20], ["0", 0, 10, 20],
-    [-1, 0, 10, 20], [0, -1, 10, 20], [0, 0, 641, 20], [0, 0, 10, 362],
+    [-1, 0, 10, 20], [0, -1, 10, 20], [0, 0, doc.frame.width + 1, 20], [0, 0, 10, doc.frame.height + 1],
     [10, 0, 10, 20], [11, 0, 10, 20], [0, 20, 10, 20], [0, 0, 1], null,
   ]) rejectsUnchanged(state, payload(doc, { boxes: [{ ...manual(), box }] }));
   for (const box of [
@@ -179,9 +186,9 @@ test("boxes require finite original-image coordinates, positive area, valid clas
   rejectsUnchanged(state, payload(doc, { boxes: [manual(), manual()] }));
   rejectsUnchanged(state, payload(doc, { boxes: Array.from({ length: 501 }, (_, i) => manual(`id-${i}`)) }));
   const saved = domain.save(seed, state, FIRST, payload(doc, {
-    boxes: [{ ...manual(), box: [0, 0, 640, 361] }],
+    boxes: [{ ...manual(), box: [0, 0, doc.frame.width, doc.frame.height] }],
   }));
-  assert.deepEqual(saved.boxes[0].box, [0, 0, 640, 361]);
+  assert.deepEqual(saved.boxes[0].box, [0, 0, doc.frame.width, doc.frame.height]);
 });
 
 test("suggestion links, decisions and persisted origins cannot be forged or silently discarded", () => {
@@ -220,44 +227,4 @@ test("unknown images and revisions report 404 without creating data", () => {
   for (const revision of [0, 1, "1", -1])
     assert.throws(() => domain.revision(seed, state, FIRST, revision), { status: 404 });
   assert.deepEqual(state.annotations, {});
-});
-
-test("COCO export contains saved labels only, exact geometry, draft states and full source attribution", () => {
-  const state = fresh();
-  const unreviewed = domain.exportCOCO(seed, state, { provenance });
-  assert.deepEqual(unreviewed.annotations, []);
-  assert.equal(unreviewed.images.length, 2);
-  assert.ok(unreviewed.iris.reviews.every((review) => review.status === "unannotated"));
-  const doc = document(state);
-  const suggestion = doc.suggestions[0];
-  domain.save(seed, state, FIRST, payload(doc, {
-    boxes: [proposalBox(suggestion), manual()], decisions: { [suggestion.id]: "accepted" },
-    reviewer: "Visitor", notes: "A draft, with two proposals still pending",
-  }));
-  state.selection[FIRST] = false;
-  const exported = domain.exportCOCO(seed, state, { provenance });
-  assert.equal(exported.annotations.length, 2);
-  assert.deepEqual(exported.images.map((image) => image.id), [6723, 32941]);
-  assert.deepEqual(exported.images.map((image) => image.file_name), ["images/000000006723.jpg", "images/000000032941.jpg"]);
-  assert.deepEqual(exported.categories, [{ id: 1, name: "person" }, { id: 3, name: "car" }]);
-  const [x1, y1, x2, y2] = suggestion.box;
-  assert.deepEqual(exported.annotations[0].bbox, [x1, y1, x2 - x1, y2 - y1]);
-  assert.equal(exported.annotations[0].category_id, 3);
-  assert.equal(exported.annotations[1].category_id, 1);
-  assert.equal(exported.annotations[1].area, 200);
-  assert.deepEqual(exported.annotations[0].iris.source.metadata, suggestion.metadata);
-  assert.equal(exported.iris.reviews[0].status, "draft");
-  assert.equal(exported.iris.reviews[0].selected, false);
-  assert.equal(exported.iris.reviews[0].pending_suggestion_ids.length, 2);
-  assert.equal(exported.iris.dataset_frozen, false);
-  assert.equal(exported.source_split, "val");
-  assert.deepEqual(exported.iris.source_provenance, provenance.source);
-  for (const photo of provenance.source.images) {
-    assert.ok(JSON.stringify(exported).includes(photo.author));
-    assert.ok(JSON.stringify(exported).includes(photo.photo_url));
-    assert.ok(JSON.stringify(exported).includes(photo.license_url));
-  }
-  assert.match(exported.info.description, /not a frozen training dataset/);
-  exported.iris.source_provenance.images[0].author = "Changed";
-  assert.notEqual(provenance.source.images[0].author, "Changed");
 });

@@ -82,8 +82,10 @@
 }
 
 .iris-demo-local-note {
+  grid-column: 1 / -1;
+  flex-basis: 100%;
   margin: 12px 0;
-  padding: 12px;
+  padding: 10px 12px;
   border-left: 2px solid var(--control-line);
   background: var(--surface-raised);
   color: var(--muted);
@@ -91,16 +93,36 @@
   line-height: 1.6;
 }
 
-.iris-demo [aria-disabled="true"] {
-  cursor: help;
+.iris-demo-unavailable-label {
+  font-weight: 600;
 }
 
-.iris-demo .workspace-tab[aria-disabled="true"] {
+.iris-demo .iris-demo-unavailable {
+  background: var(--surface);
+  border-color: var(--control-line);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .65;
+}
+
+.iris-demo .iris-demo-unavailable-zone {
+  border-color: var(--control-line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.iris-demo .model-availability:not(.ready) {
+  background: var(--surface);
   color: var(--muted);
 }
 
-.iris-demo .iris-demo-hidden {
-  display: none !important;
+.iris-demo-unavailable-zone .iris-demo-local-note {
+  cursor: auto;
+}
+
+.iris-demo-local-note .iris-demo-install {
+  min-height: 28px;
 }
 
 .iris-demo-dialog {

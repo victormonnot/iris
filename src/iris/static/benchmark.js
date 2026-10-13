@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const field = (name) => $(`#benchmark-${name}`);
   const tools = window.IRISBenchmarkTools;
   const externalTools = window.IRISBenchmarkExternalTools;
@@ -204,7 +206,7 @@
         option.disabled = model.status !== "ready"; option.title = model.reason || ""; field("model").append(option);
       }
       field("model").value = view.models.find((model) => model.id === previous && model.status === "ready")?.id || view.models.find((model) => model.status === "ready")?.id || "";
-      if (!field("model").value) { field("model").prepend(new Option("No ready local detector", "")); field("model").value = ""; }
+      if (!field("model").value) { field("model").prepend(new Option(demo ? "Unavailable in demo mode" : "No ready local detector", "")); field("model").value = ""; }
       update();
     } catch (failure) { error("action-error", failure); }
   }
@@ -225,13 +227,13 @@
       field("output-tokens").max = settings.max_output_tokens.max;
       if (first) field("output-tokens").value = settings.defaults.max_output_tokens;
       field("multimodal-model").textContent = `Exact model: ${providers.multimodal.model} · image detail: ${settings.detail}`;
-      field("provider-status").textContent = externalTools.providerStatus(providers.multimodal);
-      field("provider-setup").textContent = "The server reads IRIS_OPENAI_API_KEY or OPENAI_API_KEY. Keys are never entered or displayed here. This offline check does not verify model access; settings can be prepared without a key.";
+      field("provider-status").textContent = demo ? demoUnavailable : externalTools.providerStatus(providers.multimodal);
+      field("provider-setup").textContent = demo ? "Provider credentials are configured only in your own local installation." : "The server reads IRIS_OPENAI_API_KEY or OPENAI_API_KEY. Keys are never entered or displayed here. This offline check does not verify model access; settings can be prepared without a key.";
       const sam = providers.segmentation_settings;
-      field("sam-provider-status").textContent = samTools.availability(providers.segmentation);
-      field("sam-availability").textContent = samTools.availability(providers.segmentation);
-      field("combined-provider-status").textContent = combinedTools.availability(providers.combined);
-      field("combined-availability").textContent = combinedTools.availability(providers.combined);
+      field("sam-provider-status").textContent = demo ? demoUnavailable : samTools.availability(providers.segmentation);
+      field("sam-availability").textContent = demo ? demoUnavailable : samTools.availability(providers.segmentation);
+      field("combined-provider-status").textContent = demo ? demoUnavailable : combinedTools.availability(providers.combined);
+      field("combined-availability").textContent = demo ? demoUnavailable : combinedTools.availability(providers.combined);
       if (sam) {
         field("sam-threshold").min = sam.threshold.min;
         field("sam-threshold").max = sam.threshold.max;
@@ -239,7 +241,7 @@
         const previous = field("sam-device").value;
         field("sam-device").replaceChildren(...sam.devices.map((device) => {
           const status = providers.segmentation?.devices?.find((item) => item.id === device);
-          return new Option(`${device.toUpperCase()}${status?.available === false ? " · setup required" : ""}`, device);
+          return new Option(`${device.toUpperCase()}${demo ? " · unavailable in demo mode" : status?.available === false ? " · setup required" : ""}`, device);
         }));
         field("sam-device").value = sam.devices.includes(previous) ? previous : sam.defaults.device;
         renderSAMPrompts();

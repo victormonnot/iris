@@ -38,12 +38,14 @@ COCO annotations are under CC BY 4.0. Author links, source links, licence links
 and packaging changes are retained in [CREDITS.txt](examples/street-scenes/CREDITS.txt),
 also included in the example ZIP.
 
-The [public browser example](examples/web-demo/README.md) reuses these photos
-and annotations. Its generated JPEGs retain the original bytes; its RGB PNG
-display images retain the same photo licences and attribution. The generated
-[credits](examples/web-demo/seed/CREDITS.txt) describe those conversions. Saved
-detector outputs have separate model identities and provenance; no model weights
-are included in this example.
+The [public browser example](examples/web-demo/README.md) instead contains two
+original FPV camera frames and human reference boxes by Victor Monnot. These
+are published for the Iris demonstration with all rights reserved, separately
+from the software licence. Its JPEGs retain the original bytes; the RGB PNGs
+are display copies. The [credits](examples/web-demo/seed/CREDITS.txt) and
+[provenance](examples/web-demo/seed/provenance.json) retain source and use terms.
+Saved YOLOX-Nano outputs identify the original and Iris-trained checkpoints;
+no model weights are included. The link preview uses the same FPV sample.
 
 The annotation GIF and video show the attributed *Clongriffin* photo inside
 Iris. The other README figures use Victor Monnot's Argos recordings and saved

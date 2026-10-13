@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const tools = window.IRISTrackingTools;
   const field = (name) => $(`#tracking-${name}`);
   const safe = encodeURIComponent;
@@ -141,9 +143,9 @@
       view.models = results[1].status === "fulfilled" ? results[1].value : [];
       view.readiness = results[2].status === "fulfilled" ? results[2].value : null;
       const missing = Object.entries(view.readiness?.packages || {}).filter(([, item]) => !item.ready).map(([name, item]) => `${name} ${item.required}`);
-      field("readiness").textContent = view.readiness?.available ? "Pinned tracker packages available. Execution is checked when the job runs." : results[2].status === "rejected" ? `Readiness unavailable: ${results[2].reason.message}` : `${view.readiness?.installation || "Install the optional tracking extra in the IRIS server environment"}. Required: ${missing.join(", ")}.`;
+      field("readiness").textContent = demo ? demoUnavailable : view.readiness?.available ? "Pinned tracker packages available. Execution is checked when the job runs." : results[2].status === "rejected" ? `Readiness unavailable: ${results[2].reason.message}` : `${view.readiness?.installation || "Install the optional tracking extra in the IRIS server environment"}. Required: ${missing.join(", ")}.`;
       const ready = view.models.filter((model) => model.status === "ready");
-      options(field("model"), ready, (model) => model.name || model.id, results[1].status === "rejected" ? "Model catalog unavailable · refresh to retry" : "No ready local detector", field("model").value);
+      options(field("model"), ready, (model) => model.name || model.id, demo ? "Unavailable in demo mode" : results[1].status === "rejected" ? "Model catalog unavailable · refresh to retry" : "No ready local detector", field("model").value);
       let selected = view.sequences.find((row) => row.id === oldSequence) || view.sequences[0], cache = oldCache, comparison = oldComparison;
       if (requestedComparison) {
         const detail = await api(`/api/temporal/tracking-comparisons/${safe(requestedComparison)}`);

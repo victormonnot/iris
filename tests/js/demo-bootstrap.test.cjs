@@ -8,7 +8,7 @@ const vm = require("node:vm");
 
 const source = readFileSync(require.resolve("../../src/iris/static/demo/bootstrap.js"), "utf8");
 
-function boot({ href, seed, fixture = { example: 1 }, storageError } = {}) {
+function boot({ href, seed, sample, fixture = { example: 1 }, storageError } = {}) {
   const bytes = JSON.stringify(fixture);
   const hash = createHash("sha256").update(bytes).digest("hex");
   const requests = [], openings = [], channels = [], events = [];
@@ -30,7 +30,7 @@ function boot({ href, seed, fixture = { example: 1 }, storageError } = {}) {
   };
   vm.runInNewContext(source, {
     window,
-    document: { currentScript: { dataset: seed === undefined ? {} : { seed } } },
+    document: { currentScript: { dataset: { ...(seed === undefined ? {} : { seed }), sample } } },
     URL, TextDecoder, crypto: webcrypto,
     CustomEvent: class {
       constructor(type, { detail } = {}) { this.type = type; this.detail = detail; }
@@ -109,4 +109,17 @@ test("changed seed bytes reach version validation in the same workspace without 
   assert.equal(next.events.at(-1).type, "iris:demo-status");
   assert.equal(next.events.at(-1).detail.mode, "error");
   assert.equal(next.events.at(-1).detail.message, error.message);
+});
+
+test("a new sample opens separately while updates to that sample retain its saved workspace", async () => {
+  const shared = { href: "https://iris.example/demo/", seed: "assets/old/seed/" };
+  const previous = boot(shared);
+  const fpv = boot({ ...shared, sample: "fpv-yolox-v1" });
+  const updated = boot({ ...shared, seed: "assets/new/seed/", sample: "fpv-yolox-v1" });
+  await Promise.all([previous.adapter.ready, fpv.adapter.ready, updated.adapter.ready]);
+  assert.notEqual(previous.openings[0].name, fpv.openings[0].name);
+  assert.notEqual(previous.channels[0].name, fpv.channels[0].name);
+  assert.equal(fpv.openings[0].name, "iris-web-demo:/demo/seed/:fpv-yolox-v1");
+  assert.equal(updated.openings[0].name, fpv.openings[0].name);
+  assert.equal(updated.channels[0].name, fpv.channels[0].name);
 });

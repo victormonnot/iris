@@ -11,9 +11,10 @@
   }
   let channel;
   // Storage belongs to this demo mount, not its versioned asset directory.
-  // Keep the preview's /seed/ name so publishing a new bundle finds saved edits
-  // and lets seedVersion enforce explicit recovery when the example changes.
-  const namespace = `iris-web-demo:${new URL("./seed/", address).pathname}`;
+  // A new sample gets its own workspace, preserving the previous sample's edits.
+  // Revisions of the same sample still require explicit recovery on mismatch.
+  const sample = script.dataset.sample;
+  const namespace = `iris-web-demo:${new URL("./seed/", address).pathname}${sample ? `:${sample}` : ""}`;
   try {
     channel = new BroadcastChannel(namespace);
     channel.addEventListener("message", () => {

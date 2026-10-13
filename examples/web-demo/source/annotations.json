@@ -1,0 +1,68 @@
+{
+  "annotations": [
+    {
+      "area": 14732.006711162745,
+      "bbox": [
+        183.8146081521087,
+        241.85305454422874,
+        69.78454425691382,
+        211.10701327970898
+      ],
+      "category_id": 1,
+      "id": 1601,
+      "image_id": 1601,
+      "iscrowd": 0,
+      "segmentation": []
+    },
+    {
+      "area": 14468.921168289617,
+      "bbox": [
+        133.07334113060625,
+        214.07979370377302,
+        72.53568693669371,
+        199.47313907590785
+      ],
+      "category_id": 1,
+      "id": 1681,
+      "image_id": 1681,
+      "iscrowd": 0,
+      "segmentation": []
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "person"
+    }
+  ],
+  "images": [
+    {
+      "coco_url": "",
+      "date_captured": "2026-10-03",
+      "file_name": "images/1601.jpg",
+      "flickr_url": "",
+      "height": 480,
+      "id": 1601,
+      "license": 1,
+      "width": 640
+    },
+    {
+      "coco_url": "",
+      "date_captured": "2026-10-03",
+      "file_name": "images/1681.jpg",
+      "flickr_url": "",
+      "height": 480,
+      "id": 1681,
+      "license": 1,
+      "width": 640
+    }
+  ],
+  "licenses": [
+    {
+      "id": 1,
+      "name": "All rights reserved — Victor Monnot",
+      "url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt"
+    }
+  ]
+}

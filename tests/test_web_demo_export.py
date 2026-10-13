@@ -252,7 +252,7 @@ def test_shared_frontend_changes_invalidate_assets_and_replace_prior_export(
     assert exporter.export_demo(output) == second
 
 
-@pytest.mark.parametrize("changed", ["fixture.json", "CREDITS.txt", "media/6723.jpg"])
+@pytest.mark.parametrize("changed", ["fixture.json", "CREDITS.txt", "media/1601.jpg"])
 def test_changed_seed_is_rejected_without_touching_a_previous_export(
     source_tree, tmp_path, changed
 ):

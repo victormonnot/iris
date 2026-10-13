@@ -18,7 +18,7 @@ from iris.app import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "examples" / "web-demo"
-SOURCE = ROOT / "examples" / "street-scenes"
+SOURCE = EXAMPLE / "source"
 
 
 def load_example_module(name):
@@ -50,6 +50,7 @@ def generated():
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(socket.socket, "connect", no_network)
         patch.setattr("iris.inference.TorchvisionDetector", no_inference)
+        patch.setattr("iris.inference.run_comparison", no_inference)
         first = builder.build()
         second = builder.build()
     assert_same_files(first, second)
@@ -80,18 +81,18 @@ def test_seed_contains_only_the_public_project_and_resolved_media(fixture, gener
     assert fixture["format"] == "iris-web-demo-v1"
     assert fixture["fixture_version"] == 1
     assert fixture["project_id"] == "web-demo"
-    assert fixture["session_id"] == "street-scenes"
+    assert fixture["session_id"] == "fpv-yolox"
     responses = fixture["responses"]
     (project,) = responses["/api/projects"]
     assert project == responses["/api/projects/web-demo"]
     assert project["id"] == fixture["project_id"]
     (session,) = responses["/api/sessions"]
-    assert session == responses["/api/sessions/street-scenes"]
+    assert session == responses["/api/sessions/fpv-yolox"]
     assert session["project_id"] == project["id"]
     assert session["id"] == fixture["session_id"]
-    frames = responses["/api/sessions/street-scenes/frames"]
-    assets = responses["/api/sessions/street-scenes/assets"]
-    assert {frame["id"] for frame in frames} == {"frame-6723", "frame-32941"}
+    frames = responses["/api/sessions/fpv-yolox/frames"]
+    assets = responses["/api/sessions/fpv-yolox/assets"]
+    assert {frame["id"] for frame in frames} == {"frame-1601", "frame-1681"}
     assert {frame["asset_id"] for frame in frames} == {asset["id"] for asset in assets}
     for frame in frames:
         assert frame["session_id"] == session["id"]
@@ -106,12 +107,12 @@ def test_seed_contains_only_the_public_project_and_resolved_media(fixture, gener
         assert name in generated
 
 
-def test_demo_pixels_match_licensed_photos_and_original_hashes(fixture, generated):
+def test_demo_pixels_match_original_fpv_images_and_hashes(fixture, generated):
     provenance = json.loads((SOURCE / "provenance.json").read_text())
     frames = {
-        frame["id"]: frame for frame in fixture["responses"]["/api/sessions/street-scenes/frames"]
+        frame["id"]: frame for frame in fixture["responses"]["/api/sessions/fpv-yolox/frames"]
     }
-    with zipfile.ZipFile(SOURCE / "street-scenes.zip") as archive:
+    with zipfile.ZipFile(SOURCE / "fpv-yolox.zip") as archive:
         for source in provenance["images"]:
             image_id = source["coco_image_id"]
             original_bytes = archive.read(source["archive_path"])
@@ -145,7 +146,7 @@ def test_provenance_hashes_cover_each_generated_file(generated):
         }
     assert (
         provenance["source_archive_sha256"]
-        == hashlib.sha256((SOURCE / "street-scenes.zip").read_bytes()).hexdigest()
+        == hashlib.sha256((SOURCE / "fpv-yolox.zip").read_bytes()).hexdigest()
     )
     assert (
         provenance["recording_sha256"]
@@ -196,7 +197,7 @@ def test_imported_proposals_preserve_sources_without_claiming_human_review(fixtu
     originals = {item["id"]: item for item in source["annotations"]}
     all_proposals = []
     all_originals = []
-    for frame in fixture["responses"]["/api/sessions/street-scenes/frames"]:
+    for frame in fixture["responses"]["/api/sessions/fpv-yolox/frames"]:
         annotation = fixture["responses"][f"/api/frames/{frame['id']}/annotation"]
         assert annotation["frame"]["id"] == frame["id"]
         assert annotation["revision"] == 0
@@ -217,16 +218,16 @@ def test_imported_proposals_preserve_sources_without_claiming_human_review(fixtu
             x, y, width, height = original["bbox"]
             assert proposal["box"] == [x, y, x + width, y + height]
             all_proposals.append(proposal)
-    assert len(all_proposals) == 11
+    assert len(all_proposals) == 2
     assert sorted(all_originals, key=lambda item: item["id"]) == sorted(
         source["annotations"], key=lambda item: item["id"]
     )
-    assert len(all_originals) == 19
+    assert len(all_originals) == 2
 
 
 def test_saved_comparison_preserves_recorded_predictions_and_timings(fixture):
     recording = load_example_module("recording").load_recording()
-    (summary,) = fixture["responses"]["/api/sessions/street-scenes/comparisons"]
+    (summary,) = fixture["responses"]["/api/sessions/fpv-yolox/comparisons"]
     detail = fixture["responses"][f"/api/comparisons/{summary['id']}"]
     assert summary["id"] == recording["comparison"]["id"] == fixture["comparison_id"]
     assert detail["job"] == recording["job"]
@@ -234,7 +235,7 @@ def test_saved_comparison_preserves_recorded_predictions_and_timings(fixture):
     assert detail["model_ids"] == recording["comparison"]["model_ids"]
     assert detail["created_at"] == recording["comparison"]["created_at"]
     assert detail["config"]["protocol"] == recording["comparison"]["config"]["protocol"]
-    assert detail["config"]["device"] == "cpu"
+    assert detail["config"]["device"] == "cuda:0"
     mapped_frames = {
         frame["frame_id"]: f"frame-{frame['coco_image_id']}" for frame in recording["frames"]
     }
@@ -244,16 +245,93 @@ def test_saved_comparison_preserves_recorded_predictions_and_timings(fixture):
     }
     assert {row["id"]: row for row in detail["predictions"]} == expected
     assert len(detail["predictions"]) == 4
-    assert sum(len(row["detections"]) for row in detail["predictions"]) == 400
+    assert sum(len(row["detections"]) for row in detail["predictions"]) == sum(
+        len(row["detections"]) for row in recording["predictions"]
+    )
+    assert detail["config"]["result_origin"] == "saved-evaluation-projection"
+    assert detail["job"]["message"] == "Saved evaluation results"
+    assert recording["provenance"]["new_inference"] is False
     assert set(detail["replay"]["still_frame_ids"]) == set(mapped_frames.values())
     assert detail["replay"]["continuous_inference"] is False
     for frame_id in mapped_frames.values():
         annotation = fixture["responses"][f"/api/frames/{frame_id}/annotation"]
         sources = annotation["prediction_sources"]
         assert {row["id"] for row in sources} == {
-            row["id"] for row in expected.values() if row["frame_id"] == frame_id
+            row["id"]
+            for row in expected.values()
+            if row["frame_id"] == frame_id and row["model_id"] == "yolox_nano"
         }
         assert {row["comparison_id"] for row in sources} == {detail["id"]}
+        # The trained model keeps its exact historical person-only taxonomy;
+        # the editable demo uses the current person/car project taxonomy.
+        # The backend correctly excludes it from annotation-source suggestions.
+        trained_contract = detail["config"]["model_class_contracts"][detail["model_ids"][1]]
+        assert trained_contract["taxonomy_id"] != annotation["taxonomy_id"]
+
+
+def test_published_yolox_example_keeps_true_outputs_and_display_defaults(fixture):
+    assert fixture["defaults"] == {
+        "comparison_id": "fpv-yolox-comparison",
+        "frame_id": "frame-1601",
+        "confidence": 0.35,
+        "class_name": "person",
+    }
+    recording = load_example_module("recording").load_recording()
+    detail = fixture["responses"]["/api/comparisons/fpv-yolox-comparison"]
+    original, trained = detail["model_ids"]
+    assert original == "yolox_nano"
+    assert trained == "trained_78f290f12cdb4b1e8acd36206acebf83"
+    predictions = {(p["frame_id"], p["model_id"]): p for p in detail["predictions"]}
+
+    def people(frame, model):
+        return [
+            detection
+            for detection in predictions[(frame, model)]["detections"]
+            if detection["label"] == "person" and detection["score"] >= 0.35
+        ]
+
+    assert people("frame-1601", original) == []
+    (recovered,) = people("frame-1601", trained)
+    assert recovered["score"] == 0.7368841171264648
+    assert recovered["box"] == [
+        186.67372131347656,
+        288.25372314453125,
+        246.361328125,
+        452.8362731933594,
+    ]
+    assert len(people("frame-1681", original)) == len(people("frame-1681", trained)) == 1
+    # Threshold changes can inspect the full native outputs, not just the chosen highlight.
+    assert sum(len(p["detections"]) for p in detail["predictions"]) == 206
+    assert len(predictions[("frame-1601", original)]["detections"]) == 100
+    assert any(d.get("ignored") for d in predictions[("frame-1601", original)]["detections"])
+    assert predictions[("frame-1601", trained)]["id"] == "93d0a0a6dab74b8c9c0c60804e55ee6e"
+    assert recording["provenance"]["source_training_id"] == "184a0b5356ca4425b621495cd386f410"
+    assert detail["config"]["source_evaluation_ids"] == [
+        "239f13cb694141829860f2534dd6c7b2",
+        "4530628bf91a4be49b4af47905625bab",
+    ]
+    for run in detail["runs"]:
+        assert (
+            run["metadata"]["class_contract"]
+            == detail["config"]["model_class_contracts"][run["model_id"]]
+        )
+
+
+def test_reference_source_remains_distinct_from_recorded_predictions(generated):
+    source = json.loads(generated["provenance.json"])["source"]
+    assert source["capture"]["created_at_utc"] == "2026-10-03T11:16:41.145464+00:00"
+    assert source["annotation_source"]["author"] == "Victor Monnot"
+    assert source["annotation_source"]["license"] == "All rights reserved"
+    references = source["annotation_source"]["reviews"]
+    assert len(references) == 2
+    assert all(r["source_state"] == "human-reviewed" for r in references)
+    assert all(r["demo_initial_state"] == "pending imported proposal" for r in references)
+    assert references[0]["box"] == [
+        183.8146081521087,
+        241.85305454422874,
+        253.5991524090225,
+        452.9600678239377,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -293,7 +371,7 @@ def test_changed_recording_is_rejected_before_any_rows_are_inserted(tmp_path, pa
 
 def test_public_projection_drops_unknown_fields_at_every_depth(fixture):
     contract = load_example_module("public_contract")
-    source = fixture["responses"]["/api/frames/frame-6723/annotation"]
+    source = fixture["responses"]["/api/frames/frame-1601/annotation"]
     poisoned = copy.deepcopy(source)
     sentinel = "PRIVATE_LOCAL_WORKSPACE_SENTINEL"
 
@@ -341,7 +419,7 @@ def test_public_projection_drops_unknown_fields_at_every_depth(fixture):
 )
 def test_public_projection_rejects_reviewed_or_private_annotation_state(fixture, field, value):
     contract = load_example_module("public_contract")
-    annotation = copy.deepcopy(fixture["responses"]["/api/frames/frame-6723/annotation"])
+    annotation = copy.deepcopy(fixture["responses"]["/api/frames/frame-1601/annotation"])
     annotation[field] = value
     with pytest.raises(ValueError):
         contract.project(annotation, contract.ANNOTATION)

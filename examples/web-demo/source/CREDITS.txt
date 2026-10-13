@@ -1,0 +1,15 @@
+IRIS FPV DEMO — SOURCE AND USE TERMS
+
+Copyright © 2026 Victor Monnot. All rights reserved.
+Two original camera JPEG frames (1601 and 1681), recorded on 3 October
+2026, and their human reference annotations are published by their author
+for this Iris demonstration. They are not covered by the software MIT
+licence; no general redistribution or training-data licence is granted.
+Author: https://victormonnot.com/
+Source: https://github.com/victormonnot/iris/tree/main/examples/web-demo/source
+Use terms: https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt
+
+The selected development images were already used during model development.
+They are not an independent test or evidence of general FPV robustness.
+The original JPEG bytes, complete image dimensions and recorded detections
+are preserved. Public COCO image IDs equal source camera frame indices.

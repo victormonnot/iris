@@ -33,10 +33,10 @@ from iris.app import create_app
 from iris.store import SCHEMA_VERSION
 
 DIRECTORY = Path(__file__).resolve().parent
-SOURCE = DIRECTORY.parent / "street-scenes"
+SOURCE = DIRECTORY / "source"
 PROJECT_ID = "web-demo"
-SESSION_ID = "street-scenes"
-SEED_TIME = "2026-10-12T00:00:00+00:00"
+SESSION_ID = "fpv-yolox"
+SEED_TIME = "2026-10-13T00:00:00+00:00"
 
 
 def digest(data: bytes) -> str:
@@ -58,12 +58,12 @@ def request(client, method, path, **kwargs):
 def source_files():
     """Read only the named, hash-verified members of the public source bundle."""
     provenance = json.loads((SOURCE / "provenance.json").read_text())
-    payload = (SOURCE / "street-scenes.zip").read_bytes()
-    with zipfile.ZipFile(SOURCE / "street-scenes.zip") as archive:
+    payload = (SOURCE / "fpv-yolox.zip").read_bytes()
+    with zipfile.ZipFile(SOURCE / "fpv-yolox.zip") as archive:
         expected = {**provenance["files"]}
         expected.update({item["archive_path"]: item for item in provenance["images"]})
         if sorted(archive.namelist()) != sorted(expected):
-            raise ValueError("Unexpected members in the public street-scenes archive")
+            raise ValueError("Unexpected members in the public FPV archive")
         for name, record in expected.items():
             data = archive.read(name)
             if len(data) != record["size_bytes"] or digest(data) != record["sha256"]:
@@ -81,8 +81,10 @@ def import_source(client):
         "POST",
         "/api/projects",
         json={
-            "name": "Street scenes",
-            "description": "Public annotation example and recorded model comparison.",
+            "name": "FPV drone · YOLOX-Nano",
+            "description": (
+                "Two recorded FPV images with original and Iris-trained YOLOX-Nano results."
+            ),
         },
     )
     client.params = {"project_id": public_project["id"]}
@@ -90,27 +92,26 @@ def import_source(client):
         client,
         "POST",
         "/api/dataset-imports",
-        files={"file": ("street-scenes.zip", payload, "application/zip")},
+        files={"file": ("fpv-yolox.zip", payload, "application/zip")},
     )
     result = request(
         client,
         "POST",
         f"/api/dataset-imports/{preview['id']}/commit",
         json={
-            "name": "Street scenes",
+            "name": "FPV drone · YOLOX-Nano",
             "scene_group": "Web demo",
             "source_url": provenance["annotation_source"]["mirror"],
-            "license_name": "Photos CC BY-SA 2.0; COCO annotations CC BY 4.0.",
+            "license_name": "Victor Monnot — all rights reserved; published Iris demo sample.",
             "attribution": (
-                "COCO Consortium; Clongriffin by infomatique; Damaged Traffic Light - "
-                "Junction of High Road & White Hart Lane by Alan Stanton. "
-                "See the included CREDITS.txt for photo and license links."
+                "FPV images and human reference annotations by Victor Monnot. "
+                "Published for the Iris demo; see CREDITS.txt for source and use terms."
             ),
             "source_split": "val",
             "category_mapping": provenance["default_import_mapping"],
         },
     )
-    if result["proposal_count"] != 11 or result["excluded_annotation_count"] != 8:
+    if result["proposal_count"] != 2 or result["excluded_annotation_count"] != 0:
         raise ValueError("The public sample's import contract changed")
     sid = result["session_id"]
     return {
@@ -146,6 +147,10 @@ def build() -> dict[str, bytes]:
     """Return a deterministic, explicit inventory; never inspect a user's workspace."""
     archive, source_provenance = source_files()
     recording = load_recording()
+    if recording["provenance"]["archive_sha256"] != digest(archive) or recording["provenance"][
+        "source_provenance_sha256"
+    ] != digest((SOURCE / "provenance.json").read_bytes()):
+        raise ValueError("Recording and public source provenance differ")
     files = {}
     responses = {}
     resources = {}
@@ -164,7 +169,7 @@ def build() -> dict[str, bytes]:
             identities = {
                 public_project["id"]: PROJECT_ID,
                 session["id"]: SESSION_ID,
-                imported["import_id"]: "street-scenes-import",
+                imported["import_id"]: "fpv-yolox-import",
             }
             timestamps = {
                 public_project["created_at"],
@@ -255,6 +260,12 @@ def build() -> dict[str, bytes]:
             "project_id": PROJECT_ID,
             "session_id": SESSION_ID,
             "comparison_id": cid,
+            "defaults": {
+                "comparison_id": cid,
+                "frame_id": "frame-1601",
+                "confidence": 0.35,
+                "class_name": "person",
+            },
             "responses": responses,
             "resources": resources,
             "credits": "CREDITS.txt",
@@ -263,12 +274,11 @@ def build() -> dict[str, bytes]:
     )
     files["CREDITS.txt"] = (SOURCE / "CREDITS.txt").read_bytes() + (
         b"\nWEB DEMO DERIVATIVES\n\n"
-        b"The media/*.jpg files retain the original JPEG bytes. The corresponding\n"
-        b"PNG files are Iris's RGB-normalized display images, at original dimensions.\n"
-        b"No crop, drawn box or retouch is baked into these photographs. The PNGs\n"
-        b"carry the same photo credits and CC BY-SA 2.0 license as the originals.\n"
-        b"COCO labels remain imported proposals, without a human review. Recorded\n"
-        b"detector outputs are separate from these labels. See provenance.json.\n"
+        b"The JPEG files retain the original camera bytes. Corresponding PNG files\n"
+        b"are Iris RGB-normalized display copies at the original dimensions.\n"
+        b"No crop, drawn box or retouch is baked into these images.\n"
+        b"Source human boxes enter the demo as proposals, awaiting the visitor's\n"
+        b"review. Saved model outputs remain separate and unchanged.\n"
     )
     files["provenance.json"] = json_bytes(
         {
@@ -287,7 +297,13 @@ def build() -> dict[str, bytes]:
                     "timings are retained from the actual run."
                 ),
                 "order": "Imported frames, assets and proposals use stable source-ID ordering.",
-                "predictions": "All recorded native detections, coordinates and scores retained.",
+                "predictions": (
+                    "All selected saved evaluation detections, coordinates, "
+                    "scores and timings retained."
+                ),
+                "comparison": (
+                    "Display wrapper joins two saved evaluations; no new joint run occurred."
+                ),
             },
             "files": {
                 name: {"sha256": digest(data), "size_bytes": len(data)}

@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const panel = $("#preannotations");
   const field = (name) => $(`#preannotation-${name}`);
   const tools = window.IRISPreannotationTools;
@@ -16,7 +18,7 @@
   const shown = () => view.active && panel.open && view.sessionId;
   const sessionURL = () => `/api/sessions/${encodeURIComponent(view.sessionId)}/preannotations`;
   const model = () => view.models.find((entry) => entry.id === field("model").value);
-  const ready = () => model()?.status === "ready";
+  const ready = () => !demo && model()?.status === "ready";
   const frameLabel = (id, filename) => {
     const frame = state.frames.find((entry) => entry.id === id);
     const source = filename || (frame && sourceFor(frame)?.filename) || frame?.source_filename || id;
@@ -113,7 +115,7 @@
 
   function renderModel() {
     const entry = model();
-    field("model-status").textContent = view.catalogLoading ? "Checking available detectors…"
+    field("model-status").textContent = demo ? demoUnavailable : view.catalogLoading ? "Checking available detectors…"
       : !entry ? "No detector is ready. The manual editor remains fully available."
         : entry.status !== "ready" ? `${entry.reason || entry.status}. No download is started here.`
           : entry.origin === "trained"
@@ -142,7 +144,7 @@
       }
       const preferred = view.models.find((entry) => entry.id === old && entry.status === "ready") || view.models.find((entry) => entry.status === "ready");
       if (preferred) field("model").value = preferred.id;
-      else { field("model").prepend(new Option("No ready detector", "")); field("model").value = ""; }
+      else { field("model").prepend(new Option(demo ? "Unavailable in demo mode" : "No ready detector", "")); field("model").value = ""; }
       field("capabilities").replaceChildren();
       for (const provider of catalog.providers || []) {
         const capability = provider.capabilities || {};

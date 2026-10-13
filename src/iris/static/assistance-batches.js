@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const panel = $("#assistance-batches");
   const field = (name) => $(`#assistance-batch-${name}`);
   const batch = {
@@ -19,7 +21,7 @@
   const activeBatch = (detail) =>
     Boolean(detail && (detail.counts.queued || detail.counts.running));
   const model = () => batch.models.find((entry) => entry.id === field("model").value);
-  const ready = () => model()?.status === "ready";
+  const ready = () => !demo && model()?.status === "ready";
   const plural = (count, word) =>
     `${count} ${word}${count === 1 ? "" : word.endsWith("box") ? "es" : "s"}`;
   const statusLabel = (status) => String(status || "unknown").replaceAll("_", " ");
@@ -132,7 +134,7 @@
 
   function renderProvider() {
     const entry = model();
-    field("provider-status").textContent = batch.catalogLoading
+    field("provider-status").textContent = demo ? demoUnavailable : batch.catalogLoading
       ? "Checking local models…" : !entry ? "No local vision model is available."
         : entry.status === "ready" ? `Ready locally · ${entry.id}`
           : `Unavailable · ${entry.reason || statusLabel(entry.status)}. Refresh after starting Ollama or installing the model.`;

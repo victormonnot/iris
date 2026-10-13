@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const datasetTools = window.IRISDatasetTools;
   const view = {
     visible: false,
@@ -248,9 +250,9 @@
       const model = view.models.find((item) => item.id === id);
       return model?.status === "ready" && datasetTools.modelCompatibility(dataset, model).compatible;
     });
-    const deviceAvailable = !view.devicesLoading && (payload.device === "cpu" || view.cudaAvailable);
+    const deviceAvailable = !demo && !view.devicesLoading && (payload.device === "cpu" || view.cudaAvailable);
     const valid = !view.catalogLoading && deviceAvailable && datasetTools.mlSupported(dataset) && compatibleSelection && size > 0 && view.chosen.size > 0 && view.chosen.size <= (mode === "paired" ? 1 : 2) && validTiles && validThresholds;
-    $("#evaluation-readiness").textContent = view.busy ? "Queuing this validation evaluation…"
+    $("#evaluation-readiness").textContent = demo ? demoUnavailable : view.busy ? "Queuing this validation evaluation…"
       : view.catalogLoading || view.devicesLoading ? "Checking saved releases, models and local devices…"
         : !datasetTools.mlSupported(dataset) || !size ? "Choose a frozen release with validation frames."
           : !deviceAvailable ? "The selected device is unavailable. Choose an available device or refresh."
@@ -258,7 +260,7 @@
               : "Review the models and saved settings below. Only starting the run executes inference.";
     $("#evaluation-device").disabled = view.busy || view.devicesLoading;
     $("#evaluation-device option[value='cuda']").disabled = !view.cudaAvailable;
-    $("#evaluation-device-status").textContent = view.devicesLoading
+    $("#evaluation-device-status").textContent = demo ? demoUnavailable : view.devicesLoading
       ? "Checking local device availability…"
       : [view.devicesError, view.cudaAvailable ? "NVIDIA CUDA is available for local evaluation." : view.cudaReason].filter(Boolean).join(" ");
     $("#evaluation-tiling-fields").hidden = !tiled;
@@ -311,7 +313,7 @@
     const dataset = view.datasets.find((item) => item.id === $("#evaluation-dataset").value);
     for (const model of view.models) {
       const compatibility = datasetTools.modelCompatibility(dataset, model);
-      const ready = model.status === "ready" && compatibility.compatible;
+      const ready = !demo && model.status === "ready" && compatibility.compatible;
       const card = node(
         "label",
         `model-card${ready ? " ready" : " unavailable"}`,
@@ -333,7 +335,7 @@
         node(
           "span",
           "model-description",
-          ready
+          demo ? demoUnavailable : ready
             ? `Ready · ${compatibility.reason}`
             : !compatibility.compatible ? compatibility.reason : model.reason || "Local dependencies are unavailable",
         ),
@@ -346,7 +348,7 @@
         node(
           "p",
           "field-hint",
-          "No models available. Check Model comparison for local setup.",
+          demo ? demoUnavailable : "No models available. Check Model comparison for local setup.",
         ),
       );
   }

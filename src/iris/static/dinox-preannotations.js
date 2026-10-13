@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  const demo = window.IRISRuntimeAdapter?.mode === "demo";
+  const demoUnavailable = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const panel = $("#dinox-preannotations");
   const field = (name) => $(`#dinox-${name}`);
   const tools = window.IRISDINOXTools;
@@ -14,7 +16,7 @@
   const shown = () => view.active && panel.open && view.sessionId;
   const sessionURL = () => `/api/sessions/${encodeURIComponent(view.sessionId)}/dinox-batches`;
   const scope = () => `${view.projectId}/${view.sessionId}`;
-  const ready = () => view.provider?.status === "ready";
+  const ready = () => !demo && view.provider?.status === "ready";
   const frameLabel = (id, filename) => {
     const frame = state.frames.find((entry) => entry.id === id);
     const source = filename || (frame && sourceFor(frame)?.filename) || frame?.source_filename || id;
@@ -107,10 +109,10 @@
   }
   function renderProvider() {
     const provider = view.provider;
-    field("provider-status").textContent = view.providerLoading ? "Checking DINO-X configuration…"
+    field("provider-status").textContent = demo ? demoUnavailable : view.providerLoading ? "Checking DINO-X configuration…"
       : !provider ? "DINO-X status unavailable. Refresh to check the local configuration."
         : `${ready() ? "Ready" : provider.status === "missing_key" ? "Key required for cloud requests" : "Cloud credential unavailable"} · ${provider.model || "DINO-X-1.0"} · ${tools.money(provider.price?.amount_per_request)} per new request${provider.reason ? ` · ${provider.reason}` : ""}`;
-    field("key-source").textContent = provider?.key_source === "environment"
+    field("key-source").textContent = demo ? "Provider credentials can only be saved in your own local installation." : provider?.key_source === "environment"
       ? "Using the server environment key. It takes precedence over a saved key; change it in the server environment. Key values are never returned here."
       : provider?.key_source === "file"
         ? "A key is saved on this local server. Saving replaces it; removing it disables new requests unless an environment key is available."

@@ -1310,6 +1310,7 @@
   }
 
   function renderProviderStatus() {
+    const demo = window.IRISRuntimeAdapter?.mode === "demo";
     const provider = selectedProvider();
     const model = provider?.models.find(
       (entry) => entry.id === $("#annotation-model").value,
@@ -1320,13 +1321,15 @@
     const selected = editor.provider;
     const remote = $("#annotation-execution").value === "api";
     const ready = providerReady();
-    $("#annotation-provider-status").textContent = !selected
+    $("#annotation-provider-status").textContent = demo
+      ? "Unavailable in demo mode. Install Iris locally to request model assistance."
+      : !selected
       ? "No models available for this execution mode."
       : ready
         ? `${remote ? "API key configured · connection not tested" : "Ready"} · ${model.label || model.id}${selected.endpoint ? ` · ${selected.endpoint}` : ""}`
         : `Unavailable · ${selected.reason || selected.status || "Model not configured"}. Manual annotation remains available.`;
-    $("#annotation-provider-setup").hidden = remote || ready;
-    $("#annotation-api-setup").hidden = !remote || ready;
+    $("#annotation-provider-setup").hidden = demo || remote || ready;
+    $("#annotation-api-setup").hidden = demo || !remote || ready;
     $("#annotation-api-notice").hidden = !remote;
     $("#annotation-local-command").textContent =
       `ollama pull ${remote ? "qwen3-vl:4b-instruct" : model?.id || "qwen3-vl:4b-instruct"}`;

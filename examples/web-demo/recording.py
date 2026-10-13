@@ -1,4 +1,4 @@
-"""Public, offline detector recording and strict replay into a fresh example store."""
+"""Closed public projection of two saved FPV evaluations, replayed without compute."""
 
 import hashlib
 import json
@@ -6,13 +6,18 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
-from public_contract import FRAME_RECORD, project
+from public_contract import FRAME_RECORD, TAXONOMY, project
 
-MODEL_IDS = (
-    "ssdlite320_mobilenet_v3_large",
-    "fasterrcnn_mobilenet_v3_large_320_fpn",
-)
-MODEL_HASHES = {name: str for name in MODEL_IDS}
+MODEL_IDS = ("yolox_nano", "trained_78f290f12cdb4b1e8acd36206acebf83")
+EVALUATION_IDS = ("239f13cb694141829860f2534dd6c7b2", "4530628bf91a4be49b4af47905625bab")
+SOURCE_FRAMES = {
+    1601: "5bffdf25c0b54935bea052e6c23e8ce0",
+    1681: "54a87f36399c4d80bbdea2ed35abc169",
+}
+MODEL_HASHES = {
+    MODEL_IDS[0]: "cd28f55fbbc1829f99d9ac9b38a16d259a22889739c8728ea877610201feff7b",
+    MODEL_IDS[1]: "316b50c4ece77fc463c59342455c5e6af28005163502af6cbdd9fd5f33a62978",
+}
 PROTOCOL = {
     "version": "torchvision-forward-v1",
     "batch_size": 1,
@@ -23,31 +28,40 @@ PROTOCOL = {
     "inference_ms": str,
     "postprocess_ms": str,
     "total_ms": str,
-    "quality_metrics": str,
 }
 LANE = {"model_id": str, "variant": "full"}
+FROZEN_TAXONOMY = {
+    **TAXONOMY,
+    "version": int,
+    "parent_id": str,
+    "created_at": str,
+}
+CLASS_CONTRACT = (
+    {"taxonomy_id": "coco-2017-v1"},
+    {
+        "taxonomy_id": str,
+        "taxonomy": FROZEN_TAXONOMY,
+        "class_mapping": {"person": 1},
+        "output_class_mapping": {"person": 1},
+    },
+)
 CONFIG = {
-    "device": "cpu",
+    "device": "cuda:0",
     "warmup": 1,
     "taxonomy": "coco-2017-v1",
-    "class_mapping": {"person": 1, "car": 3},
+    "class_mapping": {"person": 1},
     "model_hashes": MODEL_HASHES,
     "protocol": PROTOCOL,
     "inference": {"mode": "full"},
     "lanes": [LANE],
-    "work": {
-        "frames_total": 2,
-        "forward_passes": 4,
-        "warmup_passes": 2,
-        "total_forward_passes": 6,
-        "tiles": [{"frame_id": str, "input_size": [int], "tile_count": 0}],
-        "limits": {"max_tiles_per_frame": int, "max_forward_passes": int},
-    },
+    "model_class_contracts": {model: CLASS_CONTRACT for model in MODEL_IDS},
+    "source_evaluation_ids": [str],
+    "result_origin": "saved-evaluation-projection",
 }
 COMPARISON = {
-    "id": str,
+    "id": "fpv-yolox-comparison",
     "session_id": str,
-    "name": str,
+    "name": "YOLOX-Nano · original vs trained in Iris",
     "frame_ids": [str],
     "model_ids": [str],
     "config": CONFIG,
@@ -66,69 +80,54 @@ JOB = {
         "predictions_created": 4,
         "cancelled": False,
     },
-    "progress": float,
-    "message": "Comparison complete",
+    "progress": 1.0,
+    "message": "Saved evaluation results",
     "error": None,
     "created_at": str,
     "started_at": str,
     "finished_at": str,
     "cancel_requested": False,
 }
-FILTERING = {
-    "score_threshold": float,
-    "nms_iou_threshold": float,
-    "max_detections_per_image": int,
-    "ssdlite_topk_candidates_per_class": (int, None),
-}
 RUN_METADATA = {
     "model_id": str,
-    "architecture": str,
+    "architecture": "yolox_nano",
     "weights_name": str,
     "weight_sha256": str,
-    "weight_source": str,
+    "weight_source": (str, None),
     "license_url": str,
+    "source_commit": str,
     "torch_version": str,
     "torchvision_version": str,
-    "device": "cpu",
+    "device": "cuda:0",
+    "hardware": "NVIDIA GeForce RTX 4060",
     "threads": int,
     "interop_threads": int,
     "precision": "float32",
-    "head_class_slots": 91,
+    "head_class_slots": int,
+    "background_class": False,
+    "internal_class_index_base": 0,
+    "native_class_index_base": 1,
     "input_transform": {
-        "color": "RGB",
+        "color": "BGR",
         "tensor_range": [int],
         "exif_transpose": True,
-        "image_mean": [float],
-        "image_std": [float],
-        "min_size": [int],
-        "max_size": int,
-        "fixed_size": ([int], None),
-        "size_divisible": int,
+        "fixed_size": [int],
+        "dtype": "float32",
+        "layout": "NCHW",
+        "letterbox": {"alignment": "top_left", "value": 114, "interpolation": "opencv_linear"},
     },
-    "native_filtering": (
-        {
-            **FILTERING,
-            "rpn": {
-                "score_threshold": float,
-                "nms_iou_threshold": float,
-                "pre_nms_top_n": int,
-                "post_nms_top_n": int,
-            },
-        },
-        FILTERING,
-    ),
-    "timing_protocol": {
-        "preprocess_ms": str,
-        "inference_ms": str,
-        "postprocess_ms": str,
-        "total_ms": str,
-        "synchronization": str,
-        "warmup": str,
-        "batch_size": 1,
+    "native_filtering": {
+        "score_threshold": float,
+        "nms_iou_threshold": float,
+        "max_detections_per_image": 100,
+        "score": str,
+        "nms": "class_aware",
     },
+    "timing_protocol": PROTOCOL,
     "coordinates": str,
-    "protocol": PROTOCOL,
     "inference": {"variant": "full"},
+    "source_evaluation_id": str,
+    "class_contract": CLASS_CONTRACT,
 }
 RUN = {
     "id": str,
@@ -138,7 +137,15 @@ RUN = {
     "metadata": RUN_METADATA,
     "created_at": str,
 }
-DETECTION = {"box": [float], "label_id": int, "label": str, "score": float}
+DETECTION_BASE = {
+    "box": [float],
+    "label_id": int,
+    "label": str,
+    "score": float,
+    "native_label_id": int,
+    "taxonomy_id": str,
+}
+DETECTION = ({**DETECTION_BASE, "ignored": True}, DETECTION_BASE)
 TIMING = {
     "preprocess_ms": float,
     "inference_ms": float,
@@ -159,38 +166,26 @@ PREDICTION = {
     "detections": [DETECTION],
     "timing": TIMING,
     "input_size": [int],
-    "metadata": {},
+    "metadata": {"source_evaluation_id": str},
     "created_at": str,
 }
-MODEL_IDENTITY = {
+MODEL = {
     "id": str,
     "name": str,
-    "architecture": str,
-    "weight_filename": str,
-    "expected_hash_prefix": str,
-    "download_bytes": int,
+    "architecture": "yolox_nano",
     "weights_name": str,
-    "weight_url": str,
+    "weight_sha256": str,
     "license_url": str,
     "code_license_url": str,
     "classes": [{"id": int, "name": str}],
     "task": "object_detection",
     "inference": True,
-    "training": bool,
-    "training_scopes": [
-        {
-            "id": str,
-            "label": str,
-            "description": str,
-            "trainable_modules": [str],
-        }
-    ],
+    "training": True,
     "training_summary": str,
-    "origin": "official",
-    "weight_sha256": str,
+    "origin": ("official", "trained"),
+    "parent_model_id": (str, None),
 }
-# These are recorded identities. Runtime availability belongs to the executing adapter.
-MODEL = MODEL_IDENTITY
+MODEL_IDENTITY = MODEL
 SUMMARY = {**COMPARISON, "job": JOB, "lanes": [{**LANE, "run_id": str}]}
 DETAIL = {
     **SUMMARY,
@@ -214,41 +209,35 @@ FRAME_BINDING = {
     "source_filename": str,
     "source_sha256": str,
     "frame_pixel_sha256": str,
-    "width": int,
-    "height": int,
+    "width": 640,
+    "height": 480,
 }
 PROVENANCE = {
-    "started_at": str,
-    "completed_at": str,
-    "iris_version": str,
-    "iris_git_commit": str,
-    "runtime_versions": {"torch": str, "torchvision": str, "pillow": str, "numpy": str},
-    "entrypoint": "iris.inference.run_comparison",
-    "inference_source_sha256": {
-        name: str
-        for name in (
-            "inference.py",
-            "models.py",
-            "media.py",
-            "store.py",
-            "coco_import.py",
-        )
-    },
-    "archive_sha256": str,
-    "source_provenance_sha256": str,
+    "result_origin": "saved-evaluation-projection",
+    "source_evaluations": [{"id": str, "model_id": str, "created_at": str}],
+    "source_dataset_id": str,
+    "source_dataset_manifest_sha256": str,
+    "source_frame_ids": [str],
+    "source_prediction_ids": [str],
+    "source_training_id": str,
+    "training_steps": 800,
+    "new_inference": False,
     "network_used": False,
-    "human_annotation_reviews": 0,
+    "assembly": str,
     "model_filtering": str,
     "timing_scope": str,
+    "limitations": str,
+    "archive_sha256": str,
+    "source_provenance_sha256": str,
 }
 RECORDING = {
-    "format": "iris-demo-recording-v1",
+    "format": "iris-demo-evaluation-recording-v1",
     "frames": [FRAME_BINDING],
     "comparison": COMPARISON,
     "job": JOB,
     "runs": [RUN],
     "predictions": [PREDICTION],
-    "models": [MODEL_IDENTITY],
+    "models": [MODEL],
     "provenance": PROVENANCE,
 }
 COMPARISON_SUMMARY = SUMMARY
@@ -265,101 +254,83 @@ def _digest(value):
 
 
 def validate_recording(value):
-    """Validate the closed public format and all cross-record identities before writing."""
-    from iris.inference import PROTOCOL as actual_protocol
-    from iris.models import COCO_CATEGORIES, TIMING_PROTOCOL, get_spec
+    """Validate public fields, source identities and geometry before any database write."""
+    from iris.models import COCO_CATEGORIES
 
     data = project(value, RECORDING)
     _require(data == value, "Recording contains fields outside the public contract")
     frames, comparison, job = data["frames"], data["comparison"], data["job"]
     _require(
-        len(frames) == 2 and {frame["coco_image_id"] for frame in frames} == {6723, 32941},
-        "Recording must bind the two public street-scenes images",
+        len(frames) == 2 and {f["coco_image_id"]: f["frame_id"] for f in frames} == SOURCE_FRAMES,
+        "Recording must bind the two public FPV frames",
     )
-    _require(len({frame["frame_id"] for frame in frames}) == 2, "Duplicate recorded frame")
     _require(
-        comparison["frame_ids"] == [frame["frame_id"] for frame in frames],
-        "Comparison frame selection differs from its bindings",
+        comparison["frame_ids"] == list(SOURCE_FRAMES.values()),
+        "Comparison frame selection differs",
     )
     _require(comparison["model_ids"] == list(MODEL_IDS), "Unexpected recorded detectors")
     _require(
-        comparison["config"]["lanes"]
-        == [{"model_id": model, "variant": "full"} for model in MODEL_IDS],
-        "Comparison lanes differ from its detectors",
+        comparison["config"]["source_evaluation_ids"] == list(EVALUATION_IDS),
+        "Unexpected evaluations",
     )
-    _require(comparison["config"]["protocol"] == actual_protocol, "Unexpected timing protocol")
+    _require(
+        comparison["config"]["lanes"] == [{"model_id": m, "variant": "full"} for m in MODEL_IDS],
+        "Invalid lanes",
+    )
     _require(
         comparison["job_id"] == job["id"]
-        and job["params"]["comparison_id"] == job["result"]["comparison_id"] == comparison["id"]
-        and job["progress"] == 1,
-        "Recorded comparison job does not match its completed result",
-    )
-    frame_ids = {frame["frame_id"]: frame for frame in frames}
-    _require(
-        comparison["config"]["work"]["tiles"]
-        == [
-            {
-                "frame_id": frame["frame_id"],
-                "input_size": [frame["width"], frame["height"]],
-                "tile_count": 0,
-            }
-            for frame in frames
-        ],
-        "Recorded work plan does not match its images",
+        and job["params"]["comparison_id"] == job["result"]["comparison_id"] == comparison["id"],
+        "Saved-result wrapper does not match its comparison",
     )
     _require(
-        len(data["models"]) == 2 and {model["id"] for model in data["models"]} == set(MODEL_IDS),
-        "Recorded model identities are incomplete",
+        len(data["models"]) == 2 and [m["id"] for m in data["models"]] == list(MODEL_IDS),
+        "Invalid model identities",
     )
-    models = {model["id"]: model for model in data["models"]}
-    for model_id, model in models.items():
-        spec = get_spec(model_id)
-        _require(
-            all(model[key] == spec[key] for key in MODEL_IDENTITY if key != "weight_sha256"),
-            "Recorded model identity differs from the official catalogue",
-        )
-        digest = model["weight_sha256"]
-        _require(
-            _digest(digest)
-            and digest.startswith(spec["expected_hash_prefix"])
-            and digest == comparison["config"]["model_hashes"][model_id],
-            "Recorded model hash does not match its comparison",
-        )
+    models = {m["id"]: m for m in data["models"]}
+    for mid, model in models.items():
+        _require(model["weight_sha256"] == MODEL_HASHES[mid], "Model checkpoint hash differs")
     _require(
-        len(data["runs"]) == 2 and {run["model_id"] for run in data["runs"]} == set(MODEL_IDS),
-        "Recording must contain one run per detector",
+        models[MODEL_IDS[0]]["origin"] == "official"
+        and models[MODEL_IDS[0]]["parent_model_id"] is None,
+        "Invalid original lineage",
     )
-    runs = {run["id"]: run for run in data["runs"]}
+    _require(
+        models[MODEL_IDS[1]]["origin"] == "trained"
+        and models[MODEL_IDS[1]]["parent_model_id"] == MODEL_IDS[0],
+        "Invalid trained lineage",
+    )
+    _require(
+        len(data["runs"]) == 2 and [r["model_id"] for r in data["runs"]] == list(MODEL_IDS),
+        "Invalid runs",
+    )
+    runs = {r["id"]: r for r in data["runs"]}
     _require(len(runs) == 2, "Duplicate recorded run")
-    for run in runs.values():
-        model = models[run["model_id"]]
-        meta = run["metadata"]
+    for run, eid in zip(data["runs"], EVALUATION_IDS, strict=True):
+        meta, model = run["metadata"], models[run["model_id"]]
         _require(
             run["comparison_id"] == comparison["id"] and meta["model_id"] == model["id"],
-            "Run belongs to another comparison or detector",
+            "Invalid run links",
         )
         for key in ("architecture", "weights_name", "weight_sha256", "license_url"):
-            _require(meta[key] == model[key], "Run does not match its model identity")
-        _require(meta["weight_source"] == model["weight_url"], "Run weight source differs")
+            _require(meta[key] == model[key], "Run differs from model identity")
+        _require(meta["source_evaluation_id"] == eid, "Run source evaluation differs")
         _require(
-            meta["protocol"] == actual_protocol and meta["timing_protocol"] == TIMING_PROTOCOL,
-            "Run timing protocol differs",
+            meta["class_contract"] == comparison["config"]["model_class_contracts"][model["id"]],
+            "Recorded class definitions differ between the run and comparison",
         )
-        _require(meta["threads"] > 0 and meta["interop_threads"] > 0, "Invalid CPU thread count")
-        for name in ("torch", "torchvision"):
-            _require(
-                meta[f"{name}_version"] == data["provenance"]["runtime_versions"][name],
-                "Run runtime differs from its provenance",
-            )
+        _require(
+            meta["timing_protocol"] == comparison["config"]["protocol"], "Timing protocols differ"
+        )
+        _require(meta["threads"] > 0 and meta["interop_threads"] > 0, "Invalid thread count")
     predictions = data["predictions"]
     _require(
-        len(predictions) == 4 and len({row["id"] for row in predictions}) == 4,
-        "Recording must contain four distinct prediction results",
+        len(predictions) == 4 and len({r["id"] for r in predictions}) == 4,
+        "Expected four saved predictions",
     )
+    frame_ids = {f["frame_id"]: f for f in frames}
     pairs = set()
     for prediction in predictions:
-        run = runs.get(prediction["run_id"])
-        frame = frame_ids.get(prediction["frame_id"])
+        run, frame = runs.get(prediction["run_id"]), frame_ids.get(prediction["frame_id"])
         _require(
             run is not None
             and frame is not None
@@ -368,8 +339,13 @@ def validate_recording(value):
             "Prediction links do not match",
         )
         _require(
+            prediction["metadata"]["source_evaluation_id"]
+            == run["metadata"]["source_evaluation_id"],
+            "Prediction source differs",
+        )
+        _require(
             prediction["input_size"] == [frame["width"], frame["height"]],
-            "Prediction dimensions differ from its frame",
+            "Prediction dimensions differ",
         )
         pairs.add((prediction["run_id"], prediction["frame_id"]))
         _require(len(prediction["detections"]) <= 100, "Prediction exceeds native detector limit")
@@ -388,56 +364,34 @@ def validate_recording(value):
                 and detection["label"] == COCO_CATEGORIES[label],
                 "Unexpected detection category",
             )
-        _require(
-            all(value >= 0 for value in prediction["timing"].values()), "Negative recorded timing"
-        )
+        _require(all(v >= 0 for v in prediction["timing"].values()), "Negative recorded timing")
     _require(len(pairs) == 4, "Duplicate or missing run/frame prediction")
     for frame in frames:
         _require(
-            frame["width"] > 0
-            and frame["height"] > 0
-            and _digest(frame["source_sha256"])
-            and _digest(frame["frame_pixel_sha256"]),
-            "Invalid recorded frame binding",
+            _digest(frame["source_sha256"]) and _digest(frame["frame_pixel_sha256"]),
+            "Invalid frame digest",
         )
     provenance = data["provenance"]
-    for key in ("archive_sha256", "source_provenance_sha256"):
-        _require(_digest(provenance[key]), "Invalid provenance digest")
     _require(
-        all(_digest(value) for value in provenance["inference_source_sha256"].values()),
-        "Invalid inference source digest",
+        [r["id"] for r in provenance["source_evaluations"]] == list(EVALUATION_IDS),
+        "Invalid source evaluations",
     )
+    _require(
+        provenance["source_frame_ids"] == list(SOURCE_FRAMES.values()), "Invalid source frames"
+    )
+    _require(
+        provenance["source_prediction_ids"] == [p["id"] for p in predictions],
+        "Invalid source prediction identities",
+    )
+    for key in ("archive_sha256", "source_provenance_sha256", "source_dataset_manifest_sha256"):
+        _require(_digest(provenance[key]), "Invalid provenance digest")
     return data
 
 
 def load_recording(path=None):
-    """Read the checked-in real capture without importing Torch or running inference."""
+    """Read the immutable evaluation projection; no Torch import or inference."""
     source = Path(path) if path is not None else Path(__file__).with_name("recording.json")
     return validate_recording(json.loads(source.read_text()))
-
-
-def make_recording(detail, frames, models, provenance):
-    """Project a genuine native run; discard logs, host platform and readiness claims."""
-    for frame in frames:
-        _require(
-            detail["config"]["frame_hashes"][frame["frame_id"]] == frame["frame_pixel_sha256"],
-            "Captured comparison hash differs from its source frame",
-        )
-    return validate_recording(
-        project(
-            {
-                "format": "iris-demo-recording-v1",
-                "frames": frames,
-                "comparison": detail,
-                "job": detail["job"],
-                "runs": detail["runs"],
-                "predictions": detail["predictions"],
-                "models": models,
-                "provenance": {**provenance, "entrypoint": "iris.inference.run_comparison"},
-            },
-            RECORDING,
-        )
-    )
 
 
 def restore_recording(store, recording, session_id, frames_by_coco):

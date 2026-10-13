@@ -1,4 +1,4 @@
-"""Explicit public projections of the street-scenes API seed.
+"""Explicit public projections of the FPV API seed.
 
 These schemas describe imported, unreviewed images, optionally accompanied by
 recorded predictions. They are deliberately narrower than the general Iris API.
@@ -136,13 +136,7 @@ IMPORT_PROVENANCE = {
     "license_name": str,
     "attribution": str,
     "source_split": "val",
-    "category_mapping": {
-        "1": "person",
-        "3": "car",
-        "6": "exclude",
-        "8": "exclude",
-        "10": "exclude",
-    },
+    "category_mapping": {"1": "person"},
     "coco_image": COCO_IMAGE,
     "original_annotations": [COCO_ANNOTATION],
     "original_categories": [COCO_CATEGORY],

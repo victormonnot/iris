@@ -198,53 +198,5 @@
     return document(seed, state, frameId);
   }
 
-  function exportCOCO(seed, state, { provenance } = {}) {
-    const sources = frames(seed).map((frame) => sourceDocument(seed, frame.id));
-    const classes = sources[0].taxonomy.classes;
-    const categoryIds = new Map(classes.map((item) => [item.id, item.coco_id]));
-    const images = [];
-    const annotations = [];
-    const reviews = [];
-    for (const source of sources) {
-      const current = document(seed, state, source.frame.id);
-      const imported = source.frame.extraction.dataset_import;
-      images.push(clone(imported.coco_image));
-      for (const box of current.boxes) {
-        const [x1, y1, x2, y2] = box.box;
-        annotations.push({
-          id: annotations.length + 1, image_id: imported.coco_image.id,
-          category_id: categoryIds.get(box.label), bbox: [x1, y1, x2 - x1, y2 - y1],
-          area: (x2 - x1) * (y2 - y1), iscrowd: 0,
-          iris: { box_id: box.id, review_state: box.review_state, source: clone(box.source) },
-        });
-      }
-      reviews.push({
-        frame_id: source.frame.id, image_id: imported.coco_image.id,
-        revision: current.revision, status: current.status, reviewer: current.reviewer, notes: current.notes,
-        selected: current.frame.selected, decisions: clone(current.decisions),
-        pending_suggestion_ids: current.suggestions.filter((item) => item.state === "pending").map((item) => item.id),
-        source: clone(imported),
-      });
-    }
-    return {
-      info: {
-        description: "Saved annotations from the Iris browser demo. Draft and unreviewed image states are explicit; this is not a frozen training dataset or a model-quality benchmark.",
-        version: "iris-demo-coco-v1", date_created: new Date().toISOString(),
-      },
-      source_split: "val",
-      licenses: [{ id: 5, name: "CC BY-SA 2.0", url: "https://creativecommons.org/licenses/by-sa/2.0/" }],
-      images, annotations,
-      categories: classes.map((item) => ({ id: item.coco_id, name: item.id })),
-      iris: {
-        format: "iris-web-demo-export-v1", project_id: seed.project_id, session_id: seed.session_id,
-        dataset_frozen: false,
-        images_location: "Use the unchanged JPEGs in examples/street-scenes/street-scenes.zip; file_name is relative to the archive root.",
-        annotation_source_license: { name: "CC BY 4.0", url: "https://creativecommons.org/licenses/by/4.0/", attribution: "COCO Consortium" },
-        source_provenance: provenance?.source ? clone(provenance.source) : null,
-        reviews,
-      },
-    };
-  }
-
-  return { createState, document, revision, save, exportCOCO };
+  return { createState, document, revision, save };
 });

@@ -1,53 +1,23 @@
-IRIS street-scenes sample
+IRIS FPV DEMO — SOURCE AND USE TERMS
 
-Two photographs and all 19 of their original COCO instance annotations.
-The original JPEG bytes and annotation geometry are unchanged. The sample
-retains the source COCO val2017 split as "val". It is for trying import and
-annotation, not a training set or an independent model-quality benchmark.
+Copyright © 2026 Victor Monnot. All rights reserved.
+Two original camera JPEG frames (1601 and 1681), recorded on 3 October
+2026, and their human reference annotations are published by their author
+for this Iris demonstration. They are not covered by the software MIT
+licence; no general redistribution or training-data licence is granted.
+Author: https://victormonnot.com/
+Source: https://github.com/victormonnot/iris/tree/main/examples/web-demo/source
+Use terms: https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt
 
-PHOTOGRAPHS
-
-000000006723.jpg — "Clongriffin" by infomatique
-https://www.flickr.com/photos/infomatique/4575950642/
-Author: https://www.flickr.com/photos/infomatique/
-License: Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0)
-https://creativecommons.org/licenses/by-sa/2.0/
-Changes to photograph: none; original downloaded COCO JPEG bytes preserved.
-
-000000032941.jpg — "Damaged Traffic Light - Junction of High Road & White Hart Lane"
-by Alan Stanton
-https://www.flickr.com/photos/alanstanton/8224728949/
-Author: https://www.flickr.com/photos/alanstanton/
-License: Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0)
-https://creativecommons.org/licenses/by-sa/2.0/
-Changes to photograph: none; original downloaded COCO JPEG bytes preserved.
-
-ANNOTATIONS
-
-COCO Consortium. Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014.
-https://cocodataset.org/
-Annotations: Creative Commons Attribution 4.0 International (CC BY 4.0).
-https://creativecommons.org/licenses/by/4.0/
-COCO terms: https://cocodataset.org/#termsofuse
-
-Retrieved through LibreYOLO's coco-val2017-mini500 repackaging, pinned revision
-6c5d8d10dab92cf6f2cd476e1d5509ab5786cb88:
-https://huggingface.co/datasets/LibreYOLO/coco-val2017-mini500
-
-Packaging changes: selected image IDs 6723 and 32941; retained all annotations
-for both images without changing their IDs, categories, boxes, areas or
-segmentation; retained only their five used category definitions and photo
-license entry; prefixed image filenames with "images/"; recorded split "val".
-JSON whitespace and record order were normalized. No new annotation was made.
-
-The photo licenses and annotation license are separate from any license for
-IRIS code. This sample does not replace them or claim rights over the photos.
+The selected development images were already used during model development.
+They are not an independent test or evidence of general FPV robustness.
+The original JPEG bytes, complete image dimensions and recorded detections
+are preserved. Public COCO image IDs equal source camera frame indices.
 
 WEB DEMO DERIVATIVES
 
-The media/*.jpg files retain the original JPEG bytes. The corresponding
-PNG files are Iris's RGB-normalized display images, at original dimensions.
-No crop, drawn box or retouch is baked into these photographs. The PNGs
-carry the same photo credits and CC BY-SA 2.0 license as the originals.
-COCO labels remain imported proposals, without a human review. Recorded
-detector outputs are separate from these labels. See provenance.json.
+The JPEG files retain the original camera bytes. Corresponding PNG files
+are Iris RGB-normalized display copies at the original dimensions.
+No crop, drawn box or retouch is baked into these images.
+Source human boxes enter the demo as proposals, awaiting the visitor's
+review. Saved model outputs remain separate and unchanged.

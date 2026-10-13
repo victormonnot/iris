@@ -1,10 +1,10 @@
 # Iris browser demo
 
-This example supplies one project, two street photographs, imported annotation
-proposals and a saved comparison of two detectors. The records use Iris's actual
-API shapes, for consumption by the shared browser interface. The browser adapter
-lets visitors select images, review annotations and inspect recorded predictions
-without an Iris API or model runtime.
+This example supplies one project, two real FPV camera images, imported human
+reference boxes and saved YOLOX-Nano results before and after training in Iris.
+The records use Iris's actual API shapes in the shared browser interface. The
+browser adapter lets visitors select images, review annotations and inspect
+recorded predictions without an Iris API or model runtime.
 
 ## Try the browser demo locally
 
@@ -20,27 +20,28 @@ no local Iris workspace, runs no API and binds only to the loopback interface.
 The normal `iris` application continues to use its local backend. This helper is
 for previewing the browser runtime; it is not a production hosting server.
 
-The shared workbench and both sample photos load behind a soft blur. **Try Iris**
+The shared workbench and both FPV images load behind a soft blur. **Try Iris**
 reveals the already-loaded interface in place. The entry explains the demo's
 limits, keeps the workbench inactive until entry, and offers a retry if the data,
 images or interface cannot load. **Install Iris locally** opens concise Linux/WSL
 instructions with copyable commands and links to the full setup and first-run
 guides; model inference and CUDA setup are separate optional steps.
 
-The preview loads the shared modules for intake, annotation and comparison.
-Comparison records are read when that workspace opens. Links into processing
-features explain that local Iris is required and leave the sample available.
+The native Iris navigation stays in place, including its processing workspaces.
+The saved comparison is preselected when **Model comparison** opens: the original
+YOLOX-Nano is on the left and the version trained in Iris is on the right, on the
+README example frame, filtered to people at confidence 0.35.
 
 The demo supports gallery selection and filters; drawing, moving, resizing and
 deleting boxes; accepting, correcting and rejecting imported proposals; saving
-drafts, validating, and viewing annotation history. Model comparison offers the
-real saved outputs with interactive class and confidence filters. Annotation
-edits never alter those recorded outputs or rerun a model.
+drafts, validating, and viewing annotation history. Class and confidence filters
+operate on real saved predictions. Annotation edits never alter those outputs.
 
-Personal uploads, class changes, new projects, new inference, model assistance,
-training, evaluation and the other processing workspaces require
-[local Iris](../../docs/setup.md). Their controls explain this limit. Unsupported
-adapter requests fail explicitly and cannot fall through to a server API.
+Personal uploads, import/export, class changes, new projects, inference, model
+assistance, training and evaluation require [local Iris](../../docs/setup.md).
+Their original controls remain visible but disabled with an explanation. Empty
+processing lists do not invent training runs or datasets. Unsupported adapter
+requests fail explicitly and cannot fall through to a server API.
 
 ### Browser storage and reset
 
@@ -55,34 +56,19 @@ Two tabs in the same browser share saved data. A notification offers a reload
 when another tab saves; unsaved editor changes are kept. Stale annotation saves
 are rejected using revision and reset checks. Selection changes are atomic and
 reject conflicting values. Save or discard current editor changes before using
-the toolbar's export, reload or reset actions.
+the toolbar's reload or reset actions.
 
 **Reset demo** asks for confirmation before removing saved annotations, history
 and selection changes. A new reset identifier invalidates editors left open in
 other tabs. When a seed or storage schema changes, incompatible saved data is
 kept and the demo offers an explicit reset instead of silently deleting it.
 
-### Export and continue locally
+### Continue locally
 
-**Export saved annotations** downloads `iris-demo-annotations.json` as COCO JSON.
-It contains the current saved boxes for both example images, regardless of gallery
-selection. Pending proposals and recorded predictions are not exported as labels.
-The `iris` extension records review states, unresolved proposals, image selection
-and source attribution. Draft or unannotated images remain explicitly marked;
-this export is not a frozen training dataset or a complete workspace backup.
-
-To import the labels into local Iris:
-
-1. Extract [street-scenes.zip](../street-scenes/street-scenes.zip).
-2. Replace its `annotations.json` with the downloaded JSON, preserving the
-   original `images/` directory, credits and provenance. Create a ZIP containing
-   those files directly at its root.
-3. Use **Import annotated dataset** in local Iris, map `person` and `car`, retain
-   the original `val` split, and supply the photo and annotation credits from
-   the example. Imported boxes require human review again in the local workspace.
-
-Keep the downloaded JSON as well: the local COCO importer does not restore the
-demo's revision history or its human-validation status from the `iris` extension.
+Use **Install Iris locally** for setup instructions. The hosted sample lets you
+explore the interface; importing your own recordings, exporting datasets and
+running models are available in the installed tool. Browser edits remain local
+to this demo and do not change the author's saved experiment.
 
 ## Build a static hosting artifact
 
@@ -160,11 +146,12 @@ while visitors may still have an older page open or cached; do not overwrite
 files inside an existing content-addressed directory. These are hosting
 requirements, not configuration applied by the exporter.
 
-Saved browser data belongs to the site's origin and demo location, separately
-from the asset version. Rebuilding only the interface preserves that namespace.
-Changing the domain or demo path creates a different browser workspace. A
-changed seed still triggers the explicit compatibility/reset flow described
-above, rather than silently discarding edits.
+Saved browser data belongs to the site's origin, demo location and sample,
+separately from the asset version. Rebuilding only the interface preserves that namespace.
+The FPV sample uses the `fpv-yolox-v1` namespace. Earlier street-scene edits remain
+in their separate browser database and are not applied to the new images.
+Changing the domain or demo path also creates a different browser workspace.
+An incompatible update within the same sample still offers an explicit reset.
 
 Keep the bundled `LICENSE`, `THIRD_PARTY_NOTICES.md`, font licences and sample
 credits with the artifact. The notices link to the accompanying font files,
@@ -173,30 +160,34 @@ from Iris's software licence.
 
 ## Contents and attribution
 
-The photographs and original labels come from the attributed
-[street-scenes example](../street-scenes/README.md). The two original JPEGs are
-unchanged. Iris also produces RGB PNG display images at their original dimensions.
-Both formats retain the photo credits and CC BY-SA 2.0 licence. Original COCO
-annotations retain their CC BY 4.0 attribution.
+The [source bundle](source/fpv-yolox.zip) contains two unchanged camera JPEGs,
+640 × 480 pixels, from Victor Monnot's 3 October 2026 courtyard recording.
+Camera frame 1601 is the image in [the YOLOX example](../../docs/iris-to-argos.md);
+frame 1681 follows in the same recording. RGB PNG display copies preserve the
+complete images. The source images and manual annotations are published by their
+author for this demonstration, with all rights reserved; they are separate from
+Iris's MIT software licence. See [source credits](source/CREDITS.txt).
 
-The example begins with **11 imported proposals: 3 people and 8 cars**. All 19
-source annotations are retained in provenance, including the eight excluded by
-the class mapping. Both frames remain unannotated, at revision zero, with no
-reviewer, saved boxes or human validation. Their original split is `val`.
+Each image starts with one imported person proposal, taken from the frozen human
+reference used for the experiment. The original source was human-reviewed. In
+this separate visitor workspace, both proposals start pending, with revision
+zero, no saved boxes and no visitor validation. Their source split stays `val`.
 
-[recording.json](recording.json) contains an actual CPU comparison of
-SSDLite320 MobileNetV3-Large and Faster R-CNN MobileNetV3-Large 320 FPN, recorded
-on 12 October 2026 with PyTorch 2.10 and Torchvision 0.25. The four saved
-predictions retain all 100 native detections per model/image, including low
-confidence detections, without display filtering. Model identities, checkpoint
-hashes, configuration, runtime versions, dates and timings accompany the results.
-No weights are bundled.
+[recording.json](recording.json) projects four actual saved prediction records
+from the official and 800-step Iris-trained YOLOX-Nano evaluations of 7 October
+2026. The comparison and job objects are display wrappers joining those two
+existing evaluations; no joint comparison job or new inference was performed.
+All 206 native detections retain their coordinates, scores, category metadata,
+original record IDs, dates and per-image CUDA timings. Checkpoint hashes and the
+training reference identify the exact models; no weights are bundled.
 
-These are small-object street scenes on which the two lightweight models miss
-many objects at the default 0.5 display threshold. The example demonstrates
-inspection of real outputs; it is not an independent model-quality benchmark,
-a training dataset or a promise of performance on a visitor's computer. Editing
-the example annotations must leave the recorded predictions and timings intact.
+At confidence 0.35, the original model misses the person on frame 1601 while the
+trained model detects them at 0.736884. Both detect a person on frame 1681.
+These are selected development images from the reused 17-image validation set,
+not independent evidence of generalization. The measurements came from the
+original RTX 4060 evaluations and are not browser performance claims. The
+[experiment record](../../docs/acceptance-results.md#yolox-nano-custom-detector-accepted-by-an-external-application)
+explains the full split, quality results and limitations.
 
 ## Rebuild the public data
 
@@ -209,7 +200,7 @@ uv run python examples/web-demo/build.py --output /tmp/iris-web-demo-seed
 ```
 
 The normal build requires neither ML dependencies nor model weights. It imports
-the hash-verified street-scenes ZIP through the real API in a new temporary
+the hash-verified FPV ZIP through the real API in a new temporary
 workspace, restores the immutable recorded results, and reads an explicit list
 of API responses and media. It performs no network requests and never opens an
 existing Iris workspace. Temporary storage is removed on completion.
@@ -229,7 +220,7 @@ contract tests before regenerated data is accepted.
 `seed/fixture.json` has format `iris-web-demo-v1` and a separate
 `fixture_version`. Its `responses` object maps logical API paths to read-only
 snapshots; `resources` maps image/media API paths to relative files in `media/`.
-The project ID is `web-demo`, and the session ID is `street-scenes`.
+The project ID is `web-demo`, and the session ID is `fpv-yolox`.
 
 Response keys omit `project_id` query parameters. A consumer must check the
 project, interpret supported queries and apply browser edits itself. These
@@ -239,8 +230,9 @@ the browser runtime and are deliberately absent. Model descriptors identify the
 recorded detectors; they do not declare locally installed or runnable models.
 
 Temporary import IDs and creation dates are normalized for reproducibility.
-COCO IDs, original capture dates, annotation geometry, source hashes and all
-measured inference values are retained. Sorting of imported records is stable.
+Public COCO image IDs equal camera frame numbers 1601 and 1681. Original source
+record IDs, capture dates, annotation geometry, hashes and measured inference
+values are retained in provenance. Sorting of imported records is stable.
 The fixed import date is a fixture placeholder, not a claimed review date.
 
 `seed/provenance.json` records source provenance, the recording checksum,
@@ -249,20 +241,21 @@ normalizations, and the hashes and sizes of every other generated file.
 RGB pixels with dimensions. These differ from the PNG file hashes in provenance.
 Keep [seed/CREDITS.txt](seed/CREDITS.txt) and provenance alongside deployed media.
 
-## Record new model results explicitly
+## Reproject the saved source evaluations
 
-With Iris's optional ML dependencies and the two official checkpoints already
-available, use the separate recorder:
+`record.py` can reproduce the public projection from the original source
+workspace when it is available:
 
 ```sh
-uv run --extra ml python examples/web-demo/record.py \
-  --weights-dir /path/to/official-checkpoints \
-  --output /tmp/new-street-scenes-recording.json
+uv run python examples/web-demo/record.py \
+  --workspace /path/to/source-workspace \
+  --output /tmp/iris-fpv-source-projection
 ```
 
-The recorder creates another temporary public-only workspace and runs both
-detectors on CPU. It does not download weights, validate annotations or read a
-workspace database supplied by the caller. Review the new recording before
-replacing `recording.json` and rebuilding the seed. A fresh ML run has its own
-timestamps and timings and may produce numerical differences; ordinary fixture
-rebuilds reuse the saved recording and are byte-for-byte reproducible.
+This optional maintenance command opens SQLite in read-only mode, verifies the
+selected frozen dataset and camera image hashes, and copies only the two named
+images, their manual reference boxes and four saved model results. It never
+executes a model or copies weights, unrelated records, private notes or local
+paths. The output directory must not exist. Review the projection before
+replacing `source/` and `recording.json`; ordinary builds need only those checked-in
+public files and do not open the source workspace.

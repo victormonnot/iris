@@ -6,7 +6,7 @@
   if (adapter?.mode !== "demo") return;
 
   const installURL = "https://github.com/victormonnot/iris/blob/main/docs/setup.md";
-  const supportedWorkspaces = new Set(["intake", "annotation", "comparison"]);
+  const unavailable = "Unavailable in demo mode";
   const localReason = "Install Iris locally to use your own files, run models and access the full workbench.";
   const $ = (selector) => document.querySelector(selector);
   const element = (tag, className, text) => {
@@ -50,11 +50,10 @@
     introduction.append(source);
   }
   const actions = element("div", "iris-demo-actions");
-  const exportButton = button("iris-demo-export", "Export saved annotations");
   const resetButton = button("iris-demo-reset", "Reset demo", "text-button");
   const reloadButton = button("iris-demo-reload", "Reload saved demo", "text-button");
   reloadButton.hidden = true;
-  actions.append(exportButton, resetButton, reloadButton, installLink());
+  actions.append(resetButton, reloadButton, installLink());
   const storage = element("p", "iris-demo-storage", "Opening this browser’s demo workspace…");
   storage.id = "iris-demo-storage";
   storage.setAttribute("role", "status");
@@ -65,7 +64,7 @@
   const editHint = element("p", "iris-demo-edit-hint");
   editHint.id = "iris-demo-edit-hint";
   editHint.hidden = true;
-  for (const control of [exportButton, resetButton, reloadButton])
+  for (const control of [resetButton, reloadButton])
     control.setAttribute("aria-describedby", editHint.id);
   toolbar.append(introduction, actions, storage, editHint, notice);
   const topbar = $(".topbar");
@@ -87,7 +86,7 @@
   dialog.setAttribute("aria-labelledby", "iris-demo-local-title");
   dialog.setAttribute("aria-describedby", "iris-demo-local-reason");
   const heading = element("div", "modal-heading");
-  const title = element("h2", "", "Available in local Iris");
+  const title = element("h2", "", unavailable);
   title.id = "iris-demo-local-title";
   const close = button("iris-demo-local-close", "×", "icon-button");
   close.setAttribute("aria-label", "Close local feature notice");
@@ -125,14 +124,13 @@
   let context = { dirty: false, busy: false };
   function controls() {
     const blocked = context.dirty || context.busy;
-    exportButton.disabled = !ready || actionPending || blocked;
     resetButton.hidden = failed && !canRecover;
     resetButton.disabled = (!ready && !canRecover) || actionPending || blocked;
     reloadButton.disabled = actionPending || blocked;
     editHint.hidden = !blocked;
     editHint.textContent = context.busy
-      ? "Finish the current annotation action before exporting, resetting or reloading."
-      : "Save or discard your current annotation edits before exporting, resetting or reloading. Only saved annotations are exported.";
+      ? "Finish the current annotation action before resetting or reloading."
+      : "Save or discard your current annotation edits before resetting or reloading.";
   }
   function canAct() {
     window.dispatchEvent(new Event("iris:annotation-context-request"));
@@ -150,8 +148,8 @@
     const memory = detail.mode === "memory";
     storage.classList.toggle("iris-demo-memory", memory);
     storage.textContent = memory
-      ? "Temporary memory only. Saved edits can disappear when this page closes or reloads; export them to keep a copy."
-      : "Saved edits stay in this browser. Export them to keep a separate copy; clearing site data removes them.";
+      ? "Temporary memory only. Demo edits disappear when this page closes or reloads. Install Iris locally to keep your own workspace."
+      : "Demo edits stay in this browser; resetting the demo or clearing site data removes them.";
   }
   window.addEventListener("iris:annotation-context", (event) => {
     context = event.detail || { dirty: false, busy: false };
@@ -163,32 +161,9 @@
     message("Saved demo data changed in another tab. Reload to use the latest version; your current unsaved edits have been kept.");
     controls();
   });
-  exportButton.addEventListener("click", async () => {
-    if (!canAct() || !ready) return;
-    actionPending = true;
-    controls();
-    try {
-      const annotations = await adapter.exportAnnotations();
-      const blob = new Blob([JSON.stringify(annotations, null, 2) + "\n"], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const download = element("a");
-      download.href = url;
-      download.download = "iris-demo-annotations.json";
-      document.body.append(download);
-      download.click();
-      download.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      message("Saved annotations exported. Recorded model outputs and unsaved edits are not included.");
-    } catch (failure) {
-      message(failure.message || "The saved annotations could not be exported.", true);
-    } finally {
-      actionPending = false;
-      controls();
-    }
-  });
   resetButton.addEventListener("click", async () => {
     if ((!ready && !canRecover) || !canAct()) return;
-    if (!window.confirm("Reset this demo to its original sample? This permanently removes the saved demo edits in this browser, including data from an older demo version. Export your saved annotations first if you want to keep them.")) return;
+    if (!window.confirm("Reset this demo to its original sample? This permanently removes the saved demo edits in this browser, including data from an older demo version.")) return;
     actionPending = true;
     controls();
     try {
@@ -205,41 +180,119 @@
     if (canAct()) window.location.reload();
   });
 
-  // Controls remain discoverable, with one delegated policy guarding their
-  // native, keyboard and programmatic event paths before workspace handlers.
+  // Keep the native screens, disclosures and read-only navigation. Only the
+  // unavailable controls are disabled; their explanation stays beside them.
+  const fields = "button, input, select, textarea, [role=button]";
+  const readOnlyControls = [
+    "[data-close]", "[id$='-close']", "[data-training-open]", "[data-evaluation-open]",
+    "[data-benchmark-open]", "[data-evaluation-section]", "[role=tab]",
+    "button[id*='refresh']", "select[id$='-history']", "[id$='-job']", "[id$='-raw']",
+    "#training-models-open", "#evaluation-open-datasets", "#training-resume-existing",
+  ].join(", ");
+  // The optional third entry restricts a mixed region to its mutable controls.
   const policies = [
-    ["#project-create, #project-form, #session-form, #start-session", "Create projects and sessions in local Iris. This demo provides one public example to explore."],
-    ["#taxonomy-open, #taxonomy-form, #annotation-adopt-taxonomy", "Edit class definitions in local Iris. You can read the sample’s definitions in Annotation → Label definitions."],
-    [".upload-trigger, #file-input, #source-dropzone, #upload-retry, #upload-cancel, #dataset-import-open, #dataset-import-dialog", "Import your own images, videos or annotated datasets in local Iris. This demo uses only the included public sample."],
-    ["#workspace-backup-open, #workspace-backup-dialog", "Full workspace backups are available in local Iris. Use Export saved annotations in the demo toolbar to keep your browser edits."],
-    ["#extract-dialog, #video-review-extract-form", "Extract video frames and review video passages in local Iris. This demo contains two public photos."],
-    ["#comparison-form", "Run new comparisons in local Iris. The demo lets you inspect real recorded predictions and change their display threshold without running a model."],
-    [".annotation-proposal-setup, .annotation-assist, #preannotations, #dinox-preannotations, #assistance-batches", "Generate detector proposals and request model assistance in local Iris. You can accept, correct or reject the sample’s imported proposals here."],
-    ["#review-queue-comparison, #review-queue-confidence, #review-queue-iou, #review-queue-order", "Comparison-based review prioritization is available in local Iris. Use review status filters here, or open Model comparison to inspect the recorded outputs."],
+    ["#project-form, #session-form", "Create projects and sessions in your local workspace."],
+    ["#source-dropzone", "Import your own images and videos in local Iris."],
+    [".dataset-import-launch", "Import annotated datasets in local Iris.", "#dataset-import-open"],
+    [".workspace-backup-location", "Create and restore workspace backups in local Iris.", "#workspace-backup-open"],
+    ["#taxonomy-form", "Edit class definitions in local Iris. The sample definitions remain available to inspect."],
+    ["#dataset-import-dialog", "Import annotated datasets in local Iris.", "#dataset-import-upload input, #dataset-import-preview-button, #dataset-import-commit-form input, #dataset-import-commit-form select, #dataset-import-commit"],
+    ["#workspace-backup-dialog", "Create, download and restore full workspace backups in local Iris.", "#workspace-backup-create, #workspace-backup-upload-form input, #workspace-backup-upload, #workspace-backup-upload-cancel, #workspace-backup-restore-form input, #workspace-backup-restore, [data-operation-action='download'], [data-operation-action='restore'], [data-operation-action='remove'], [data-operation-action='cancel']"],
+    ["#extract-form, #video-review-form, #video-review-extract-form", "Analyze videos and extract frames in local Iris."],
+    ["#comparison-form", "Run models in local Iris. The saved comparison below contains real recorded outputs; its display filters remain interactive."],
+    [".comparison-model-library", "These models produced the recorded comparison. Install Iris locally to run your own comparisons.", "#model-catalog input"],
+    [".annotation-proposal-setup", "Import new detector proposals in local Iris. You can review the sample’s existing proposals below."],
+    [".annotation-assist, #preannotations, #dinox-preannotations, #assistance-batches", "Generate new proposals and request model assistance in local Iris. Manual annotation remains available in this demo."],
+    [".review-queue-controls", "Comparison-based prioritization requires local Iris. Review status filters remain available.", "#review-queue-comparison, #review-queue-confidence, #review-queue-iou, #review-queue-order"],
+    ["#dataset-form", "Prepare and freeze dataset releases in local Iris."],
+    ["#training-form, #training-recovery", "Train models and continue saved training runs in local Iris."],
+    ["#model-export-form, .model-export-measurement-import", "Create model packages and import performance measurements in local Iris."],
+    ["#evaluation-form, #evaluation-reference-form, #evaluation-test-audit", "Run evaluations and save reference decisions in local Iris."],
+    [".tracking-prepare, #selection-prepare, #bundle-prepare", "Run tracking, measure performance and prepare deployment bundles in local Iris."],
+    ["#tracking-quality-panel", "Calculate tracking quality reports in local Iris.", "#quality-reference, #quality-iou, #quality-mapping select, #quality-calculate"],
+    ["#identity-seed-panel, #identity-object-fields, .identity-review", "Create and save temporal identity references in local Iris."],
+    ["#benchmark-prepare, #benchmark-config-form, .benchmark-trial-setup", "Prepare benchmarks and run model trials in local Iris."],
+    ["#benchmark-pane-reports", "Create benchmark reports in local Iris.", "#benchmark-report-preview, #benchmark-report-save, #benchmark-report-title, #benchmark-report-notes"],
+    ["#experiments-workspace", "Create, edit and export experiment reports in local Iris.", "#experiments-new, #experiments-empty-create, #experiments-edit, #experiments-export, #experiments-export-cancel"],
+    ["#experiments-compose-form, #experiments-edit-form", "Create and edit experiment reports in local Iris."],
   ];
-  for (const [selector, explanation] of policies) {
-    for (const target of document.querySelectorAll(selector)) {
-      target.dataset.demoLocalOnly = explanation;
-      if (target.matches("button, input, select, [role=button]"))
-        target.setAttribute("aria-disabled", "true");
-      if (target.matches("details")) {
-        target.open = false;
-        target.querySelector("summary")?.setAttribute("aria-disabled", "true");
+  const notes = new WeakMap();
+  let noteCount = 0;
+  function noteFor(region) {
+    let note = notes.get(region);
+    if (note?.isConnected) return note;
+    note = element("p", "iris-demo-local-note");
+    note.id = `iris-demo-local-note-${++noteCount}`;
+    note.append(element("strong", "iris-demo-unavailable-label", unavailable),
+      document.createTextNode(". "), installLink());
+    const heading = region.querySelector(":scope > summary, :scope > legend, :scope > .modal-heading, :scope > .panel-heading");
+    if (region.matches("label, [role=button]")) region.after(note);
+    else if (region.matches(".dataset-import-launch, .workspace-backup-location")) region.append(note);
+    else if (heading) heading.after(note);
+    else region.prepend(note);
+    notes.set(region, note);
+    return note;
+  }
+  function mark(target, explanation, note) {
+    if (target.closest(".iris-demo-local-note") || target.matches(readOnlyControls)) return;
+    target.dataset.demoLocalOnly = explanation;
+    target.classList.add("iris-demo-unavailable");
+    if (target.getAttribute("aria-disabled") !== "true") target.setAttribute("aria-disabled", "true");
+    if (target.title !== unavailable) target.title = unavailable;
+    if ("disabled" in target && !target.disabled) target.disabled = true;
+    // A disabled download must not remain usable through the link context menu.
+    if (target.matches("a[href]")) target.removeAttribute("href");
+    if (note) {
+      const describedBy = new Set((target.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      if (!describedBy.has(note.id)) {
+        describedBy.add(note.id);
+        target.setAttribute("aria-describedby", [...describedBy].join(" "));
       }
     }
   }
-  for (const workspace of ["training", "evaluation", "experiments", "benchmark", "tracking", "identities"]) {
-    const target = $(`#workspace-${workspace}`);
-    target?.setAttribute("aria-disabled", "true");
-    target?.setAttribute("title", "Available in local Iris");
+  const extraActions = [
+    "#start-session", "#annotation-adopt-taxonomy", "#file-input", ".upload-trigger",
+    "#upload-retry", "#upload-cancel", "#benchmark-lock", "#evaluation-save-experiment",
+    "#identity-undo", "#identity-redo", "#identity-draw", "#identity-add-absence",
+    "#tracking-cancel-cache", "#tracking-cancel", "#cost-cancel", "#study-cancel",
+    "#selection-cancel", "#bundle-cancel", "#job-detail-cancel", "#job-check-continuation",
+    "#job-confirm-continuation", "#benchmark-editor-start", "#benchmark-editor-save",
+    "#benchmark-editor-complete", "#dataset-coco-download", "#dataset-manifest-download",
+    "#model-export-download", "#cost-download", "#study-download", "#selection-download",
+    "#bundle-download", "#bundle-download-manifest", "a[download]",
+  ].join(", ");
+  function applyPolicies() {
+    for (const [selector, explanation, controlsSelector = fields] of policies) {
+      for (const region of document.querySelectorAll(selector)) {
+        const note = noteFor(region.closest(".comparison-setup") || region);
+        if (region.matches("form")) region.dataset.demoLocalSubmit = explanation;
+        for (const form of region.querySelectorAll("form")) form.dataset.demoLocalSubmit = explanation;
+        for (const target of region.querySelectorAll(controlsSelector)) mark(target, explanation, note);
+      }
+    }
+    for (const target of document.querySelectorAll(extraActions))
+      mark(target, localReason);
+    const dropzone = $("#source-dropzone");
+    if (dropzone) {
+      dropzone.dataset.demoLocalDrop = "Import your own files in local Iris.";
+      dropzone.classList.add("iris-demo-unavailable-zone");
+    }
   }
-  window.addEventListener("iris:before-workspace", (event) => {
-    if (supportedWorkspaces.has(event.detail?.name)) return;
-    event.preventDefault();
-    explain("Training, evaluation, experiments, benchmarks and tracking are available in local Iris. Explore Data intake, Annotation and Model comparison in this demo.");
-  }, { capture: true });
-  const guardedTarget = (event) => event.target instanceof Element
-    ? event.target.closest("[data-demo-local-only]") : null;
+  applyPolicies();
+  // Shared renderers may replace controls or recompute disabled state. Reapply
+  // only this demo policy, leaving navigation and recorded result filters alone.
+  new MutationObserver(applyPolicies).observe(document.body, {
+    childList: true, subtree: true,
+    attributes: true, attributeFilter: ["disabled", "href", "aria-disabled"],
+  });
+
+  function guardedTarget(event) {
+    if (!(event.target instanceof Element)) return null;
+    if (event.type === "submit") return event.target.closest("[data-demo-local-submit]");
+    if (["drop", "dragover"].includes(event.type))
+      return event.target.closest("[data-demo-local-drop], [data-demo-local-only]");
+    return event.target.closest("[data-demo-local-only]");
+  }
   function guard(event) {
     const target = guardedTarget(event);
     if (!target) return;
@@ -247,45 +300,15 @@
     event.stopImmediatePropagation();
     if (event.type === "change" && event.target.matches('input[type="file"]'))
       event.target.value = "";
-    explain(target.dataset.demoLocalOnly);
+    if (event.type !== "dragover")
+      explain(target.dataset.demoLocalOnly || target.dataset.demoLocalSubmit || target.dataset.demoLocalDrop);
   }
-  for (const type of ["click", "submit", "change", "drop"])
+  for (const type of ["click", "submit", "change", "drop", "dragover"])
     document.addEventListener(type, guard, { capture: true });
-  document.addEventListener("dragover", (event) => {
-    if (guardedTarget(event)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  }, { capture: true });
   document.addEventListener("keydown", (event) => {
     if (guardedTarget(event) && ["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key))
       guard(event);
   }, { capture: true });
-  document.addEventListener("toggle", (event) => {
-    const target = guardedTarget(event);
-    if (event.target.matches?.("details") && target && event.target.open) {
-      event.stopImmediatePropagation();
-      event.target.open = false;
-      explain(target.dataset.demoLocalOnly);
-    }
-  }, { capture: true });
-
-  function replaceWithNote(selector, text) {
-    const target = $(selector);
-    if (!target) return;
-    target.classList.add("iris-demo-hidden");
-    const note = element("p", "iris-demo-local-note", text + " ");
-    note.append(installLink());
-    target.after(note);
-  }
-  replaceWithNote("#session-form", "Create your own sessions in local Iris.");
-  replaceWithNote("#source-dropzone", "Explore the included photos here. Import your own files in local Iris.");
-  replaceWithNote("#comparison-form", "These are recorded model outputs. Display filters below remain interactive; new inference runs locally.");
-  replaceWithNote(".annotation-proposal-setup", "Review the imported proposals below. Additional model proposals are available in local Iris.");
-  const reviewExplanation = element("p", "iris-demo-local-note", "This demo supports review status filters. Comparison-based prioritization is available in local Iris.");
-  $(".review-queue-controls")?.after(reviewExplanation);
-  for (const selector of ["#review-queue-comparison", "#review-queue-confidence", "#review-queue-iou", "#review-queue-order"])
-    if ($(selector)) $(selector).disabled = true;
 
   controls();
   window.dispatchEvent(new Event("iris:annotation-context-request"));

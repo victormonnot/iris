@@ -3,11 +3,13 @@
 ((root, factory) => {
   const domain = typeof module === "object" && module.exports
     ? require("./annotations.js") : root.IRISDemoAnnotations;
-  const tools = factory(domain);
+  const catalog = typeof module === "object" && module.exports
+    ? require("./catalog.js") : root.IRISDemoCatalog;
+  const tools = factory(domain, catalog);
   if (typeof module === "object" && module.exports) module.exports = tools;
   else root.IRISDemoAdapter = tools;
-})(typeof globalThis !== "undefined" ? globalThis : this, (annotations) => {
-  const LOCAL_ONLY = "This action requires a local Iris installation. The demo supports sample selection, annotation and recorded comparisons.";
+})(typeof globalThis !== "undefined" ? globalThis : this, (annotations, catalog) => {
+  const LOCAL_ONLY = "Unavailable in demo mode. Install Iris locally to use this feature.";
   const copy = (value) => structuredClone(value);
   const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
   const json = (value, status = 200) => new Response(JSON.stringify(value), {
@@ -15,13 +17,13 @@
   });
   const capabilities = Object.freeze({
     projects: true, frame_selection: true, selection_insights: true, annotation: true,
-    review_queue: true, comparison_replay: true, annotation_export: true,
+    review_queue: true, comparison_replay: true, annotation_export: false,
     media_import: false, inference: false, training: false, evaluation: false,
     assisted_annotation: false, workspace_backup: false,
   });
 
   function create({ load, onChange = () => {} }) {
-    let seed, store, provenance, base, resources, initializationError;
+    let seed, store, provenance, base, resources, initializationError, readOnly;
     let ready = Promise.resolve().then(load).then((loaded) => {
       ({ seed, store, provenance } = loaded);
       if (seed.format !== "iris-web-demo-v1" || seed.fixture_version !== 1)
@@ -35,6 +37,7 @@
         mappedResources.set(path, new URL(target, base).href);
       }
       resources = mappedResources;
+      readOnly = catalog.create(seed);
       return loaded;
     }).catch((error) => { initializationError = error; throw error; });
     // The shared UI may not call request until a later task; keep startup errors observable.
@@ -156,7 +159,8 @@
         await ready;
         options.signal?.throwIfAborted();
         const isReviewQueue = typeof path === "string" && path.split("?")[0] === `/api/sessions/${seed.session_id}/review-queue`;
-        const parsed = route(path, isReviewQueue ? ["comparison_id", "confidence_threshold", "iou_threshold"] : []);
+        const parsed = route(path, isReviewQueue ? ["comparison_id", "confidence_threshold", "iou_threshold"]
+          : readOnly.queryParameters(typeof path === "string" ? path.split("?")[0] : ""));
         const key = parsed.pathname, method = options.method || "GET";
         if (method === "GET") {
           if (key === "/api/system") return json({version: provenance.iris_version,
@@ -165,7 +169,7 @@
           if (key === "/api/annotation-providers") return json({providers: [], default_provider: null, default_model: null});
           if (key === "/api/jobs") return json([]);
           if (key === "/api/models") return json(seed.responses[key].map((model) => ({
-            ...model, status: "unavailable", reason: "Recorded example. Install Iris locally to run models.",
+            ...model, status: "unavailable", reason: "Recorded results included. Unavailable in demo mode; install Iris locally to run models.",
             runtime_load_verified: false,
           })));
           const state = await store.read();
@@ -178,6 +182,8 @@
           const revision = key.match(/^\/api\/frames\/([^/]+)\/annotation\/revisions\/([1-9]\d*)$/);
           if (revision) return json(annotations.revision(seed, state, revision[1], Number(revision[2])));
           if (Object.hasOwn(seed.responses, key)) return json(seed.responses[key]);
+          const recorded = readOnly.response(key, parsed.searchParams);
+          if (recorded !== undefined) return json(recorded);
           fail(501, LOCAL_ONLY);
         }
         const annotation = key.match(/^\/api\/frames\/([^/]+)\/annotation$/);
@@ -217,6 +223,7 @@
       get ready() { return ready; },
       get status() { return store?.status || { mode: "loading" }; },
       get error() { return initializationError; },
+      get defaults() { return copy(seed?.defaults || {}); },
       request,
       resourceURL(path) {
         if (!resources) fail(503, "The example media is still loading.");
@@ -242,7 +249,7 @@
       },
       async exportAnnotations() {
         await ready;
-        return annotations.exportCOCO(seed, await store.read(), { provenance });
+        fail(501, LOCAL_ONLY);
       },
       close() { store?.close(); },
     };

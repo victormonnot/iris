@@ -1,0 +1,95 @@
+{
+  "annotation_source": {
+    "author": "Victor Monnot",
+    "kind": "manual reference boxes",
+    "license": "All rights reserved",
+    "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+    "mirror": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+    "reviews": [
+      {
+        "annotation_id": 1601,
+        "box": [
+          183.8146081521087,
+          241.85305454422874,
+          253.5991524090225,
+          452.9600678239377
+        ],
+        "created_at": "2026-10-06T11:24:34.522271+00:00",
+        "demo_initial_state": "pending imported proposal",
+        "frame_id": "5bffdf25c0b54935bea052e6c23e8ce0",
+        "revision": 1,
+        "source_state": "human-reviewed"
+      },
+      {
+        "annotation_id": 1681,
+        "box": [
+          133.07334113060625,
+          214.07979370377302,
+          205.60902806729996,
+          413.5529327796809
+        ],
+        "created_at": "2026-10-06T11:23:41.909415+00:00",
+        "demo_initial_state": "pending imported proposal",
+        "frame_id": "54a87f36399c4d80bbdea2ed35abc169",
+        "revision": 1,
+        "source_state": "human-reviewed"
+      }
+    ]
+  },
+  "capture": {
+    "created_at_utc": "2026-10-03T11:16:41.145464+00:00",
+    "date_basis": "Native camera recording manifest; capture start, not Iris import date.",
+    "id": "ec843f1682954d93a3286069e9a98842",
+    "manifest_sha256": "5fdc619c4f700656250c868eab294155bc9e55c2752dc02e8bbe8b39270f2708"
+  },
+  "default_import_mapping": {
+    "1": "person"
+  },
+  "files": {
+    "CREDITS.txt": {
+      "sha256": "6a7afbdeb0cb55f379d12da7668678646f057ef166b728d0a53c2f6e6667c3a3",
+      "size_bytes": 886
+    },
+    "annotations.json": {
+      "sha256": "03469915a334f1af543fc168c2c92243dd957e034ebc7253ba3f7177c886d507",
+      "size_bytes": 1361
+    }
+  },
+  "format": "iris-fpv-demo-source-v1",
+  "images": [
+    {
+      "archive_path": "images/1601.jpg",
+      "author": "Victor Monnot",
+      "author_url": "https://victormonnot.com/",
+      "coco_image_id": 1601,
+      "height": 480,
+      "license": "All rights reserved",
+      "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+      "photo_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+      "sha256": "93568106ffbde63d8b22ed1a9ac1ec7d2700020a3c09a913c96f5dbb80f43164",
+      "size_bytes": 123029,
+      "source_filename": "outdoor-ec843f16-f1601.jpg",
+      "source_frame_id": "5bffdf25c0b54935bea052e6c23e8ce0",
+      "source_frame_index": 1601,
+      "title": "FPV courtyard recording — frame 1601",
+      "width": 640
+    },
+    {
+      "archive_path": "images/1681.jpg",
+      "author": "Victor Monnot",
+      "author_url": "https://victormonnot.com/",
+      "coco_image_id": 1681,
+      "height": 480,
+      "license": "All rights reserved",
+      "license_url": "https://github.com/victormonnot/iris/blob/main/examples/web-demo/source/CREDITS.txt",
+      "photo_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
+      "sha256": "5b90e596540e537adab85a30e456db9541e2781d13f7ca710126b9f57d5d7073",
+      "size_bytes": 132765,
+      "source_filename": "outdoor-ec843f16-f1681.jpg",
+      "source_frame_id": "54a87f36399c4d80bbdea2ed35abc169",
+      "source_frame_index": 1681,
+      "title": "FPV courtyard recording — frame 1681",
+      "width": 640
+    }
+  ]
+}

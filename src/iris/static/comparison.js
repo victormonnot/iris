@@ -24,6 +24,16 @@
     previewError: null,
   };
   const svgNamespace = "http://www.w3.org/2000/svg";
+  const demoDefaults = () => irisRuntime.mode === "demo" ? window.IRISRuntimeAdapter?.defaults || {} : {};
+  let demoResultOpened = false;
+  function openDemoResult() {
+    if (irisRuntime.mode !== "demo" || demoResultOpened || !comparison.detail || $("#comparison-workspace").hidden) return;
+    demoResultOpened = true;
+    requestAnimationFrame(() => {
+      if (!$("#comparison-workspace").hidden)
+        $("#comparison-detail").scrollIntoView({ block: "start" });
+    });
+  }
   const replay = window.IRISComparisonReplay.create($("#comparison-replay"), {
     urlFor: projectURL,
     onSelectFrame(frameId) {
@@ -133,6 +143,17 @@
   }
 
   function updateLaunch() {
+    if (irisRuntime.mode === "demo") {
+      $("#model-selection-summary").textContent = "Unavailable in demo mode";
+      $("#model-catalog-hint").textContent = "These models produced the saved comparison below. Install Iris locally to run your own models.";
+      $("#comparison-selection").textContent = "Recorded results are ready to inspect below.";
+      $("#comparison-selection-hint").textContent = "Unavailable in demo mode. New comparisons require a local installation.";
+      $("#comparison-mode-hint").textContent = "Inference settings apply to new runs in local Iris.";
+      $("#comparison-tiling-fields").hidden = inferenceMode() === "full";
+      $("#comparison-plan").textContent = "";
+      $("#run-comparison").disabled = true;
+      return;
+    }
     const count = selectedFrames().length;
     const saving = state.bulkSelecting || state.pendingSelections.size > 0;
     const modelCount = comparison.chosenModels.size;
@@ -250,7 +271,8 @@
         node(
           "span",
           `model-availability${ready ? " ready" : ""}`,
-          ready ? "Ready" : availability[model.status] || "Setup required",
+          irisRuntime.mode === "demo" ? "Unavailable in demo mode"
+            : ready ? "Ready" : availability[model.status] || "Setup required",
         ),
       );
       content.append(
@@ -303,7 +325,7 @@
       catalog.append(
         node("p", "model-catalog-empty", "No models are listed. Refresh the catalog to check local detectors and completed training checkpoints."),
       );
-    $("#model-setup").hidden = !comparison.models.some(
+    $("#model-setup").hidden = irisRuntime.mode === "demo" || !comparison.models.some(
       (model) => model.status !== "ready",
     );
     $("#model-setup-commands").textContent =
@@ -312,7 +334,6 @@
   }
 
   async function refreshModels() {
-    if (irisRuntime.mode === "demo" && $("#comparison-workspace").hidden) return;
     const request = ++comparison.catalogRequest;
     comparison.catalogLoading = true;
     $("#refresh-models").disabled = true;
@@ -379,7 +400,6 @@
   }
 
   async function refreshHistory() {
-    if (irisRuntime.mode === "demo" && $("#comparison-workspace").hidden) return;
     const sessionId = state.sessionId;
     if (!sessionId) return;
     const request = ++comparison.historyRequest;
@@ -394,7 +414,7 @@
         return;
       comparison.history = history;
       if (!history.some((item) => item.id === comparison.activeId)) {
-        comparison.activeId = history[0]?.id || null;
+        comparison.activeId = history.find((item) => item.id === demoDefaults().comparison_id)?.id || history[0]?.id || null;
         comparison.detail = null;
         comparison.position = 0;
         replay.reset();
@@ -426,7 +446,7 @@
       if (JSON.stringify(detail) === JSON.stringify(comparison.detail)) return;
       const isNew = comparison.detail?.id !== id;
       comparison.detail = detail;
-      if (isNew) comparison.position = 0;
+      if (isNew) comparison.position = Math.max(0, detail.frame_ids.indexOf(demoDefaults().frame_id));
       renderDetail(isNew);
     } catch (error) {
       if (request === comparison.detailRequest && state.sessionId === sessionId)
@@ -472,11 +492,22 @@
       job?.error ? new Error(job.error) : null,
     );
     populateClasses(resetFilters);
+    if (resetFilters && irisRuntime.mode === "demo") {
+      const defaults = demoDefaults();
+      if (Number.isFinite(defaults.confidence) && defaults.confidence >= 0 && defaults.confidence <= 1) {
+        $("#comparison-confidence").value = defaults.confidence;
+        $("#comparison-confidence-value").textContent = defaults.confidence.toFixed(2);
+      }
+      const selected = [...$("#comparison-class").options].find((option) =>
+        option.value === defaults.class_name || option.textContent === defaults.class_name);
+      if (selected) $("#comparison-class").value = selected.value;
+    }
     renderSignals();
     renderFrame();
     replay.update(detail, detail.frame_ids[comparison.position]);
     if ($("#comparison-workspace").hidden || document.hidden) replay.deactivate();
     renderProvenance();
+    openDemoResult();
   }
 
   function displayedDetections(prediction) {
@@ -873,6 +904,7 @@
     if (irisRuntime.mode === "demo" && event.detail?.name === "comparison") {
       refreshModels();
       refreshHistory();
+      openDemoResult();
     }
     if (event.detail?.name !== "comparison") replay.deactivate();
     else if (comparison.detail)
