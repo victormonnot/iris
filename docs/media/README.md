@@ -6,8 +6,8 @@ were invented.
 
 ## Demo button
 
-`try-iris.svg` is the README's link to the browser demo. This original artwork
-is covered by the repository's [MIT License](../../LICENSE).
+`try-iris-portfolio.svg` is the README's link to the browser demo. This original
+artwork is covered by the repository's [MIT License](../../LICENSE).
 
 ## Model comparison
 
