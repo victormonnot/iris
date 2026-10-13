@@ -2,9 +2,7 @@
 
 Aim to accelerate the learning loop from field data to mission-specific vision models.
 
-**[Try Iris in your browser →](https://iris.victormonnot.com/)** · **[Try Argos →](https://argos.victormonnot.com/)**
-
-[Portfolio](https://victormonnot.com/projects/iris/) · [Try the local example](docs/first-run.md) · [Get started](#getting-started) · [Documentation](docs/README.md)
+**[Try Iris in your browser →](https://iris.victormonnot.com/)**
 
 ## What I'm building
 
@@ -22,6 +20,8 @@ brings in new data.
 
 *Comparing two models on the same image. The extra box on the right is a false
 detection.*
+
+**[More about the project →](https://victormonnot.com/projects/iris/)**
 
 ## What works today
 
