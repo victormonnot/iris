@@ -7,6 +7,15 @@ The browser uses plain HTML, CSS and JavaScript served by FastAPI. There is no
 frontend build step. Node is only needed for the JavaScript tests, which use its
 built-in test runner.
 
+## Documentation updates
+
+Keep the root README a short introduction to the project. Refresh it during
+dedicated reviews of meaningful progress or an explicitly requested README edit.
+Routine feature work, bug fixes, deployment changes and test runs belong in the
+relevant guides. Record experiment evidence in [acceptance results](acceptance-results.md).
+When reviewing the README, consolidate existing text and keep technical detail in
+the linked documentation.
+
 ## Routine checks
 
 Run from the repository root after `uv sync --locked`:

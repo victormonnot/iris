@@ -2,7 +2,9 @@
 
 Aim to accelerate the learning loop from field data to mission-specific vision models.
 
-[Try Iris](https://iris.victormonnot.com) · [Portfolio](https://victormonnot.com/projects/iris/) · [Local example](docs/first-run.md) · [Get started](#getting-started) · [Documentation](docs/README.md)
+**[Try Iris in your browser →](https://iris.victormonnot.com/)** · **[Try Argos →](https://argos.victormonnot.com/)**
+
+[Portfolio](https://victormonnot.com/projects/iris/) · [Try the local example](docs/first-run.md) · [Get started](#getting-started) · [Documentation](docs/README.md)
 
 ## What I'm building
 
@@ -26,10 +28,6 @@ detection.*
 iris runs on your computer and opens in your browser. It currently focuses on
 object detection, which finds objects and draws boxes around them, and tracking,
 which follows them across video frames.
-
-The [browser demo](https://iris.victormonnot.com) lets you edit sample annotations
-and inspect recorded model comparisons. Edits stay in your browser. Install Iris
-locally to use your own files, run models and train with your computer's hardware.
 
 - **Prepare the data.** Import images or videos and pick useful frames.
 - **Review the labels.** Get suggested boxes, correct them and add anything missed.
