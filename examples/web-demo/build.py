@@ -31,11 +31,13 @@ from recording import DETAIL, MODEL, SUMMARY, load_recording, restore_recording
 from iris import __version__
 from iris.app import create_app
 from iris.store import SCHEMA_VERSION
+from iris.taxonomies import TAXONOMY
 
 DIRECTORY = Path(__file__).resolve().parent
 SOURCE = DIRECTORY / "source"
 PROJECT_ID = "web-demo"
 SESSION_ID = "fpv-yolox"
+TAXONOMY_ID = "demo-fpv-person-v1"
 SEED_TIME = "2026-10-13T00:00:00+00:00"
 
 
@@ -88,6 +90,16 @@ def import_source(client):
         },
     )
     client.params = {"project_id": public_project["id"]}
+    taxonomy = request(
+        client,
+        "POST",
+        f"/api/projects/{public_project['id']}/taxonomies",
+        json={
+            "expected_taxonomy_id": public_project["taxonomy_id"],
+            "classes": [category for category in TAXONOMY["classes"] if category["id"] == "person"],
+        },
+    )
+    public_project = request(client, "GET", f"/api/projects/{public_project['id']}")
     preview = request(
         client,
         "POST",
@@ -116,6 +128,7 @@ def import_source(client):
     sid = result["session_id"]
     return {
         "project": public_project,
+        "taxonomy": taxonomy,
         "session": request(client, "GET", f"/api/sessions/{sid}"),
         "assets": request(client, "GET", f"/api/sessions/{sid}/assets"),
         "frames": request(client, "GET", f"/api/sessions/{sid}/frames"),
@@ -170,11 +183,13 @@ def build() -> dict[str, bytes]:
                 public_project["id"]: PROJECT_ID,
                 session["id"]: SESSION_ID,
                 imported["import_id"]: "fpv-yolox-import",
+                imported["taxonomy"]["id"]: TAXONOMY_ID,
             }
             timestamps = {
                 public_project["created_at"],
                 session["created_at"],
                 imported["import_created_at"],
+                imported["taxonomy"]["created_at"],
             }
             for coco_id, frame in frames_by_coco.items():
                 identities[frame["id"]] = f"frame-{coco_id}"

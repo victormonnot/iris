@@ -6,6 +6,10 @@ The records use Iris's actual API shapes in the shared browser interface. The
 browser adapter lets visitors select images, review annotations and inspect
 recorded predictions without an Iris API or model runtime.
 
+The example project's current class definition is **Person** only, published
+before importing the images. Imported proposals and annotation tools use this
+same definition; recorded models retain their original class contracts.
+
 ## Try the browser demo locally
 
 From the repository root, run the static preview with Python's standard library:
@@ -148,8 +152,9 @@ requirements, not configuration applied by the exporter.
 
 Saved browser data belongs to the site's origin, demo location and sample,
 separately from the asset version. Rebuilding only the interface preserves that namespace.
-The FPV sample uses the `fpv-yolox-v1` namespace. Earlier street-scene edits remain
-in their separate browser database and are not applied to the new images.
+The person-only FPV sample uses the `fpv-yolox-person-v1` namespace. Earlier FPV
+edits made with person/car classes and earlier street-scene edits remain in their
+separate browser databases; they are not transferred to this class definition.
 Changing the domain or demo path also creates a different browser workspace.
 An incompatible update within the same sample still offers an explicit reset.
 

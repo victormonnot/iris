@@ -98,14 +98,22 @@ test("accept, correct, reject and manually add labels with immutable provenance 
 });
 
 test("changing a proposed class is a correction even when coordinates stay identical", () => {
+  const scenario = structuredClone(seed);
+  scenario.responses[`/api/frames/${FIRST}/annotation`].taxonomy.classes.push({
+    id: "synthetic_other", name: "Other", definition: "Synthetic alternative for this test.", coco_id: null,
+  });
   const state = fresh();
-  const doc = document(state);
+  const doc = domain.document(scenario, state, FIRST);
   const suggestion = doc.suggestions[0];
   const alternate = doc.taxonomy.classes.find((item) => item.id !== suggestion.label);
   assert.ok(alternate, "The test needs a second declared class");
   const box = { ...proposalBox(suggestion), label: alternate.id };
-  rejectsUnchanged(state, payload(doc, { boxes: [box], decisions: { [suggestion.id]: "accepted" } }));
-  const saved = domain.save(seed, state, FIRST, payload(doc, {
+  const before = structuredClone(state);
+  assert.throws(() => domain.save(scenario, state, FIRST, payload(doc, {
+    boxes: [box], decisions: { [suggestion.id]: "accepted" },
+  })), (error) => error.status === 422);
+  assert.deepEqual(state, before);
+  const saved = domain.save(scenario, state, FIRST, payload(doc, {
     boxes: [box], decisions: { [suggestion.id]: "corrected" },
   }));
   assert.equal(saved.boxes[0].review_state, "corrected");

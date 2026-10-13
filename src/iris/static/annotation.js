@@ -272,7 +272,7 @@
     $("#annotation-proposal-hint").textContent = editor.dirty
       ? "Save your draft before importing proposals or requesting model review."
       : "Import proposals from a checkpoint with matching saved definitions, or from an official detector through explicit COCO mappings. Every proposal still needs human review.";
-    $("#annotation-assistance-availability").hidden = document.taxonomy.id === taxonomyTools.builtinId;
+    $("#annotation-assistance-availability").hidden = irisRuntime.mode === "demo" || document.taxonomy.id === taxonomyTools.builtinId;
     $("#annotation-adopt-taxonomy").disabled = blocked || editor.dirty || assistActive();
     const position = editor.frames.findIndex(
       (frame) => frame.id === editor.frameId,

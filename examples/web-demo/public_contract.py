@@ -93,9 +93,15 @@ TAXONOMY = {
     "classes": [CLASS],
     "review_guidance": str,
 }
+VERSIONED_TAXONOMY = {
+    **TAXONOMY,
+    "version": int,
+    "parent_id": (str, None),
+    "created_at": str,
+}
 TAXONOMIES = {
     "current_taxonomy_id": str,
-    "versions": [{**TAXONOMY, "version": int, "parent_id": (str, None), "created_at": str}],
+    "versions": [VERSIONED_TAXONOMY],
 }
 
 SESSION = {
@@ -128,7 +134,7 @@ COCO_IMAGE = {
 }
 IMPORT_PROVENANCE = {
     "id": str,
-    "taxonomy": TAXONOMY,
+    "taxonomy": VERSIONED_TAXONOMY,
     "archive_sha256": str,
     "archive_filename": str,
     "json_filename": str,
@@ -215,9 +221,9 @@ ANNOTATION = {
         "session_name": str,
         "scene_group": str,
     },
-    "taxonomy": TAXONOMY,
+    "taxonomy": VERSIONED_TAXONOMY,
     "taxonomy_id": str,
-    "current_taxonomy": TAXONOMY,
+    "current_taxonomy": VERSIONED_TAXONOMY,
     "taxonomy_outdated": False,
     "revision": 0,
     "status": "unannotated",
@@ -238,7 +244,7 @@ INSIGHT_FRAME = {
     "revision": 0,
     "pending_count": int,
     "box_count": 0,
-    "class_counts": {"person": 0, "car": 0},
+    "class_counts": {"person": 0},
     "negative": None,
     "positive": None,
     "annotation_valid": True,

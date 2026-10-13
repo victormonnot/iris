@@ -86,6 +86,10 @@ def test_seed_contains_only_the_public_project_and_resolved_media(fixture, gener
     (project,) = responses["/api/projects"]
     assert project == responses["/api/projects/web-demo"]
     assert project["id"] == fixture["project_id"]
+    taxonomies = responses["/api/projects/web-demo/taxonomies"]
+    assert project["taxonomy_id"] == taxonomies["current_taxonomy_id"] == "demo-fpv-person-v1"
+    taxonomy = next(item for item in taxonomies["versions"] if item["id"] == project["taxonomy_id"])
+    assert [item["id"] for item in taxonomy["classes"]] == ["person"]
     (session,) = responses["/api/sessions"]
     assert session == responses["/api/sessions/fpv-yolox"]
     assert session["project_id"] == project["id"]
@@ -99,6 +103,11 @@ def test_seed_contains_only_the_public_project_and_resolved_media(fixture, gener
         assert frame["selected"] is True
         assert frame["duplicate_count"] == 0
         assert f"/api/frames/{frame['id']}/annotation" in responses
+        annotation = responses[f"/api/frames/{frame['id']}/annotation"]
+        assert annotation["taxonomy"] == annotation["current_taxonomy"] == taxonomy
+        assert annotation["taxonomy_id"] == frame["taxonomy_id"] == taxonomy["id"]
+        assert frame["extraction"]["dataset_import"]["taxonomy"] == taxonomy
+        assert annotation["taxonomy_outdated"] is False
         resource = f"/api/frames/{frame['id']}/image"
         assert fixture["resources"][resource] in generated
     for route, name in fixture["resources"].items():
@@ -263,7 +272,7 @@ def test_saved_comparison_preserves_recorded_predictions_and_timings(fixture):
         }
         assert {row["comparison_id"] for row in sources} == {detail["id"]}
         # The trained model keeps its exact historical person-only taxonomy;
-        # the editable demo uses the current person/car project taxonomy.
+        # the editable demo has its own person-only project taxonomy.
         # The backend correctly excludes it from annotation-source suggestions.
         trained_contract = detail["config"]["model_class_contracts"][detail["model_ids"][1]]
         assert trained_contract["taxonomy_id"] != annotation["taxonomy_id"]

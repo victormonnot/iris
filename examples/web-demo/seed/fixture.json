@@ -157,16 +157,13 @@
                     "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                     "id": "person",
                     "name": "Person"
-                  },
-                  {
-                    "coco_id": 3,
-                    "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                    "id": "car",
-                    "name": "Car"
                   }
                 ],
-                "id": "iris-objects-v1",
-                "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+                "created_at": "2026-10-13T00:00:00+00:00",
+                "id": "demo-fpv-person-v1",
+                "parent_id": "iris-objects-v1",
+                "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+                "version": 2
               }
             },
             "method": "coco_import"
@@ -181,7 +178,7 @@
           "session_name": "FPV drone · YOLOX-Nano",
           "sha256": "18c8b2cfcf1143bc49577e5fe20243bf282fee5a7f852848a19bb7f580c65e1e",
           "source_filename": "images/1601.jpg",
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "timestamp_seconds": null,
           "width": 640
         },
@@ -242,16 +239,13 @@
                     "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                     "id": "person",
                     "name": "Person"
-                  },
-                  {
-                    "coco_id": 3,
-                    "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                    "id": "car",
-                    "name": "Car"
                   }
                 ],
-                "id": "iris-objects-v1",
-                "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+                "created_at": "2026-10-13T00:00:00+00:00",
+                "id": "demo-fpv-person-v1",
+                "parent_id": "iris-objects-v1",
+                "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+                "version": 2
               }
             },
             "method": "coco_import"
@@ -266,7 +260,7 @@
           "session_name": "FPV drone · YOLOX-Nano",
           "sha256": "add2e7028e71dec1bce663b3b9399686582d8cc828bd993a4b39d8cdbcb7e5b1",
           "source_filename": "images/1681.jpg",
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "timestamp_seconds": null,
           "width": 640
         }
@@ -3415,16 +3409,13 @@
             "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
             "id": "person",
             "name": "Person"
-          },
-          {
-            "coco_id": 3,
-            "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-            "id": "car",
-            "name": "Car"
           }
         ],
-        "id": "iris-objects-v1",
-        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+        "created_at": "2026-10-13T00:00:00+00:00",
+        "id": "demo-fpv-person-v1",
+        "parent_id": "iris-objects-v1",
+        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+        "version": 2
       },
       "decisions": {},
       "frame": {
@@ -3484,16 +3475,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "method": "coco_import"
@@ -3508,7 +3496,7 @@
         "session_name": "FPV drone · YOLOX-Nano",
         "sha256": "18c8b2cfcf1143bc49577e5fe20243bf282fee5a7f852848a19bb7f580c65e1e",
         "source_filename": "images/1601.jpg",
-        "taxonomy_id": "iris-objects-v1",
+        "taxonomy_id": "demo-fpv-person-v1",
         "timestamp_seconds": null,
         "width": 640
       },
@@ -3520,7 +3508,7 @@
           "comparison_id": "fpv-yolox-comparison",
           "comparison_name": "YOLOX-Nano · original vs trained in Iris",
           "created_at": "2026-10-07T08:26:10.696370+00:00",
-          "detection_count": 41,
+          "detection_count": 36,
           "id": "85679d21fcff418fb887c5ec8dda6a91",
           "model_id": "yolox_nano",
           "run_id": "e0731629ace247c99ef22370e5b7be2d",
@@ -3572,7 +3560,7 @@
             "source_image_id": 1601,
             "source_split": "val",
             "source_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
-            "target_taxonomy": "iris-objects-v1"
+            "target_taxonomy": "demo-fpv-person-v1"
           },
           "state": "pending",
           "taxonomy_outdated": false
@@ -3586,18 +3574,15 @@
             "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
             "id": "person",
             "name": "Person"
-          },
-          {
-            "coco_id": 3,
-            "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-            "id": "car",
-            "name": "Car"
           }
         ],
-        "id": "iris-objects-v1",
-        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+        "created_at": "2026-10-13T00:00:00+00:00",
+        "id": "demo-fpv-person-v1",
+        "parent_id": "iris-objects-v1",
+        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+        "version": 2
       },
-      "taxonomy_id": "iris-objects-v1",
+      "taxonomy_id": "demo-fpv-person-v1",
       "taxonomy_outdated": false
     },
     "/api/frames/frame-1601/assistance": [],
@@ -3611,16 +3596,13 @@
             "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
             "id": "person",
             "name": "Person"
-          },
-          {
-            "coco_id": 3,
-            "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-            "id": "car",
-            "name": "Car"
           }
         ],
-        "id": "iris-objects-v1",
-        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+        "created_at": "2026-10-13T00:00:00+00:00",
+        "id": "demo-fpv-person-v1",
+        "parent_id": "iris-objects-v1",
+        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+        "version": 2
       },
       "decisions": {},
       "frame": {
@@ -3680,16 +3662,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "method": "coco_import"
@@ -3704,7 +3683,7 @@
         "session_name": "FPV drone · YOLOX-Nano",
         "sha256": "add2e7028e71dec1bce663b3b9399686582d8cc828bd993a4b39d8cdbcb7e5b1",
         "source_filename": "images/1681.jpg",
-        "taxonomy_id": "iris-objects-v1",
+        "taxonomy_id": "demo-fpv-person-v1",
         "timestamp_seconds": null,
         "width": 640
       },
@@ -3768,7 +3747,7 @@
             "source_image_id": 1681,
             "source_split": "val",
             "source_url": "https://github.com/victormonnot/iris/tree/main/examples/web-demo/source",
-            "target_taxonomy": "iris-objects-v1"
+            "target_taxonomy": "demo-fpv-person-v1"
           },
           "state": "pending",
           "taxonomy_outdated": false
@@ -3782,18 +3761,15 @@
             "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
             "id": "person",
             "name": "Person"
-          },
-          {
-            "coco_id": 3,
-            "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-            "id": "car",
-            "name": "Car"
           }
         ],
-        "id": "iris-objects-v1",
-        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+        "created_at": "2026-10-13T00:00:00+00:00",
+        "id": "demo-fpv-person-v1",
+        "parent_id": "iris-objects-v1",
+        "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+        "version": 2
       },
-      "taxonomy_id": "iris-objects-v1",
+      "taxonomy_id": "demo-fpv-person-v1",
       "taxonomy_outdated": false
     },
     "/api/frames/frame-1681/assistance": [],
@@ -4163,7 +4139,7 @@
         "description": "Two recorded FPV images with original and Iris-trained YOLOX-Nano results.",
         "id": "web-demo",
         "name": "FPV drone · YOLOX-Nano",
-        "taxonomy_id": "iris-objects-v1"
+        "taxonomy_id": "demo-fpv-person-v1"
       }
     ],
     "/api/projects/web-demo": {
@@ -4171,10 +4147,10 @@
       "description": "Two recorded FPV images with original and Iris-trained YOLOX-Nano results.",
       "id": "web-demo",
       "name": "FPV drone · YOLOX-Nano",
-      "taxonomy_id": "iris-objects-v1"
+      "taxonomy_id": "demo-fpv-person-v1"
     },
     "/api/projects/web-demo/taxonomies": {
-      "current_taxonomy_id": "iris-objects-v1",
+      "current_taxonomy_id": "demo-fpv-person-v1",
       "versions": [
         {
           "box_format": "xyxy_pixels",
@@ -4197,6 +4173,22 @@
           "parent_id": null,
           "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
           "version": 1
+        },
+        {
+          "box_format": "xyxy_pixels",
+          "classes": [
+            {
+              "coco_id": 1,
+              "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
+              "id": "person",
+              "name": "Person"
+            }
+          ],
+          "created_at": "2026-10-13T00:00:00+00:00",
+          "id": "demo-fpv-person-v1",
+          "parent_id": "iris-objects-v1",
+          "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+          "version": 2
         }
       ]
     },
@@ -4276,16 +4268,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "format": "JPEG",
@@ -4355,16 +4344,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "format": "JPEG",
@@ -4561,16 +4547,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "method": "coco_import"
@@ -4582,7 +4565,7 @@
         "selected": true,
         "session_id": "fpv-yolox",
         "sha256": "18c8b2cfcf1143bc49577e5fe20243bf282fee5a7f852848a19bb7f580c65e1e",
-        "taxonomy_id": "iris-objects-v1",
+        "taxonomy_id": "demo-fpv-person-v1",
         "timestamp_seconds": null,
         "width": 640
       },
@@ -4644,16 +4627,13 @@
                   "definition": "A visible human, including a rider. Enclose the visible extent of each person; do not infer a box for a fully occluded person.",
                   "id": "person",
                   "name": "Person"
-                },
-                {
-                  "coco_id": 3,
-                  "definition": "A passenger car, including an SUV or passenger minivan. Exclude buses, trucks, motorcycles and bicycles. Enclose the visible extent of each car.",
-                  "id": "car",
-                  "name": "Car"
                 }
               ],
-              "id": "iris-objects-v1",
-              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves."
+              "created_at": "2026-10-13T00:00:00+00:00",
+              "id": "demo-fpv-person-v1",
+              "parent_id": "iris-objects-v1",
+              "review_guidance": "Review the whole image for missing objects and imprecise boxes. Only validate when all visible target objects are annotated. A validated empty image is an explicit negative example. Automatic proposals are never reference annotations by themselves.",
+              "version": 2
             }
           },
           "method": "coco_import"
@@ -4665,7 +4645,7 @@
         "selected": true,
         "session_id": "fpv-yolox",
         "sha256": "add2e7028e71dec1bce663b3b9399686582d8cc828bd993a4b39d8cdbcb7e5b1",
-        "taxonomy_id": "iris-objects-v1",
+        "taxonomy_id": "demo-fpv-person-v1",
         "timestamp_seconds": null,
         "width": 640
       }
@@ -4733,7 +4713,7 @@
             ]
           },
           "source_filename": "images/1601.jpg",
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "taxonomy_outdated": false,
           "timestamp_seconds": null,
           "width": 640
@@ -4783,14 +4763,14 @@
             ]
           },
           "source_filename": "images/1681.jpg",
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "taxonomy_outdated": false,
           "timestamp_seconds": null,
           "width": 640
         }
       ],
       "session_id": "fpv-yolox",
-      "taxonomy_id": "iris-objects-v1",
+      "taxonomy_id": "demo-fpv-person-v1",
       "warnings": [
         "Disagreement is a review ordering aid, not an accuracy or uncertainty estimate. Confidence scores are not calibrated across models.",
         "Agreement and no detections can both hide missed objects. Review the whole image; neither result validates an annotation.",
@@ -4806,7 +4786,6 @@
           "annotation_valid": true,
           "box_count": 0,
           "class_counts": {
-            "car": 0,
             "person": 0
           },
           "exact_duplicate_count": 0,
@@ -4837,7 +4816,7 @@
             "media_kind": "image",
             "timestamp_seconds": null
           },
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "taxonomy_outdated": false
         },
         {
@@ -4846,7 +4825,6 @@
           "annotation_valid": true,
           "box_count": 0,
           "class_counts": {
-            "car": 0,
             "person": 0
           },
           "exact_duplicate_count": 0,
@@ -4877,7 +4855,7 @@
             "media_kind": "image",
             "timestamp_seconds": null
           },
-          "taxonomy_id": "iris-objects-v1",
+          "taxonomy_id": "demo-fpv-person-v1",
           "taxonomy_outdated": false
         }
       ],

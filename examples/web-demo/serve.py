@@ -91,7 +91,7 @@ def demo_index(
     )
     scripts += (
         '\n    <script src="/static/demo/bootstrap.js" data-seed="/seed/"'
-        ' data-sample="fpv-yolox-v1" defer></script>'
+        ' data-sample="fpv-yolox-person-v1" defer></script>'
     )
     source = source.replace(anchor, scripts + "\n" + anchor)
     source = source.replace(

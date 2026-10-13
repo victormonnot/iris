@@ -113,13 +113,13 @@ test("changed seed bytes reach version validation in the same workspace without 
 
 test("a new sample opens separately while updates to that sample retain its saved workspace", async () => {
   const shared = { href: "https://iris.example/demo/", seed: "assets/old/seed/" };
-  const previous = boot(shared);
-  const fpv = boot({ ...shared, sample: "fpv-yolox-v1" });
-  const updated = boot({ ...shared, seed: "assets/new/seed/", sample: "fpv-yolox-v1" });
+  const previous = boot({ ...shared, sample: "fpv-yolox-v1" });
+  const fpv = boot({ ...shared, sample: "fpv-yolox-person-v1" });
+  const updated = boot({ ...shared, seed: "assets/new/seed/", sample: "fpv-yolox-person-v1" });
   await Promise.all([previous.adapter.ready, fpv.adapter.ready, updated.adapter.ready]);
   assert.notEqual(previous.openings[0].name, fpv.openings[0].name);
   assert.notEqual(previous.channels[0].name, fpv.channels[0].name);
-  assert.equal(fpv.openings[0].name, "iris-web-demo:/demo/seed/:fpv-yolox-v1");
+  assert.equal(fpv.openings[0].name, "iris-web-demo:/demo/seed/:fpv-yolox-person-v1");
   assert.equal(updated.openings[0].name, fpv.openings[0].name);
   assert.equal(updated.channels[0].name, fpv.channels[0].name);
 });

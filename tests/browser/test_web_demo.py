@@ -321,18 +321,23 @@ def test_processing_and_export_are_disabled_even_for_direct_runtime_requests(vis
 def test_class_definitions_remain_readable_while_changes_are_disabled(visit):
     _, page = visit()
     enter(page)
+    expect(page.locator("#project-class-summary")).to_have_text("1 class · Class version 2")
+    expect(page.locator("#project-class-summary")).to_have_attribute("title", "Person")
     page.locator("#taxonomy-open").click()
     dialog = page.locator("#taxonomy-dialog")
     expect(dialog).to_be_visible()
-    expect(page.locator("#taxonomy-rows").get_by_label("Display name").first).to_have_value(
-        "Person"
-    )
+    expect(page.locator("#taxonomy-rows").get_by_label("Display name")).to_have_count(1)
+    expect(page.locator("#taxonomy-rows").get_by_label("Display name")).to_have_value("Person")
     expect(page.locator("#taxonomy-save")).to_be_disabled()
     expect(page.locator("#taxonomy-add")).to_be_disabled()
     page.locator("#taxonomy-refresh").click()
     expect(page.locator("#taxonomy-save")).to_be_disabled()
     page.keyboard.press("Escape")
     expect(dialog).to_be_hidden()
+    annotation(page)
+    expect(page.locator("#annotation-class option")).to_have_text(["Person"])
+    expect(page.locator("#annotation-taxonomy-update")).to_be_hidden()
+    expect(page.locator("#annotation-assistance-availability")).to_be_hidden()
 
 
 def test_unavailable_record_deep_links_keep_the_entry_usable(visit):
