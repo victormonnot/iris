@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import mimetypes
 import re
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -12,6 +13,11 @@ from urllib.parse import unquote, urlsplit
 EXAMPLE = Path(__file__).resolve().parent
 STATIC = EXAMPLE.parents[1] / "src" / "iris" / "static"
 SEED = EXAMPLE / "seed"
+DEMO_URL = "https://iris.victormonnot.com/"
+DEMO_TITLE = "Try IRIS | Interactive Demo"
+DEMO_DESCRIPTION = "Discover IRIS through an interactive demo."
+SOCIAL_IMAGE = "social/iris-demo.png"
+SOCIAL_IMAGE_ALT = "Try Iris button over the blurred Iris workspace."
 # Retain the shared modules used by the supported workspaces. Processing modules
 # have no browser implementation; their controls are explained by demo/ui.js.
 DEMO_SCRIPTS = {
@@ -44,10 +50,53 @@ def demo_index(
     static_prefix: str = "/static/",
     seed_prefix: str = "/seed/",
     revision: str | None = None,
+    social_image_url: str = "/" + SOCIAL_IMAGE,
 ) -> bytes:
     """Compose the demo entry point from the maintained local application HTML."""
     validate_revision(revision)
     source = (STATIC / "index.html").read_text(encoding="utf-8")
+    source, titles = re.subn(
+        r"<title>[^<]*</title>", f"<title>{escape(DEMO_TITLE)}</title>", source
+    )
+    source, descriptions = re.subn(
+        r'<meta\s+name="description"\s+content="[^"]*"\s*/>',
+        f'<meta name="description" content="{escape(DEMO_DESCRIPTION)}" />',
+        source,
+    )
+    if titles != 1 or descriptions != 1:
+        raise ValueError("The shared Iris page metadata changed; update the demo composer.")
+    metadata = "\n".join(
+        f'    <meta {attribute}="{key}" content="{escape(value)}" />'
+        for attribute, entries in (
+            (
+                "property",
+                {
+                    "og:type": "website",
+                    "og:site_name": "IRIS",
+                    "og:url": DEMO_URL,
+                    "og:title": DEMO_TITLE,
+                    "og:description": DEMO_DESCRIPTION,
+                    "og:image": social_image_url,
+                    "og:image:type": "image/png",
+                    "og:image:width": "1200",
+                    "og:image:height": "630",
+                    "og:image:alt": SOCIAL_IMAGE_ALT,
+                },
+            ),
+            (
+                "name",
+                {
+                    "twitter:card": "summary_large_image",
+                    "twitter:title": DEMO_TITLE,
+                    "twitter:description": DEMO_DESCRIPTION,
+                    "twitter:image": social_image_url,
+                    "twitter:image:alt": SOCIAL_IMAGE_ALT,
+                },
+            ),
+        )
+        for key, value in entries.items()
+    )
+    source = source.replace("  </head>", metadata + "\n  </head>")
     source = re.sub(
         r'    <script src="/static/([^"/]+)"[^>]*></script>\n',
         lambda match: match[0] if match[1] in DEMO_SCRIPTS else "",
@@ -102,7 +151,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             content, content_type = demo_index(), "text/html; charset=utf-8"
         else:
-            roots = {"/static/": STATIC, "/seed/": SEED}
+            roots = {"/static/": STATIC, "/seed/": SEED, "/social/": EXAMPLE / "social"}
             root = next((base for prefix, base in roots.items() if path.startswith(prefix)), None)
             relative = path.split("/", 2)[-1]
             if root is None or "\x00" in path or "\\" in path:

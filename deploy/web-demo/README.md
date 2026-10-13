@@ -12,6 +12,19 @@ revision=$(git rev-parse HEAD)
 python3 examples/web-demo/export.py --output dist/demo --revision "$revision"
 ```
 
+## Link previews
+
+The demo composer writes the page title, description, Open Graph and large-image
+card tags directly into the exported HTML. The image URL is an absolute HTTPS
+URL on `iris.victormonnot.com`, pointing to the same versioned asset directory
+as the rest of the release. Crawlers can read the preview without JavaScript.
+
+`examples/web-demo/social/iris-demo.png` is a real 1200 × 630 screenshot of the
+entry screen in the light theme. To refresh it after an interface change, capture
+the local demo in a fresh browser context after the fonts and sample photos have
+loaded and Try Iris is enabled. Keep the entry dialog open and the pointer away
+from the button. Export and publish the updated image with the site.
+
 ## Host layout
 
 Provision a dedicated deployment account with write access only to its site

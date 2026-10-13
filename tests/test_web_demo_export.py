@@ -107,6 +107,7 @@ def source_tree(tmp_path):
         shutil.copy2(EXAMPLE / name, example / name)
     shutil.copy2(ROOT / "LICENSE", root / "LICENSE")
     shutil.copytree(EXAMPLE / "seed", example / "seed")
+    shutil.copytree(EXAMPLE / "social", example / "social")
     shutil.copytree(ROOT / "src/iris/static", root / "src/iris/static")
     return root, example, load_exporter(example)
 

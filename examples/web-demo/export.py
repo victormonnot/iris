@@ -16,7 +16,7 @@ import tempfile
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 
-from serve import EXAMPLE, SEED, STATIC, demo_index, validate_revision
+from serve import DEMO_URL, EXAMPLE, SEED, SOCIAL_IMAGE, STATIC, demo_index, validate_revision
 
 ROOT = EXAMPLE.parents[1]
 FORMAT = "iris-web-demo-site-v1"
@@ -139,6 +139,7 @@ def collect_assets() -> dict[str, bytes]:
     assets["seed/provenance.json"] = provenance_bytes
     assets["LICENSE"] = public_file(ROOT, "LICENSE")
     assets["THIRD_PARTY_NOTICES.md"] = public_file(EXAMPLE, "THIRD_PARTY_NOTICES.md")
+    assets[SOCIAL_IMAGE] = public_file(EXAMPLE, SOCIAL_IMAGE)
     return assets
 
 
@@ -199,7 +200,10 @@ def export_demo(output: Path, *, revision: str | None = None) -> dict:
     prefix = f"assets/{version}/"
     files = {prefix + name: content for name, content in assets.items()}
     files["index.html"] = demo_index(
-        static_prefix=f"./{prefix}static/", seed_prefix=f"./{prefix}seed/", revision=revision
+        static_prefix=f"./{prefix}static/",
+        seed_prefix=f"./{prefix}seed/",
+        revision=revision,
+        social_image_url=f"{DEMO_URL}{prefix}{SOCIAL_IMAGE}",
     )
     manifest = {
         "format": FORMAT,

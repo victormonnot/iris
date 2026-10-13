@@ -42,6 +42,13 @@ link, licence link, annotation attribution and packaging changes.
 hashes. Keep both with the sample media. These licences apply separately from
 the Iris code licence.
 
+## Link preview image
+
+[iris-demo.png](social/iris-demo.png) is a screenshot of the real demo entry
+screen, including blurred views of the sample photographs. Those photographic
+adaptations retain the CC BY-SA 2.0 licence and the authors and source credits
+listed in [CREDITS.txt](seed/CREDITS.txt). The interface retains its MIT licence.
+
 ## Recorded model outputs
 
 The example includes saved CPU predictions from SSDLite320 MobileNetV3-Large
