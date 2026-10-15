@@ -201,6 +201,41 @@ def annotation(page):
     page.locator("#annotation-frame").select_option(sample_frames(page)[0]["id"])
 
 
+def test_annotation_queue_retries_a_failed_load_and_preserves_loaded_edits(visit):
+    _, page = visit()
+    enter(page)
+    page.evaluate("""() => {
+        const original = IRISRuntimeAdapter.request;
+        let failed = false;
+        IRISRuntimeAdapter.request = (path, options) => {
+            if (!failed && new URL(path, location.href).pathname.endsWith('/annotation')) {
+                failed = true;
+                window.failedAnnotationFrame = new URL(path, location.href).pathname.split('/')[3];
+                return Promise.reject(new Error('Temporary annotation failure'));
+            }
+            return original(path, options);
+        };
+    }""")
+    page.locator("#workspace-annotation").click()
+    error = page.locator("#annotation-error")
+    expect(error).to_have_text("Temporary annotation failure")
+    expect(error).to_be_visible()
+    expect(page.locator("#annotation-editor")).to_be_hidden()
+
+    frame_id = page.evaluate("window.failedAnnotationFrame")
+    page.locator("#review-queue-browser > summary").click()
+    current = page.locator(f'#review-queue-list button[data-frame-id="{frame_id}"]')
+    expect(current).to_be_enabled()
+    current.click()
+    expect(page.locator("#annotation-editor")).to_be_visible()
+    expect(page.locator("#annotation-frame")).to_have_value(frame_id)
+    expect(error).to_be_hidden()
+    page.locator("#annotation-notes").fill("Keep this unsaved edit")
+    current.click()
+    expect(page.locator("#annotation-notes")).to_have_value("Keep this unsaved edit")
+    expect(page.locator("#annotation-status")).to_contain_text("Unsaved draft")
+
+
 @pytest.mark.parametrize("path", ["/", MOUNT, MOUNT + "index.html"])
 def test_entry_assets_navigation_and_recorded_comparison(visit, path):
     _, page = visit(path)

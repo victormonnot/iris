@@ -657,7 +657,7 @@
   }
 
   async function navigate(id) {
-    if (!id || id === editor.frameId) return;
+    if (!id || (id === editor.frameId && (editor.document || editor.loading))) return;
     if (!discardAllowed()) {
       $("#annotation-frame").value = editor.frameId;
       return;
@@ -2231,10 +2231,7 @@
   window.addEventListener("iris:annotation-open-frame", async (event) => {
     const id = event.detail?.frame_id;
     if (!queue.active || !state.frames.some((frame) => frame.id === id && frame.selected)) return;
-    if (editor.frameId !== id) {
-      if (!discardAllowed()) return;
-      await loadFrame(id);
-    }
+    await navigate(id);
     if (editor.document?.frame.id === id)
       $("#annotation-editor").scrollIntoView({ block: "start" });
   });

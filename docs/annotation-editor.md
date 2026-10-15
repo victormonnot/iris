@@ -9,6 +9,9 @@ in the original image, including when the view is zoomed or moved. Drawing,
 changing classes, editing coordinates, saving drafts and validating images work
 without any detector, provider, download or network connection.
 
+If an image fails to load, click it again in the review queue to retry once the
+connection is available.
+
 ## Generate and review proposals
 
 Open **Generate proposals** and choose the open image or check a batch of up to
