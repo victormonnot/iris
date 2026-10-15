@@ -1,8 +1,10 @@
 """Local HTTP workflows with generated fixtures; no models or flight data."""
 
 import io
+import struct
 import threading
 import time
+import zlib
 from contextlib import contextmanager
 
 import cv2
@@ -243,6 +245,30 @@ def test_invalid_uploads_and_missing_resources_do_not_leave_data(client):
     assert client.post("/api/assets/missing/extract", json={}).status_code == 404
     assert client.post("/api/jobs/missing/cancel").status_code == 404
     assert client.get("/api/frames/missing/image").status_code == 404
+
+
+def test_corrupt_png_metadata_returns_validation_error_without_artifacts(client, image_bytes):
+    flight = session(client)
+    # Place an invalid compressed-text chunk after the pixel data so the image
+    # header opens successfully and the decoder encounters it while loading.
+    metadata = b"Comment\x00\x01broken"
+    chunk = (
+        struct.pack(">I", len(metadata))
+        + b"zTXt"
+        + metadata
+        + struct.pack(">I", zlib.crc32(b"zTXt" + metadata))
+    )
+    corrupt_png = image_bytes[:-12] + chunk + image_bytes[-12:]
+    response = client.post(
+        f"/api/sessions/{flight['id']}/assets",
+        files={"file": ("corrupt.png", corrupt_png, "image/png")},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "Invalid, truncated, or oversized image."
+    store = client.app.state.store
+    assert store.list("assets") == store.list("frames") == []
+    for directory in ("uploads", "assets", "frames"):
+        assert not list((store.root / directory).glob("*"))
 
 
 def test_artifact_paths_cannot_escape_workspace_even_through_symlinks(tmp_path, client):

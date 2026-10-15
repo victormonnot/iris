@@ -66,7 +66,12 @@ def _image_source(path: Path) -> tuple[Image.Image, dict] | None:
                 return image, metadata
     except UnidentifiedImageError:
         return None
-    except (OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+    except (
+        OSError,
+        SyntaxError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ) as exc:
         raise ValueError("Invalid, truncated, or oversized image.") from exc
 
 
