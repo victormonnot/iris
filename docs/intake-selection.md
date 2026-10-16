@@ -11,6 +11,9 @@ the active request and leaves the remaining files unprocessed; it does not delet
 completed imports. This browser queue is not a background job that survives closing
 the page. Each file is limited to 2 GiB and stays on the local machine.
 
+Supported video containers are AVI, MP4/MOV/M4V and MKV/WebM, including older
+QuickTime MOV files. Videos need readable frames and timing metadata for extraction.
+
 Source bytes, checksums, filenames and session ownership are preserved. Reimporting
 the same bytes into the same session reuses the source. A different session keeps
 its own provenance even for an identical file. Images become unselected frames;

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from iris.media import extract_frames, import_asset
+from iris.media import _video_media_type, extract_frames, import_asset
 from iris.store import Store, new_id, now
 from iris.taxonomies import TAXONOMY, publish_taxonomy
 
@@ -232,6 +232,88 @@ def test_video_sampling_has_provenance_bounds_and_repeatability(store, session, 
     assert second["created"] == 0
     assert second["skipped_existing"] == 3
     assert len(list((store.root / "frames").glob("*.png"))) == 3
+
+
+@pytest.mark.parametrize(
+    "extension,padding_type,media_type",
+    [
+        ("mov", None, "video/quicktime"),
+        ("mp4", None, "video/mp4"),
+        ("mov", b"free", "video/quicktime"),
+        ("mov", b"skip", "video/quicktime"),
+    ],
+)
+def test_modern_and_legacy_quicktime_import_and_extract(
+    store, session, tmp_path, extension, padding_type, media_type
+):
+    source = tmp_path / f"movie.{extension}"
+    writer = cv2.VideoWriter(str(source), cv2.VideoWriter_fourcc(*"mp4v"), 4.0, (48, 32))
+    assert writer.isOpened(), "The local MPEG-4 encoder is required for the MOV fixture"
+    try:
+        for index in range(8):
+            writer.write(np.full((32, 48, 3), (index * 20, 30, 150), dtype=np.uint8))
+    finally:
+        writer.release()
+    content = source.read_bytes()
+    assert content[4:8] == b"ftyp"
+    # QuickTime's ftyp atom is optional. Replacing it with equal-sized padding
+    # produces a legacy MOV while keeping every media offset and sample intact.
+    if padding_type is not None:
+        source.write_bytes(content[:4] + padding_type + content[8:])
+    asset = import_asset(store, session["id"], source, source.name)
+    assert asset["metadata"]["media_type"] == media_type
+    assert asset["metadata"]["frame_count"] == 8
+    assert (store.root / asset["path"]).read_bytes() == source.read_bytes()
+    result = extract(store, asset, interval_seconds=0.25)
+    assert result["created"] == result["sampled"] == 8
+    frames = store.list("frames", asset_id=asset["id"])
+    assert sorted(frame["frame_index"] for frame in frames) == list(range(8))
+    assert all((frame["width"], frame["height"]) == (48, 32) for frame in frames)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        b"\x00\x00\x00\x0cmoovdata",
+        b"\x00\x00\x00\x08wide\x00\x00\x00\x00mdat",
+        b"\x00\x00\x00\x01free" + (16).to_bytes(8, "big") + b"\x00\x00\x00\x00mdat",
+        b"\x00\x00\x00\x01mdat" + (5016).to_bytes(8, "big"),
+    ],
+)
+def test_legacy_mov_sniff_accepts_extended_and_to_end_atoms(tmp_path, header):
+    source = tmp_path / "legacy.mov"
+    source.write_bytes(header + b"\x00" * 5000)
+    assert _video_media_type(source) == "video/quicktime"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        b"\x00\x00\x00\x04free\x00\x00\x00\x0cmdatdata",
+        b"\x00\x00\x10\x00free\x00\x00\x00\x0cmdatdata",
+        b"\x00\x00\x00\x01free\x00\x00\x00\x00",
+        b"\x00\x00\x00\x01free" + (8).to_bytes(8, "big") + b"\x00\x00\x00\x0cmdatdata",
+        b"\x00\x00\x00\x01mdat" + (2**63).to_bytes(8, "big"),
+        b"\x00\x00\x00\x10widepadding!\x00\x00\x00\x0cmdatdata",
+        b"\x00\x00\x00\x08moov",
+        b"\x00\x00\x00\x08free#EXTM3U\nhttps://example.test/movie.ts\n",
+        b"\x00\x00\x00\x10free\x00\x00\x00\x0cmdatdata",
+        b"\x00\x00\x10\x00free" + b"\x00" * 4088 + b"\x00\x00\x00\x0cmdatdata",
+    ],
+)
+def test_invalid_legacy_mov_headers_are_rejected_before_decoding(
+    store, session, tmp_path, monkeypatch, header
+):
+    source = tmp_path / "invalid.mov"
+    source.write_bytes(header)
+
+    def forbidden_decoder(*args, **kwargs):
+        raise AssertionError("An invalid container must not reach the video decoder")
+
+    monkeypatch.setattr(cv2, "VideoCapture", forbidden_decoder)
+    with pytest.raises(ValueError, match="Unsupported video container"):
+        import_asset(store, session["id"], source, source.name)
+    assert store.list("assets") == store.list("frames") == []
 
 
 def test_video_exact_duplicates_are_removed_within_asset(store, session, tmp_path):

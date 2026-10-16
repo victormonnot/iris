@@ -75,6 +75,32 @@ def _image_source(path: Path) -> tuple[Image.Image, dict] | None:
         raise ValueError("Invalid, truncated, or oversized image.") from exc
 
 
+def _legacy_quicktime_header(header: bytes, file_size: int) -> bool:
+    """Recognize MOV's optional-ftyp layout through bounded leading padding."""
+    position = 0
+    while position + 8 <= len(header):
+        atom_type = header[position + 4 : position + 8]
+        if atom_type not in {b"free", b"skip", b"wide", b"moov", b"mdat"}:
+            return False
+        atom_size = int.from_bytes(header[position : position + 4], "big")
+        header_size = 8
+        if atom_size == 1:
+            header_size = 16
+            if position + header_size > len(header):
+                return False
+            atom_size = int.from_bytes(header[position + 8 : position + 16], "big")
+        elif atom_size == 0:
+            atom_size = file_size - position
+        if atom_size < header_size or position + atom_size > file_size:
+            return False
+        if atom_type in {b"moov", b"mdat"}:
+            return atom_size > header_size
+        if atom_type == b"wide" and atom_size != 8:
+            return False
+        position += atom_size
+    return False
+
+
 def _video_media_type(path: Path) -> str:
     # OpenCV delegates to FFmpeg, which also understands playlists and URLs.
     # Only pass known binary video containers to that decoder, never arbitrary
@@ -85,6 +111,10 @@ def _video_media_type(path: Path) -> str:
         return "video/x-msvideo"
     if header[4:8] == b"ftyp":
         return "video/quicktime" if header[8:12] == b"qt  " else "video/mp4"
+    # Older QuickTime movies have no ftyp atom. Follow only known atom headers,
+    # within the sniff buffer; media payloads may extend beyond that buffer.
+    if _legacy_quicktime_header(header, path.stat().st_size):
+        return "video/quicktime"
     if header[:4] == b"\x1a\x45\xdf\xa3":
         # Read the EBML DocType element's variable-length size, including legal
         # nonminimal encodings, instead of trusting the file extension.
