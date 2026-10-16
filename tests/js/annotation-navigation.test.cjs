@@ -19,9 +19,18 @@ function environment() {
       this.value = "";
       this.dataset = {};
       this.children = [];
-      this.classList = { toggle() {} };
+      this.attributes = new Map();
+      this.classList = {
+        toggle: (name, active) => {
+          const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+          if (active) classes.add(name);
+          else classes.delete(name);
+          this.className = [...classes].join(" ");
+        },
+      };
     }
-    setAttribute() {}
+    setAttribute(name, value) { this.attributes.set(name, value); }
+    getAttribute(name) { return this.attributes.get(name); }
     setCustomValidity() {}
     replaceChildren(...children) { this.children = children; }
     append(...children) { this.children.push(...children); }
@@ -73,6 +82,14 @@ function environment() {
   return {
     $, requests, take, openFrame,
     row: (id) => $("#review-queue-list").querySelectorAll("button").find((item) => item.dataset.frameId === id),
+    assertCurrent(id, loading) {
+      for (const row of $("#review-queue-list").querySelectorAll("button")) {
+        const current = row.dataset.frameId === id;
+        assert.equal(row.getAttribute("aria-current"), String(current));
+        assert.equal(row.className.split(/\s+/).includes("current"), current);
+        assert.equal(row.disabled, loading);
+      }
+    },
     async open() {
       window.dispatchEvent(new CustomEvent("iris:workspace", { detail: { name: "annotation" } }));
       $("#review-queue-refresh").click();
@@ -105,6 +122,30 @@ test("a failed annotation can be retried by selecting the same review queue fram
   assert.equal(env.$("#annotation-error").textContent, "Still unavailable");
 });
 
+test("the review queue identifies the requested frame throughout loading, failure and retry", async () => {
+  const env = environment();
+  const first = await env.open();
+  env.assertCurrent("a", true);
+  first.reject(new Error("Connection lost"));
+  await settle();
+  env.assertCurrent("a", false);
+
+  const row = env.row("b");
+  row.click();
+  const next = env.take("/api/frames/b/annotation");
+  env.assertCurrent("b", true);
+  assert.equal(env.row("b"), row, "Updating status should preserve the queue button");
+  next.reject(new Error("Still unavailable"));
+  await settle();
+  env.assertCurrent("b", false);
+
+  row.click();
+  env.assertCurrent("b", true);
+  env.take("/api/frames/b/annotation").reject(new Error("Retry failure"));
+  await settle();
+  env.assertCurrent("b", false);
+});
+
 test("frame handoffs retry failed annotations without duplicating an in-flight load", async () => {
   const env = environment();
   const first = await env.open();
@@ -127,12 +168,15 @@ test("a late failure from another frame does not block retrying the current fram
   const first = await env.open();
   env.openFrame("b");
   const second = env.take("/api/frames/b/annotation");
+  env.assertCurrent("b", true);
   first.reject(new Error("Old failure"));
   await settle();
   assert.equal(env.$("#annotation-error").hidden, true);
+  env.assertCurrent("b", true);
   second.reject(new Error("Current failure"));
   await settle();
   assert.equal(env.$("#annotation-error").textContent, "Current failure");
+  env.assertCurrent("b", false);
 
   env.row("b").click();
   env.take("/api/frames/b/annotation").reject(new Error("Retry failure"));

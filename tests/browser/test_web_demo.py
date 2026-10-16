@@ -211,25 +211,38 @@ def test_annotation_queue_retries_a_failed_load_and_preserves_loaded_edits(visit
             if (!failed && new URL(path, location.href).pathname.endsWith('/annotation')) {
                 failed = true;
                 window.failedAnnotationFrame = new URL(path, location.href).pathname.split('/')[3];
-                return Promise.reject(new Error('Temporary annotation failure'));
+                return new Promise((resolve, reject) => {
+                    window.failAnnotationLoad = () =>
+                        reject(new Error('Temporary annotation failure'));
+                });
             }
             return original(path, options);
         };
     }""")
     page.locator("#workspace-annotation").click()
+    page.wait_for_function("window.failedAnnotationFrame !== undefined")
+    frame_id = page.evaluate("window.failedAnnotationFrame")
+    page.locator("#review-queue-browser > summary").click()
+    current = page.locator(f'#review-queue-list button[data-frame-id="{frame_id}"]')
+    expect(current).to_have_attribute("aria-current", "true")
+    expect(current).to_have_class("review-queue-frame current")
+    expect(current).to_be_disabled()
+
+    page.evaluate("window.failAnnotationLoad()")
     error = page.locator("#annotation-error")
     expect(error).to_have_text("Temporary annotation failure")
     expect(error).to_be_visible()
     expect(page.locator("#annotation-editor")).to_be_hidden()
 
-    frame_id = page.evaluate("window.failedAnnotationFrame")
-    page.locator("#review-queue-browser > summary").click()
-    current = page.locator(f'#review-queue-list button[data-frame-id="{frame_id}"]')
+    expect(current).to_have_attribute("aria-current", "true")
+    expect(current).to_have_class("review-queue-frame current")
     expect(current).to_be_enabled()
     current.click()
     expect(page.locator("#annotation-editor")).to_be_visible()
     expect(page.locator("#annotation-frame")).to_have_value(frame_id)
     expect(error).to_be_hidden()
+    expect(current).to_have_attribute("aria-current", "true")
+    expect(current).to_have_class("review-queue-frame current")
     page.locator("#annotation-notes").fill("Keep this unsaved edit")
     current.click()
     expect(page.locator("#annotation-notes")).to_have_value("Keep this unsaved edit")

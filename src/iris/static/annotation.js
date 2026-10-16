@@ -216,8 +216,12 @@
 
   function updateStatus() {
     publishContext();
-    for (const button of window.document.querySelectorAll("#review-queue-list button"))
+    for (const button of window.document.querySelectorAll("#review-queue-list button")) {
+      const current = button.dataset.frameId === editor.frameId;
+      button.classList.toggle("current", current);
+      button.setAttribute("aria-current", String(current));
       button.disabled = editor.busy || editor.advancing || editor.loading || Boolean(editor.drag);
+    }
     const document = editor.document;
     if (!document) return;
     const status = $("#annotation-status");
@@ -634,7 +638,7 @@
     editor.loading = true;
     editor.document = null;
     editor.dirty = false;
-    publishContext();
+    updateStatus();
     $("#annotation-editor").hidden = true;
     $("#annotation-empty").hidden = true;
     error(null);
